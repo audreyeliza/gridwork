@@ -1,0 +1,193 @@
+"use client";
+
+import {
+  estimateYarnUsage,
+  type YarnEstimateResult,
+  type YarnWeightCategory,
+  YARN_WEIGHT_CATEGORIES,
+} from "@/lib/yarnEstimator";
+import type { PatternYarnSettings } from "@/lib/yarnSettings";
+import { useId, useMemo, useState } from "react";
+
+const WEIGHT_LABELS: Record<YarnWeightCategory, string> = {
+  lace: "Lace",
+  fingering: "Fingering",
+  sport: "Sport",
+  dk: "DK",
+  worsted: "Worsted",
+  bulky: "Bulky",
+  super_bulky: "Super bulky",
+};
+
+export type YarnEstimatorProps = {
+  gridWidth: number;
+  gridHeight: number;
+  filledCellCount: number;
+  emptyCellCount: number;
+  value: PatternYarnSettings;
+  onChange: (next: PatternYarnSettings) => void;
+  className?: string;
+};
+
+export function YarnEstimator({
+  gridWidth,
+  gridHeight,
+  filledCellCount,
+  emptyCellCount,
+  value,
+  onChange,
+  className,
+}: YarnEstimatorProps) {
+  const idPrefix = useId();
+  const [units, setUnits] = useState<"imperial" | "metric">("imperial");
+
+  const result: YarnEstimateResult = useMemo(
+    () =>
+      estimateYarnUsage({
+        weight: value.weight,
+        hookSize: value.hookSize,
+        customGaugeStitchesPerInch: value.customGaugeStitchesPerInch,
+        gridWidth,
+        gridHeight,
+        filledCellCount,
+        emptyCellCount,
+      }),
+    [
+      value.weight,
+      value.hookSize,
+      value.customGaugeStitchesPerInch,
+      gridWidth,
+      gridHeight,
+      filledCellCount,
+      emptyCellCount,
+    ],
+  );
+
+  return (
+    <section
+      className={`flex shrink-0 flex-col gap-3 rounded-lg border border-zinc-200 bg-zinc-50/90 p-4 dark:border-zinc-700 dark:bg-zinc-900/60 ${className ?? ""}`}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Yarn estimate</h2>
+        <div className="inline-flex rounded-lg border border-zinc-300 p-0.5 text-xs dark:border-zinc-600">
+          <button
+            type="button"
+            onClick={() => setUnits("imperial")}
+            className={`rounded-md px-2 py-1 font-medium ${
+              units === "imperial"
+                ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                : "text-zinc-600 dark:text-zinc-400"
+            }`}
+          >
+            Imperial
+          </button>
+          <button
+            type="button"
+            onClick={() => setUnits("metric")}
+            className={`rounded-md px-2 py-1 font-medium ${
+              units === "metric"
+                ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                : "text-zinc-600 dark:text-zinc-400"
+            }`}
+          >
+            Metric
+          </button>
+        </div>
+      </div>
+
+      <p className="text-[11px] leading-snug text-zinc-600 dark:text-zinc-400">
+        Results are rough estimates only. Work a gauge swatch in your yarn and adjust stitches per inch for
+        better accuracy.
+      </p>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="flex flex-col gap-1 text-xs font-medium text-zinc-700 dark:text-zinc-300">
+          Yarn weight
+          <select
+            id={`${idPrefix}-weight`}
+            value={value.weight}
+            onChange={(e) =>
+              onChange({ ...value, weight: e.target.value as YarnWeightCategory })
+            }
+            className="rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-zinc-50"
+          >
+            {YARN_WEIGHT_CATEGORIES.map((w) => (
+              <option key={w} value={w}>
+                {WEIGHT_LABELS[w]}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-1 text-xs font-medium text-zinc-700 dark:text-zinc-300">
+          Hook size
+          <input
+            id={`${idPrefix}-hook`}
+            type="text"
+            value={value.hookSize}
+            onChange={(e) => onChange({ ...value, hookSize: e.target.value })}
+            placeholder='e.g. "5.5 mm"'
+            className="rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-zinc-50"
+          />
+        </label>
+
+        <label className="flex flex-col gap-1 text-xs font-medium text-zinc-700 dark:text-zinc-300 sm:col-span-2">
+          Custom gauge (stitches / inch), optional
+          <input
+            id={`${idPrefix}-gauge`}
+            type="number"
+            min={2}
+            max={14}
+            step={0.25}
+            value={value.customGaugeStitchesPerInch ?? ""}
+            placeholder="Leave blank to use hook / weight default"
+            onChange={(e) => {
+              const raw = e.target.value;
+              if (raw === "") {
+                onChange({ ...value, customGaugeStitchesPerInch: null });
+                return;
+              }
+              const n = Number(raw);
+              onChange({
+                ...value,
+                customGaugeStitchesPerInch: Number.isFinite(n) ? n : null,
+              });
+            }}
+            className="max-w-xs rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-zinc-50"
+          />
+        </label>
+      </div>
+
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-md border border-zinc-200 bg-white/80 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950/80">
+        {units === "imperial" ? (
+          <>
+            <dt className="text-zinc-500 dark:text-zinc-400">Yards</dt>
+            <dd className="text-right font-medium tabular-nums text-zinc-900 dark:text-zinc-50">
+              {result.yards}
+            </dd>
+            <dt className="text-zinc-500 dark:text-zinc-400">Ounces</dt>
+            <dd className="text-right font-medium tabular-nums text-zinc-900 dark:text-zinc-50">
+              {result.oz}
+            </dd>
+          </>
+        ) : (
+          <>
+            <dt className="text-zinc-500 dark:text-zinc-400">Meters</dt>
+            <dd className="text-right font-medium tabular-nums text-zinc-900 dark:text-zinc-50">
+              {result.meters}
+            </dd>
+            <dt className="text-zinc-500 dark:text-zinc-400">Grams</dt>
+            <dd className="text-right font-medium tabular-nums text-zinc-900 dark:text-zinc-50">
+              {result.grams}
+            </dd>
+          </>
+        )}
+      </dl>
+
+      <p className="text-[11px] text-zinc-500 dark:text-zinc-500">
+        Grid {gridWidth}×{gridHeight} · {filledCellCount} filled · {emptyCellCount} empty · block cells count
+        ~3× mesh for yarn.
+      </p>
+    </section>
+  );
+}
