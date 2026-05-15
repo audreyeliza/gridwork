@@ -7,7 +7,7 @@ import {
   ROW_TRACKER_SIDEBAR_PX,
   type GridCanvasLayout,
 } from "@/lib/gridCanvasLayout";
-import { drawImageContain } from "@/lib/imageCanvasUtils";
+import { drawImageWithTransform, type CropRect } from "@/lib/imageCanvasUtils";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export type GridTool = "pencil" | "eraser";
@@ -25,10 +25,16 @@ export type GridCanvasProps = {
   cells: boolean[][];
   onCommit: (next: boolean[][]) => void;
   className?: string;
-  /** When set with opacity &gt; 0, image is drawn behind the grid (contain) and empty cells stay transparent. */
+  /** When set with opacity &gt; 0, image is drawn behind the grid and empty cells stay transparent. */
   underlayImage?: CanvasImageSource | null;
   /** 0–1; defaults to 1 when an image is present. */
   underlayOpacity?: number;
+  /** Optional crop region in image-normalized (0–1) coords. */
+  underlayCrop?: CropRect | null;
+  /** Horizontal pan offset, grid-relative (−0.5–0.5). */
+  underlayPanX?: number;
+  /** Vertical pan offset, grid-relative (−0.5–0.5). */
+  underlayPanY?: number;
   /** Row completion + current row highlight; length must match `gridHeight` when provided. */
   rowComplete?: boolean[];
   currentRow?: number;
@@ -117,6 +123,9 @@ export function GridCanvas({
   className,
   underlayImage,
   underlayOpacity = 1,
+  underlayCrop = null,
+  underlayPanX = 0,
+  underlayPanY = 0,
   rowComplete,
   currentRow = 0,
   onToggleRowComplete,
@@ -198,7 +207,7 @@ export function GridCanvas({
 
       const bg = "#fffbf5";
       const line = "#e7e5e4";
-      const fillOn = "#f472b6";
+      const fillOn = "#F0569A";
       const labelColor = "#78716c";
 
       if (showUnderlay) {
@@ -209,18 +218,12 @@ export function GridCanvas({
         ctx.rect(offsetX, offsetY, gridWpx, gridHpx);
         ctx.clip();
         ctx.globalAlpha = opacity;
-        drawImageContain(ctx, underlayImage!, offsetX, offsetY, gridWpx, gridHpx);
+        drawImageWithTransform(ctx, underlayImage!, offsetX, offsetY, gridWpx, gridHpx, underlayCrop, underlayPanX, underlayPanY);
         ctx.globalAlpha = 1;
         ctx.restore();
       } else {
         ctx.fillStyle = bg;
         ctx.fillRect(0, 0, cssW, cssH);
-      }
-
-      const cr = showRowTracker && rowComplete ? currentRow : -1;
-      if (cr >= 0 && cr < gridHeight) {
-        ctx.fillStyle = "rgba(253, 224, 71, 0.35)";
-        ctx.fillRect(offsetX, offsetY + cr * cell, gridWpx, cell);
       }
 
       ctx.font = "11px system-ui, sans-serif";
@@ -255,6 +258,12 @@ export function GridCanvas({
           ctx.strokeRect(x + 0.5, y + 0.5, cell - 1, cell - 1);
         }
       }
+
+      const cr = showRowTracker && rowComplete ? currentRow : -1;
+      if (cr >= 0 && cr < gridHeight) {
+        ctx.fillStyle = "rgba(249, 168, 122, 0.35)";
+        ctx.fillRect(offsetX, offsetY + cr * cell, gridWpx, cell);
+      }
     });
   }, [
     cells,
@@ -266,6 +275,9 @@ export function GridCanvas({
     fitCell,
     showUnderlay,
     underlayImage,
+    underlayCrop,
+    underlayPanX,
+    underlayPanY,
     opacity,
     showRowTracker,
     rowComplete,
@@ -372,14 +384,14 @@ export function GridCanvas({
       <div className="relative z-40 flex shrink-0 flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-stone-500">Tool</span>
-          <div className="inline-flex rounded-full border border-rose-100 bg-white/90 p-0.5 shadow-sm">
+          <div id="tutorial-pencil" className="inline-flex rounded-full border border-brand/20 bg-white/90 p-0.5 shadow-sm">
             <button
               type="button"
               onClick={() => setTool("pencil")}
-              className={`rounded-full px-3 py-1 text-xs font-medium ${
+              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors duration-150 ${
                 tool === "pencil"
-                  ? "bg-rose-400 text-white shadow-sm"
-                  : "text-stone-600 hover:bg-rose-50"
+                  ? "bg-brand text-white shadow-sm"
+                  : "text-gray-700 hover:bg-pink-50 hover:text-gray-900"
               }`}
             >
               Pencil
@@ -387,10 +399,10 @@ export function GridCanvas({
             <button
               type="button"
               onClick={() => setTool("eraser")}
-              className={`rounded-full px-3 py-1 text-xs font-medium ${
+              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors duration-150 ${
                 tool === "eraser"
-                  ? "bg-sky-400 text-white shadow-sm"
-                  : "text-stone-600 hover:bg-sky-50"
+                  ? "bg-brand text-white shadow-sm"
+                  : "text-gray-700 hover:bg-pink-50 hover:text-gray-900"
               }`}
             >
               Eraser
@@ -405,10 +417,10 @@ export function GridCanvas({
                 key={z}
                 type="button"
                 onClick={() => setZoom(z)}
-                className={`rounded-full px-3 py-1 text-xs font-medium ${
+                className={`rounded-full px-3 py-1 text-xs font-medium transition-colors duration-150 ${
                   zoom === z
-                    ? "bg-stone-700 text-white shadow-sm"
-                    : "text-stone-600 hover:bg-stone-100"
+                    ? "bg-brand text-white shadow-sm"
+                    : "text-gray-700 hover:bg-pink-50 hover:text-gray-900"
                 }`}
               >
                 {z === "fit" ? "Fit" : `${z}%`}

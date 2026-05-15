@@ -73,12 +73,8 @@ export default function PrintPatternPage() {
 
   useEffect(() => {
     if (status !== "ready" || !pattern) return;
-    const id = window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
-        window.print();
-      });
-    });
-    return () => window.cancelAnimationFrame(id);
+    const id = window.setTimeout(() => window.print(), 800);
+    return () => window.clearTimeout(id);
   }, [status, pattern]);
 
   const view = useMemo(() => {
@@ -125,16 +121,18 @@ export default function PrintPatternPage() {
             </p>
           </header>
 
-          <section>
+          <section className="break-inside-avoid" style={{ pageBreakInside: "avoid" }}>
             <h2 className="mb-2 text-sm font-semibold text-zinc-800 print:text-black">Pattern</h2>
-            <PrintGridSvg
-              gridWidth={view.w}
-              gridHeight={view.h}
-              cells={view.cells}
-              rowComplete={view.progress.rowComplete}
-              currentRow={view.progress.currentRow}
-              cellPx={12}
-            />
+            <div style={{ maxWidth: "100%", overflow: "hidden" }}>
+              <PrintGridSvg
+                gridWidth={view.w}
+                gridHeight={view.h}
+                cells={view.cells}
+                rowComplete={view.progress.rowComplete}
+                currentRow={view.progress.currentRow}
+                cellPx={12}
+              />
+            </div>
           </section>
 
           <section className="rounded-lg border border-zinc-200 bg-zinc-50 p-4 text-sm print:border-zinc-800 print:bg-white">

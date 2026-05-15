@@ -1,3 +1,5 @@
+export type CropRect = { x: number; y: number; w: number; h: number };
+
 /** Draw image scaled with CSS-like `object-fit: contain` into the destination rect. */
 export function getCanvasImageSize(img: CanvasImageSource): { w: number; h: number } {
   if (typeof ImageBitmap !== "undefined" && img instanceof ImageBitmap) {
@@ -18,27 +20,50 @@ export function drawImageContain(
   dWidth: number,
   dHeight: number,
 ): void {
+  drawImageWithTransform(ctx, img, dx, dy, dWidth, dHeight, null, 0, 0);
+}
+
+/**
+ * Draw an image with optional crop (image-relative 0–1) and pan offset (grid-relative, -0.5–0.5).
+ * The cropped region is contain-fitted into the destination rect, then shifted by panX/panY.
+ */
+export function drawImageWithTransform(
+  ctx: CanvasRenderingContext2D,
+  img: CanvasImageSource,
+  dx: number,
+  dy: number,
+  dWidth: number,
+  dHeight: number,
+  crop: CropRect | null,
+  panX: number,
+  panY: number,
+): void {
   const { w: iw, h: ih } = getCanvasImageSize(img);
   if (iw <= 0 || ih <= 0) return;
 
-  const ir = iw / ih;
+  const sx = crop ? Math.round(crop.x * iw) : 0;
+  const sy = crop ? Math.round(crop.y * ih) : 0;
+  const sw = crop ? Math.max(1, Math.round(crop.w * iw)) : iw;
+  const sh = crop ? Math.max(1, Math.round(crop.h * ih)) : ih;
+
+  const ir = sw / sh;
   const dr = dWidth / dHeight;
-  let dw = dWidth;
-  let dh = dHeight;
-  let ox = dx;
-  let oy = dy;
+  let fitW: number;
+  let fitH: number;
   if (ir > dr) {
-    dw = dWidth;
-    dh = dw / ir;
-    oy = dy + (dHeight - dh) / 2;
+    fitW = dWidth;
+    fitH = dWidth / ir;
   } else {
-    dh = dHeight;
-    dw = dh * ir;
-    ox = dx + (dWidth - dw) / 2;
+    fitH = dHeight;
+    fitW = dHeight * ir;
   }
+
+  const fitX = dx + (dWidth - fitW) / 2 + panX * dWidth;
+  const fitY = dy + (dHeight - fitH) / 2 + panY * dHeight;
+
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(img, ox, oy, dw, dh);
+  ctx.drawImage(img, sx, sy, sw, sh, fitX, fitY, fitW, fitH);
 }
 
 export function loadImageFromFile(file: File): Promise<HTMLImageElement> {
@@ -120,8 +145,8 @@ export function otsuThreshold(img: HTMLImageElement): number {
 }
 
 /**
- * Rasterize image into a WxH boolean grid using grayscale + threshold (Canvas only).
- * Dark pixels below threshold become filled (line art on light background).
+ * Rasterize image into a WxH boolean grid using grayscale + threshold.
+ * Supports optional crop (image-relative 0–1) and pan offset (grid-relative -0.5–0.5).
  */
 export function imageToThresholdGrid(
   img: CanvasImageSource,
@@ -129,6 +154,9 @@ export function imageToThresholdGrid(
   gridHeight: number,
   threshold: number,
   darkIsFilled = true,
+  crop: CropRect | null = null,
+  panX = 0,
+  panY = 0,
 ): boolean[][] {
   const canvas = document.createElement("canvas");
   canvas.width = gridWidth;
@@ -140,7 +168,7 @@ export function imageToThresholdGrid(
 
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, gridWidth, gridHeight);
-  drawImageContain(ctx, img, 0, 0, gridWidth, gridHeight);
+  drawImageWithTransform(ctx, img, 0, 0, gridWidth, gridHeight, crop, panX, panY);
 
   const { data } = ctx.getImageData(0, 0, gridWidth, gridHeight);
   const grid: boolean[][] = [];

@@ -59,9 +59,9 @@ export function PatternSidebar({
 
   if (!user) {
     return (
-      <aside className="flex h-full w-64 shrink-0 flex-col border-r border-rose-100/80 bg-white/90 shadow-sm">
-        <div className="border-b border-rose-100/80 px-4 py-3">
-          <h1 className="text-sm font-semibold text-rose-900">Patterns</h1>
+      <aside className="flex h-full w-64 shrink-0 flex-col border-r border-brand/15 bg-white/90 shadow-sm">
+        <div className="border-b border-brand/15 px-4 py-3">
+          <h1 className="text-sm font-semibold text-stone-800">Patterns</h1>
         </div>
         <div className="flex flex-1 flex-col items-stretch justify-center gap-3 p-4">
           <p className="text-center text-sm text-stone-600">
@@ -70,7 +70,7 @@ export function PatternSidebar({
           <button
             type="button"
             onClick={onOpenAuth}
-            className="cursor-pointer rounded-full bg-rose-500 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-rose-600"
+            className="cursor-pointer rounded-full bg-brand px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-dark"
           >
             Log in
           </button>
@@ -80,13 +80,13 @@ export function PatternSidebar({
   }
 
   return (
-    <aside className="flex h-full w-64 shrink-0 flex-col border-r border-rose-100/80 bg-white/90 shadow-sm">
-      <div className="flex items-center justify-between border-b border-rose-100/80 px-4 py-3">
-        <h1 className="text-sm font-semibold text-rose-900">Patterns</h1>
+    <aside className="flex h-full w-64 shrink-0 flex-col border-r border-brand/15 bg-white/90 shadow-sm">
+      <div className="flex items-center justify-between border-b border-brand/15 px-4 py-3">
+        <h1 className="text-sm font-semibold text-stone-800">Patterns</h1>
         <button
           type="button"
           onClick={onCreateNew}
-          className="rounded-full bg-violet-500 px-2.5 py-1 text-xs font-medium text-white shadow-sm hover:bg-violet-600"
+          className="rounded-full bg-accent px-2.5 py-1 text-xs font-medium text-white shadow-sm hover:bg-accent-dark"
         >
           New
         </button>
@@ -102,7 +102,7 @@ export function PatternSidebar({
             {patterns.map((p) => (
               <li key={p.id}>
                 {editingId === p.id ? (
-                  <div className="rounded-xl px-3 py-2 ring-1 ring-rose-300 bg-rose-50 shadow-sm">
+                  <div className="rounded-xl px-3 py-2 ring-1 ring-brand/40 bg-brand/5 shadow-sm">
                     <input
                       ref={inputRef}
                       type="text"
@@ -113,7 +113,7 @@ export function PatternSidebar({
                         if (e.key === "Escape") cancelEdit();
                       }}
                       onBlur={commitEdit}
-                      className="w-full bg-transparent text-sm font-medium text-rose-950 outline-none"
+                      className="w-full bg-transparent text-sm font-medium text-stone-900 outline-none"
                     />
                     <span className="block text-xs font-normal text-stone-500">{formatUpdatedAt(p.updated_at)}</span>
                   </div>
@@ -127,8 +127,8 @@ export function PatternSidebar({
                     }}
                     className={`w-full rounded-xl px-3 py-2 text-left text-sm transition-colors ${
                       selectedPatternId === p.id
-                        ? "bg-rose-50 font-medium text-rose-950 shadow-sm ring-1 ring-rose-100"
-                        : "text-stone-700 hover:bg-amber-50/60"
+                        ? "bg-brand/8 font-medium text-stone-900 shadow-sm ring-1 ring-brand/20"
+                        : "text-stone-700 hover:bg-stone-50"
                     }`}
                   >
                     <span className="block truncate">{p.name}</span>

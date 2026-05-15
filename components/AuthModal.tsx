@@ -92,7 +92,7 @@ export function AuthModal({
         aria-modal="true"
         aria-labelledby={titleId}
         onPointerDown={(e) => e.stopPropagation()}
-        className="relative z-10 w-full max-w-md rounded-2xl border border-rose-100 bg-white p-6 shadow-xl"
+        className="relative z-10 w-full max-w-md rounded-2xl border border-brand/20 bg-white p-6 shadow-xl"
       >
         <h2 id={titleId} className="text-lg font-semibold text-stone-800">
           {mode === "signin" ? "Log in" : "Sign up"}
@@ -113,7 +113,7 @@ export function AuthModal({
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-rose-100 bg-amber-50/30 px-3 py-2 text-stone-900 outline-none ring-rose-200 focus:ring-2"
+              className="mt-1 w-full rounded-xl border border-brand/20 bg-white px-3 py-2 text-stone-900 outline-none ring-brand/30 focus:ring-2"
             />
           </div>
           <div>
@@ -127,7 +127,7 @@ export function AuthModal({
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-rose-100 bg-amber-50/30 px-3 py-2 text-stone-900 outline-none ring-rose-200 focus:ring-2"
+              className="mt-1 w-full rounded-xl border border-brand/20 bg-white px-3 py-2 text-stone-900 outline-none ring-brand/30 focus:ring-2"
             />
           </div>
 
@@ -144,7 +144,7 @@ export function AuthModal({
           <button
             type="submit"
             disabled={loading || !supabaseReady}
-            className="rounded-full bg-rose-500 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-rose-600 disabled:opacity-50"
+            className="rounded-full bg-brand px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-brand-dark disabled:opacity-50"
           >
             {loading ? "Please wait…" : mode === "signin" ? "Log in" : "Sign up"}
           </button>
@@ -156,7 +156,7 @@ export function AuthModal({
               No account?{" "}
               <button
                 type="button"
-                className="font-medium text-violet-600 underline decoration-violet-200 hover:text-violet-800"
+                className="font-medium text-accent underline decoration-accent/30 hover:text-accent-dark"
                 onClick={() => {
                   setMode("signup");
                   setError(null);
@@ -170,7 +170,7 @@ export function AuthModal({
               Already have an account?{" "}
               <button
                 type="button"
-                className="font-medium text-violet-600 underline decoration-violet-200 hover:text-violet-800"
+                className="font-medium text-accent underline decoration-accent/30 hover:text-accent-dark"
                 onClick={() => {
                   setMode("signin");
                   setError(null);
