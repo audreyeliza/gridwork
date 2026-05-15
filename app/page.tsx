@@ -19,6 +19,14 @@ import {
   serializeGridCells,
 } from "@/lib/gridFormat";
 import {
+  clampCurrentRow,
+  defaultProgressState,
+  parseProgressData,
+  resizeRowComplete,
+  serializeProgressData,
+  type PatternProgressState,
+} from "@/lib/progressData";
+import {
   DEFAULT_PATTERN_YARN_SETTINGS,
   parsePatternYarnSettings,
   serializePatternYarnSettings,
@@ -62,6 +70,7 @@ export default function Home() {
   const [gridW, setGridW] = useState(10);
   const [gridH, setGridH] = useState(10);
   const [yarnSettings, setYarnSettings] = useState<PatternYarnSettings>(DEFAULT_PATTERN_YARN_SETTINGS);
+  const [progress, setProgress] = useState<PatternProgressState>(() => defaultProgressState(10));
   const { cells, commit, replace, reset, undo, redo, canUndo, canRedo } = usePatternHistory(gridW, gridH);
 
   const activePattern = useMemo(
@@ -144,6 +153,7 @@ export default function Home() {
         setGridH(10);
         reset(createEmptyGrid(10, 10));
         setYarnSettings({ ...DEFAULT_PATTERN_YARN_SETTINGS });
+        setProgress(defaultProgressState(10));
         return;
       }
 
@@ -157,6 +167,7 @@ export default function Home() {
         setGridH(h);
         reset(parseGridData(fromList.grid_data, w, h));
         setYarnSettings(parsePatternYarnSettings(fromList.yarn_settings));
+        setProgress(parseProgressData(fromList.progress_data, h));
         return;
       }
 
@@ -168,6 +179,7 @@ export default function Home() {
         setGridH(h);
         reset(parseGridData(data.grid_data, w, h));
         setYarnSettings(parsePatternYarnSettings(data.yarn_settings));
+        setProgress(parseProgressData(data.progress_data, h));
         setPatterns((prev) => (prev.some((p) => p.id === data.id) ? prev : [data, ...prev]));
       });
     }, 0);
@@ -185,7 +197,7 @@ export default function Home() {
       grid_data: serializeGridCells(createEmptyGrid(10, 10)),
       grid_width: 10,
       grid_height: 10,
-      progress_data: {},
+      progress_data: serializeProgressData(defaultProgressState(10)),
       yarn_settings: serializePatternYarnSettings(DEFAULT_PATTERN_YARN_SETTINGS),
     });
     if (error) {
@@ -217,13 +229,34 @@ export default function Home() {
       const h = clampGridSize(raw);
       setGridH(h);
       replace(resizeGridPreserve(cells, gridW, h));
+      setProgress((p) => ({
+        ...p,
+        rowComplete: resizeRowComplete(p.rowComplete, h),
+        currentRow: clampCurrentRow(p.currentRow, h),
+      }));
     },
     [replace, cells, gridW],
   );
 
+  const handleToggleRowComplete = useCallback((row: number) => {
+    setProgress((p) => {
+      if (row < 0 || row >= p.rowComplete.length) return p;
+      const next = [...p.rowComplete];
+      next[row] = !next[row];
+      return { ...p, rowComplete: next };
+    });
+  }, []);
+
+  const handleStepCurrentRow = useCallback((delta: number) => {
+    setProgress((p) => ({
+      ...p,
+      currentRow: clampCurrentRow(p.currentRow + delta, gridH),
+    }));
+  }, [gridH]);
+
   const dirtyKey = useMemo(
-    () => JSON.stringify({ gridW, gridH, cells, yarnSettings }),
-    [gridW, gridH, cells, yarnSettings],
+    () => JSON.stringify({ gridW, gridH, cells, yarnSettings, progress }),
+    [gridW, gridH, cells, yarnSettings, progress],
   );
 
   const persistPattern = useCallback(async () => {
@@ -235,11 +268,11 @@ export default function Home() {
       grid_width: gridW,
       grid_height: gridH,
       grid_data: serializeGridCells(cells),
-      progress_data: activePattern.progress_data ?? {},
+      progress_data: serializeProgressData(progress),
       yarn_settings: serializePatternYarnSettings(yarnSettings),
     });
     if (error) console.error(error);
-  }, [supabase, user, selectedPatternId, activePattern, gridW, gridH, cells, yarnSettings]);
+  }, [supabase, user, selectedPatternId, activePattern, gridW, gridH, cells, yarnSettings, progress]);
 
   useAutoSave({
     enabled: Boolean(supabase && user && selectedPatternId && activePattern),
@@ -312,7 +345,7 @@ export default function Home() {
                     className="w-20 rounded-md border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-50"
                   />
                 </label>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
                     disabled={!canUndo}
@@ -329,6 +362,33 @@ export default function Home() {
                   >
                     Redo
                   </button>
+                  <button
+                    type="button"
+                    disabled={progress.currentRow <= 0}
+                    onClick={() => handleStepCurrentRow(-1)}
+                    className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-800 disabled:opacity-40 dark:border-zinc-600 dark:text-zinc-200"
+                  >
+                    Prev row
+                  </button>
+                  <button
+                    type="button"
+                    disabled={progress.currentRow >= gridH - 1}
+                    onClick={() => handleStepCurrentRow(1)}
+                    className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-800 disabled:opacity-40 dark:border-zinc-600 dark:text-zinc-200"
+                  >
+                    Next row
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!selectedPatternId}
+                    onClick={() => {
+                      if (!selectedPatternId) return;
+                      window.open(`/print/${selectedPatternId}`, "_blank", "noopener,noreferrer");
+                    }}
+                    className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-800 disabled:opacity-40 dark:border-zinc-600 dark:text-zinc-200"
+                  >
+                    Print
+                  </button>
                 </div>
               </div>
 
@@ -340,6 +400,8 @@ export default function Home() {
                     cells={cells}
                     onCommit={handleCommitGrid}
                     onApplyConvertedGrid={(g) => commit(g)}
+                    progress={progress}
+                    onToggleRowComplete={handleToggleRowComplete}
                     className="min-h-0"
                   />
                 </div>

@@ -1,9 +1,14 @@
 "use client";
 
 import { cloneGrid } from "@/lib/gridFormat";
-import { computeGridCanvasLayout, type GridCanvasLayout } from "@/lib/gridCanvasLayout";
+import {
+  computeGridCanvasLayout,
+  LABEL_SIZE,
+  ROW_TRACKER_SIDEBAR_PX,
+  type GridCanvasLayout,
+} from "@/lib/gridCanvasLayout";
 import { drawImageContain } from "@/lib/imageCanvasUtils";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export type GridTool = "pencil" | "eraser";
 
@@ -17,6 +22,10 @@ export type GridCanvasProps = {
   underlayImage?: CanvasImageSource | null;
   /** 0–1; defaults to 1 when an image is present. */
   underlayOpacity?: number;
+  /** Row completion + current row highlight; length must match `gridHeight` when provided. */
+  rowComplete?: boolean[];
+  currentRow?: number;
+  onToggleRowComplete?: (row: number) => void;
 };
 
 function clamp(n: number, lo: number, hi: number): number {
@@ -30,14 +39,14 @@ function fillMarginsOutsideGrid(
   bg: string,
   layout: GridCanvasLayout,
 ): void {
-  const { label, offsetX, offsetY, gridWpx, gridHpx, areaW, areaH } = layout;
+  const { topGutter, leftGutter, offsetX, offsetY, gridWpx, gridHpx, areaW, areaH } = layout;
   ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, cssW, label);
-  ctx.fillRect(0, label, label, cssH - label);
-  const x0 = label;
-  const y0 = label;
-  const x1 = label + areaW;
-  const y1 = label + areaH;
+  ctx.fillRect(0, 0, cssW, topGutter);
+  ctx.fillRect(0, topGutter, leftGutter, cssH - topGutter);
+  const x0 = leftGutter;
+  const y0 = topGutter;
+  const x1 = leftGutter + areaW;
+  const y1 = topGutter + areaH;
   const gx0 = offsetX;
   const gy0 = offsetY;
   const gx1 = offsetX + gridWpx;
@@ -93,11 +102,15 @@ export function GridCanvas({
   className,
   underlayImage,
   underlayOpacity = 1,
+  rowComplete,
+  currentRow = 0,
+  onToggleRowComplete,
 }: GridCanvasProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [tool, setTool] = useState<GridTool>("pencil");
   const [size, setSize] = useState({ cssW: 400, cssH: 400 });
+  const [layoutState, setLayoutState] = useState<GridCanvasLayout | null>(null);
 
   const draftRef = useRef<boolean[][] | null>(null);
   const lastCellRef = useRef<{ r: number; c: number } | null>(null);
@@ -106,6 +119,16 @@ export function GridCanvas({
 
   const opacity = clamp(underlayOpacity, 0, 1);
   const showUnderlay = Boolean(underlayImage) && opacity > 0;
+
+  const showRowTracker =
+    Boolean(onToggleRowComplete) &&
+    Array.isArray(rowComplete) &&
+    rowComplete.length === gridHeight;
+
+  const layoutOpts = useMemo(
+    () => (showRowTracker ? { rowSidebarPx: ROW_TRACKER_SIDEBAR_PX } : undefined),
+    [showRowTracker],
+  );
 
   const scheduleDraw = useCallback(() => {
     if (rafRef.current) return;
@@ -124,8 +147,9 @@ export function GridCanvas({
       canvas.style.height = `${cssH}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      const layout = computeGridCanvasLayout(cssW, cssH, gridWidth, gridHeight);
-      const { label, cell, offsetX, offsetY, gridWpx, gridHpx } = layout;
+      const layout = computeGridCanvasLayout(cssW, cssH, gridWidth, gridHeight, layoutOpts);
+      queueMicrotask(() => setLayoutState(layout));
+      const { topGutter, leftGutter, cell, offsetX, offsetY, gridWpx, gridHpx } = layout;
 
       const data = draftRef.current ?? cells;
 
@@ -153,6 +177,12 @@ export function GridCanvas({
         ctx.fillRect(0, 0, cssW, cssH);
       }
 
+      const cr = showRowTracker && rowComplete ? currentRow : -1;
+      if (cr >= 0 && cr < gridHeight) {
+        ctx.fillStyle = dark ? "rgba(250, 204, 21, 0.22)" : "rgba(250, 204, 21, 0.45)";
+        ctx.fillRect(offsetX, offsetY + cr * cell, gridWpx, cell);
+      }
+
       ctx.font = "11px system-ui, sans-serif";
       ctx.fillStyle = labelColor;
       ctx.textAlign = "center";
@@ -160,11 +190,13 @@ export function GridCanvas({
 
       for (let c = 0; c < gridWidth; c++) {
         const x = offsetX + c * cell + cell / 2;
-        ctx.fillText(String(c + 1), x, label / 2);
+        ctx.fillText(String(c + 1), x, topGutter / 2);
       }
-      for (let r = 0; r < gridHeight; r++) {
-        const y = offsetY + r * cell + cell / 2;
-        ctx.fillText(String(r + 1), label / 2, y);
+      if (!showRowTracker) {
+        for (let r = 0; r < gridHeight; r++) {
+          const y = offsetY + r * cell + cell / 2;
+          ctx.fillText(String(r + 1), leftGutter / 2, y);
+        }
       }
 
       for (let r = 0; r < gridHeight; r++) {
@@ -180,7 +212,20 @@ export function GridCanvas({
         }
       }
     });
-  }, [cells, gridWidth, gridHeight, size.cssW, size.cssH, showUnderlay, underlayImage, opacity]);
+  }, [
+    cells,
+    gridWidth,
+    gridHeight,
+    size.cssW,
+    size.cssH,
+    showUnderlay,
+    underlayImage,
+    opacity,
+    showRowTracker,
+    rowComplete,
+    currentRow,
+    layoutOpts,
+  ]);
 
   useEffect(() => {
     scheduleDraw();
@@ -205,7 +250,7 @@ export function GridCanvas({
       const rect = canvas.getBoundingClientRect();
       const x = clientX - rect.left;
       const y = clientY - rect.top;
-      const layout = computeGridCanvasLayout(size.cssW, size.cssH, gridWidth, gridHeight);
+      const layout = computeGridCanvasLayout(size.cssW, size.cssH, gridWidth, gridHeight, layoutOpts);
       const { cell: cellSize, offsetX, offsetY, gridWpx, gridHpx } = layout;
       const px = x - offsetX;
       const py = y - offsetY;
@@ -216,7 +261,7 @@ export function GridCanvas({
       if (px >= gridWpx || py >= gridHpx) return null;
       return { r: row, c: col };
     },
-    [gridWidth, gridHeight, size.cssW, size.cssH],
+    [gridWidth, gridHeight, size.cssW, size.cssH, layoutOpts],
   );
 
   const endStroke = useCallback(() => {
@@ -300,6 +345,42 @@ export function GridCanvas({
         ref={wrapRef}
         className="relative min-h-[280px] w-full flex-1 rounded-lg border border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900/40"
       >
+        {showRowTracker && layoutState && rowComplete && onToggleRowComplete ? (
+          <div
+            className="pointer-events-auto absolute z-20 flex flex-col border-r border-zinc-200/80 bg-zinc-50/95 dark:border-zinc-700 dark:bg-zinc-900/95"
+            style={{
+              left: LABEL_SIZE,
+              top: layoutState.offsetY,
+              width: ROW_TRACKER_SIDEBAR_PX,
+              height: layoutState.gridHpx,
+            }}
+          >
+            {rowComplete.map((done, r) => (
+              <label
+                key={r}
+                className={`flex shrink-0 cursor-pointer items-center justify-center gap-0.5 border-b border-zinc-200/60 last:border-b-0 dark:border-zinc-700/80 ${
+                  done ? "bg-emerald-500/20 dark:bg-emerald-500/15" : ""
+                }`}
+                style={{ height: layoutState.cell }}
+              >
+                <input
+                  type="checkbox"
+                  checked={done}
+                  onChange={() => onToggleRowComplete(r)}
+                  className="h-3.5 w-3.5 rounded border-zinc-400 text-emerald-600"
+                  aria-label={`Row ${r + 1} complete`}
+                />
+                <span
+                  className={`min-w-[1rem] text-center text-[10px] font-medium tabular-nums ${
+                    done ? "text-emerald-700 line-through dark:text-emerald-400" : "text-zinc-600 dark:text-zinc-400"
+                  }`}
+                >
+                  {r + 1}
+                </span>
+              </label>
+            ))}
+          </div>
+        ) : null}
         <canvas
           ref={canvasRef}
           className="absolute inset-0 h-full w-full touch-none"
