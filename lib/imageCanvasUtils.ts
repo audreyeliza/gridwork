@@ -46,8 +46,16 @@ export function loadImageFromFile(file: File): Promise<HTMLImageElement> {
     const url = URL.createObjectURL(file);
     const image = new Image();
     image.onload = () => {
-      URL.revokeObjectURL(url);
-      resolve(image);
+      const finish = () => {
+        URL.revokeObjectURL(url);
+        resolve(image);
+      };
+      const decode = image.decode?.();
+      if (decode && typeof (decode as Promise<void>).then === "function") {
+        void (decode as Promise<void>).then(finish).catch(finish);
+      } else {
+        finish();
+      }
     };
     image.onerror = () => {
       URL.revokeObjectURL(url);
@@ -55,6 +63,60 @@ export function loadImageFromFile(file: File): Promise<HTMLImageElement> {
     };
     image.src = url;
   });
+}
+
+/**
+ * Otsu's method: find the threshold that maximises between-class variance.
+ * Samples the image at ≤256 px on each side for speed.
+ */
+export function otsuThreshold(img: HTMLImageElement): number {
+  const maxDim = 256;
+  const ar = img.naturalWidth / img.naturalHeight;
+  const sw = ar >= 1 ? maxDim : Math.max(1, Math.round(maxDim * ar));
+  const sh = ar >= 1 ? Math.max(1, Math.round(maxDim / ar)) : maxDim;
+  const canvas = document.createElement("canvas");
+  canvas.width = sw;
+  canvas.height = sh;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return 128;
+
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, sw, sh);
+  ctx.drawImage(img, 0, 0, sw, sh);
+
+  const { data } = ctx.getImageData(0, 0, sw, sh);
+  const hist = new Uint32Array(256);
+  const n = sw * sh;
+
+  for (let i = 0; i < data.length; i += 4) {
+    const gray = Math.round(0.299 * (data[i] ?? 0) + 0.587 * (data[i + 1] ?? 0) + 0.114 * (data[i + 2] ?? 0));
+    hist[Math.min(255, gray)]++;
+  }
+
+  let sum = 0;
+  for (let t = 0; t < 256; t++) sum += t * hist[t];
+
+  let sumB = 0;
+  let wB = 0;
+  let maxVar = 0;
+  let threshold = 128;
+
+  for (let t = 0; t < 256; t++) {
+    wB += hist[t];
+    if (wB === 0) continue;
+    const wF = n - wB;
+    if (wF === 0) break;
+    sumB += t * hist[t];
+    const mB = sumB / wB;
+    const mF = (sum - sumB) / wF;
+    const varBetween = (wB / n) * (wF / n) * (mB - mF) ** 2;
+    if (varBetween > maxVar) {
+      maxVar = varBetween;
+      threshold = t;
+    }
+  }
+
+  return threshold;
 }
 
 /**

@@ -65,29 +65,36 @@ export function YarnEstimator({
 
   return (
     <section
-      className={`flex shrink-0 flex-col gap-3 rounded-lg border border-zinc-200 bg-zinc-50/90 p-4 dark:border-zinc-700 dark:bg-zinc-900/60 ${className ?? ""}`}
+      className={`relative z-10 flex shrink-0 flex-col gap-3 rounded-xl border border-sky-100/90 bg-white/95 p-4 shadow-sm pointer-events-auto ${className ?? ""}`}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Yarn estimate</h2>
-        <div className="inline-flex rounded-lg border border-zinc-300 p-0.5 text-xs dark:border-zinc-600">
+        <div>
+          <h2 className="text-sm font-semibold text-stone-800">Yarn estimate</h2>
+          <p className="mt-0.5 text-[11px] text-stone-500">
+            {units === "imperial" ? "Yards & ounces" : "Meters & grams"}
+          </p>
+        </div>
+        <div className="inline-flex rounded-full border border-sky-100 bg-white/90 p-0.5 text-xs shadow-sm">
           <button
             type="button"
+            aria-pressed={units === "imperial"}
             onClick={() => setUnits("imperial")}
-            className={`rounded-md px-2 py-1 font-medium ${
+            className={`rounded-full px-2.5 py-1 font-medium ${
               units === "imperial"
-                ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                : "text-zinc-600 dark:text-zinc-400"
+                ? "bg-sky-400 text-white shadow-sm"
+                : "text-stone-600 hover:bg-sky-50"
             }`}
           >
             Imperial
           </button>
           <button
             type="button"
+            aria-pressed={units === "metric"}
             onClick={() => setUnits("metric")}
-            className={`rounded-md px-2 py-1 font-medium ${
+            className={`rounded-full px-2.5 py-1 font-medium ${
               units === "metric"
-                ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                : "text-zinc-600 dark:text-zinc-400"
+                ? "bg-sky-400 text-white shadow-sm"
+                : "text-stone-600 hover:bg-sky-50"
             }`}
           >
             Metric
@@ -95,13 +102,13 @@ export function YarnEstimator({
         </div>
       </div>
 
-      <p className="text-[11px] leading-snug text-zinc-600 dark:text-zinc-400">
+      <p className="text-[11px] leading-snug text-stone-600">
         Results are rough estimates only. Work a gauge swatch in your yarn and adjust stitches per inch for
         better accuracy.
       </p>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <label className="flex flex-col gap-1 text-xs font-medium text-zinc-700 dark:text-zinc-300">
+        <label className="flex flex-col gap-1 text-xs font-medium text-stone-700">
           Yarn weight
           <select
             id={`${idPrefix}-weight`}
@@ -109,7 +116,7 @@ export function YarnEstimator({
             onChange={(e) =>
               onChange({ ...value, weight: e.target.value as YarnWeightCategory })
             }
-            className="rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-zinc-50"
+            className="rounded-lg border border-sky-100 bg-amber-50/20 px-2 py-1.5 text-sm text-stone-900"
           >
             {YARN_WEIGHT_CATEGORIES.map((w) => (
               <option key={w} value={w}>
@@ -119,7 +126,7 @@ export function YarnEstimator({
           </select>
         </label>
 
-        <label className="flex flex-col gap-1 text-xs font-medium text-zinc-700 dark:text-zinc-300">
+        <label className="flex flex-col gap-1 text-xs font-medium text-stone-700">
           Hook size
           <input
             id={`${idPrefix}-hook`}
@@ -127,11 +134,11 @@ export function YarnEstimator({
             value={value.hookSize}
             onChange={(e) => onChange({ ...value, hookSize: e.target.value })}
             placeholder='e.g. "5.5 mm"'
-            className="rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-zinc-50"
+            className="rounded-lg border border-sky-100 bg-amber-50/20 px-2 py-1.5 text-sm text-stone-900"
           />
         </label>
 
-        <label className="flex flex-col gap-1 text-xs font-medium text-zinc-700 dark:text-zinc-300 sm:col-span-2">
+        <label className="flex flex-col gap-1 text-xs font-medium text-stone-700 sm:col-span-2">
           Custom gauge (stitches / inch), optional
           <input
             id={`${idPrefix}-gauge`}
@@ -153,38 +160,38 @@ export function YarnEstimator({
                 customGaugeStitchesPerInch: Number.isFinite(n) ? n : null,
               });
             }}
-            className="max-w-xs rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-zinc-50"
+            className="max-w-xs rounded-lg border border-sky-100 bg-amber-50/20 px-2 py-1.5 text-sm text-stone-900"
           />
         </label>
       </div>
 
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-md border border-zinc-200 bg-white/80 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950/80">
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-xl border border-sky-50 bg-sky-50/40 px-3 py-2 text-sm">
         {units === "imperial" ? (
           <>
-            <dt className="text-zinc-500 dark:text-zinc-400">Yards</dt>
-            <dd className="text-right font-medium tabular-nums text-zinc-900 dark:text-zinc-50">
+            <dt className="text-stone-500">Yards</dt>
+            <dd className="text-right font-medium tabular-nums text-stone-900">
               {result.yards}
             </dd>
-            <dt className="text-zinc-500 dark:text-zinc-400">Ounces</dt>
-            <dd className="text-right font-medium tabular-nums text-zinc-900 dark:text-zinc-50">
+            <dt className="text-stone-500">Ounces</dt>
+            <dd className="text-right font-medium tabular-nums text-stone-900">
               {result.oz}
             </dd>
           </>
         ) : (
           <>
-            <dt className="text-zinc-500 dark:text-zinc-400">Meters</dt>
-            <dd className="text-right font-medium tabular-nums text-zinc-900 dark:text-zinc-50">
+            <dt className="text-stone-500">Meters</dt>
+            <dd className="text-right font-medium tabular-nums text-stone-900">
               {result.meters}
             </dd>
-            <dt className="text-zinc-500 dark:text-zinc-400">Grams</dt>
-            <dd className="text-right font-medium tabular-nums text-zinc-900 dark:text-zinc-50">
+            <dt className="text-stone-500">Grams</dt>
+            <dd className="text-right font-medium tabular-nums text-stone-900">
               {result.grams}
             </dd>
           </>
         )}
       </dl>
 
-      <p className="text-[11px] text-zinc-500 dark:text-zinc-500">
+      <p className="text-[11px] text-stone-500">
         Grid {gridWidth}×{gridHeight} · {filledCellCount} filled · {emptyCellCount} empty · block cells count
         ~3× mesh for yarn.
       </p>

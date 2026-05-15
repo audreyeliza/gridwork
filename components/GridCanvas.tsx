@@ -11,6 +11,13 @@ import { drawImageContain } from "@/lib/imageCanvasUtils";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export type GridTool = "pencil" | "eraser";
+type ZoomLevel = "fit" | "100" | "150";
+
+const ZOOM_CELL_SIZE: Record<ZoomLevel, number | null> = {
+  fit: null,
+  "100": 20,
+  "150": 30,
+};
 
 export type GridCanvasProps = {
   gridWidth: number;
@@ -94,6 +101,14 @@ function paintLine(
   }
 }
 
+/** Returns the label step: show label at index `i` when `i % step === 0` (plus always show the last). */
+function labelStep(cellPx: number): number {
+  if (cellPx >= 16) return 1;
+  if (cellPx >= 10) return 2;
+  if (cellPx >= 6) return 5;
+  return 10;
+}
+
 export function GridCanvas({
   gridWidth,
   gridHeight,
@@ -109,7 +124,9 @@ export function GridCanvas({
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [tool, setTool] = useState<GridTool>("pencil");
-  const [size, setSize] = useState({ cssW: 400, cssH: 400 });
+  const [zoom, setZoom] = useState<ZoomLevel>("fit");
+  /** Container size — used at fit zoom only. */
+  const [containerSize, setContainerSize] = useState({ cssW: 400, cssH: 400 });
   const [layoutState, setLayoutState] = useState<GridCanvasLayout | null>(null);
 
   const draftRef = useRef<boolean[][] | null>(null);
@@ -130,8 +147,32 @@ export function GridCanvas({
     [showRowTracker],
   );
 
+  const leftGutter = LABEL_SIZE + (showRowTracker ? ROW_TRACKER_SIDEBAR_PX : 0);
+
+  const zoomCellSize = ZOOM_CELL_SIZE[zoom];
+
+  /**
+   * At "fit" zoom, cells are sized so columns exactly fill the container width.
+   * No upper cap — this makes the canvas taller than the container for most grids,
+   * enabling vertical scroll. A floor of 4px keeps the grid renderable.
+   * At explicit zoom levels the canvas uses fixed cell sizes in both axes.
+   */
+  const fitCell = Math.max(4, Math.floor((containerSize.cssW - leftGutter) / Math.max(1, gridWidth)));
+
+  /** Canvas display size in CSS pixels. */
+  const canvasCssW =
+    zoomCellSize != null
+      ? leftGutter + gridWidth * zoomCellSize
+      : containerSize.cssW;
+  const canvasCssH =
+    zoomCellSize != null
+      ? LABEL_SIZE + gridHeight * zoomCellSize
+      : LABEL_SIZE + fitCell * gridHeight;
+
   const scheduleDraw = useCallback(() => {
-    if (rafRef.current) return;
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+    }
     rafRef.current = window.requestAnimationFrame(() => {
       rafRef.current = 0;
       const canvas = canvasRef.current;
@@ -139,27 +180,26 @@ export function GridCanvas({
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
       const dpr = window.devicePixelRatio || 1;
-      const cssW = size.cssW;
-      const cssH = size.cssH;
+      const cssW = canvasCssW;
+      const cssH = canvasCssH;
       canvas.width = Math.max(1, Math.floor(cssW * dpr));
       canvas.height = Math.max(1, Math.floor(cssH * dpr));
       canvas.style.width = `${cssW}px`;
       canvas.style.height = `${cssH}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      const layout = computeGridCanvasLayout(cssW, cssH, gridWidth, gridHeight, layoutOpts);
+      const effectiveCell = zoomCellSize ?? fitCell;
+      const opts = { ...(layoutOpts ?? {}), forcedCell: effectiveCell };
+      const layout = computeGridCanvasLayout(cssW, cssH, gridWidth, gridHeight, opts);
       queueMicrotask(() => setLayoutState(layout));
-      const { topGutter, leftGutter, cell, offsetX, offsetY, gridWpx, gridHpx } = layout;
+      const { topGutter, offsetX, offsetY, gridWpx, gridHpx, cell } = layout;
 
       const data = draftRef.current ?? cells;
 
-      const dark =
-        typeof window !== "undefined" &&
-        window.matchMedia("(prefers-color-scheme: dark)").matches;
-      const bg = dark ? "#18181b" : "#fafafa";
-      const line = dark ? "#3f3f46" : "#d4d4d8";
-      const fillOn = dark ? "#a1a1aa" : "#3f3f46";
-      const labelColor = dark ? "#a1a1aa" : "#71717a";
+      const bg = "#fffbf5";
+      const line = "#e7e5e4";
+      const fillOn = "#f472b6";
+      const labelColor = "#78716c";
 
       if (showUnderlay) {
         ctx.clearRect(0, 0, cssW, cssH);
@@ -179,7 +219,7 @@ export function GridCanvas({
 
       const cr = showRowTracker && rowComplete ? currentRow : -1;
       if (cr >= 0 && cr < gridHeight) {
-        ctx.fillStyle = dark ? "rgba(250, 204, 21, 0.22)" : "rgba(250, 204, 21, 0.45)";
+        ctx.fillStyle = "rgba(253, 224, 71, 0.35)";
         ctx.fillRect(offsetX, offsetY + cr * cell, gridWpx, cell);
       }
 
@@ -188,14 +228,18 @@ export function GridCanvas({
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
 
+      const step = labelStep(cell);
+
       for (let c = 0; c < gridWidth; c++) {
+        if (c % step !== 0 && c !== gridWidth - 1) continue;
         const x = offsetX + c * cell + cell / 2;
         ctx.fillText(String(c + 1), x, topGutter / 2);
       }
       if (!showRowTracker) {
         for (let r = 0; r < gridHeight; r++) {
+          if (r % step !== 0 && r !== gridHeight - 1) continue;
           const y = offsetY + r * cell + cell / 2;
-          ctx.fillText(String(r + 1), leftGutter / 2, y);
+          ctx.fillText(String(r + 1), LABEL_SIZE / 2, y);
         }
       }
 
@@ -216,8 +260,10 @@ export function GridCanvas({
     cells,
     gridWidth,
     gridHeight,
-    size.cssW,
-    size.cssH,
+    canvasCssW,
+    canvasCssH,
+    zoomCellSize,
+    fitCell,
     showUnderlay,
     underlayImage,
     opacity,
@@ -232,12 +278,18 @@ export function GridCanvas({
   }, [scheduleDraw]);
 
   useEffect(() => {
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
     const ro = new ResizeObserver((entries) => {
       const cr = entries[0]?.contentRect;
       if (!cr) return;
-      setSize({ cssW: cr.width, cssH: cr.height });
+      setContainerSize({ cssW: cr.width, cssH: cr.height });
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -250,7 +302,8 @@ export function GridCanvas({
       const rect = canvas.getBoundingClientRect();
       const x = clientX - rect.left;
       const y = clientY - rect.top;
-      const layout = computeGridCanvasLayout(size.cssW, size.cssH, gridWidth, gridHeight, layoutOpts);
+      const opts = { ...(layoutOpts ?? {}), forcedCell: zoomCellSize ?? fitCell };
+      const layout = computeGridCanvasLayout(canvasCssW, canvasCssH, gridWidth, gridHeight, opts);
       const { cell: cellSize, offsetX, offsetY, gridWpx, gridHpx } = layout;
       const px = x - offsetX;
       const py = y - offsetY;
@@ -261,10 +314,11 @@ export function GridCanvas({
       if (px >= gridWpx || py >= gridHpx) return null;
       return { r: row, c: col };
     },
-    [gridWidth, gridHeight, size.cssW, size.cssH, layoutOpts],
+    [gridWidth, gridHeight, canvasCssW, canvasCssH, zoomCellSize, fitCell, layoutOpts],
   );
 
   const endStroke = useCallback(() => {
+    if (!drawingRef.current && !draftRef.current) return;
     drawingRef.current = false;
     lastCellRef.current = null;
     const d = draftRef.current;
@@ -284,9 +338,9 @@ export function GridCanvas({
   }, [endStroke]);
 
   const onPointerDown = (e: React.PointerEvent) => {
-    e.currentTarget.setPointerCapture(e.pointerId);
     const hit = clientToCell(e.clientX, e.clientY);
     if (!hit) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
     drawingRef.current = true;
     draftRef.current = cloneGrid(cells);
     lastCellRef.current = hit;
@@ -314,40 +368,64 @@ export function GridCanvas({
 
   return (
     <div className={`flex min-h-0 flex-1 flex-col gap-3 ${className ?? ""}`}>
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Tool</span>
-        <div className="inline-flex rounded-lg border border-zinc-300 p-0.5 dark:border-zinc-600">
-          <button
-            type="button"
-            onClick={() => setTool("pencil")}
-            className={`rounded-md px-3 py-1 text-xs font-medium ${
-              tool === "pencil"
-                ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                : "text-zinc-600 dark:text-zinc-400"
-            }`}
-          >
-            Pencil
-          </button>
-          <button
-            type="button"
-            onClick={() => setTool("eraser")}
-            className={`rounded-md px-3 py-1 text-xs font-medium ${
-              tool === "eraser"
-                ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                : "text-zinc-600 dark:text-zinc-400"
-            }`}
-          >
-            Eraser
-          </button>
+      {/* Toolbar: tool + zoom */}
+      <div className="relative z-40 flex shrink-0 flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-stone-500">Tool</span>
+          <div className="inline-flex rounded-full border border-rose-100 bg-white/90 p-0.5 shadow-sm">
+            <button
+              type="button"
+              onClick={() => setTool("pencil")}
+              className={`rounded-full px-3 py-1 text-xs font-medium ${
+                tool === "pencil"
+                  ? "bg-rose-400 text-white shadow-sm"
+                  : "text-stone-600 hover:bg-rose-50"
+              }`}
+            >
+              Pencil
+            </button>
+            <button
+              type="button"
+              onClick={() => setTool("eraser")}
+              className={`rounded-full px-3 py-1 text-xs font-medium ${
+                tool === "eraser"
+                  ? "bg-sky-400 text-white shadow-sm"
+                  : "text-stone-600 hover:bg-sky-50"
+              }`}
+            >
+              Eraser
+            </button>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-stone-500">Zoom</span>
+          <div className="inline-flex rounded-full border border-stone-200 bg-white/90 p-0.5 shadow-sm">
+            {(["fit", "100", "150"] as ZoomLevel[]).map((z) => (
+              <button
+                key={z}
+                type="button"
+                onClick={() => setZoom(z)}
+                className={`rounded-full px-3 py-1 text-xs font-medium ${
+                  zoom === z
+                    ? "bg-stone-700 text-white shadow-sm"
+                    : "text-stone-600 hover:bg-stone-100"
+                }`}
+              >
+                {z === "fit" ? "Fit" : `${z}%`}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
+
+      {/* Canvas container — flex-1 min-h-0 gives it a definite height (remaining space after toolbar); overflow-auto scrolls the canvas */}
       <div
         ref={wrapRef}
-        className="relative min-h-[280px] w-full flex-1 rounded-lg border border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900/40"
+        className="relative min-h-0 w-full flex-1 overflow-auto rounded-xl border border-rose-100/80 bg-white/90 shadow-sm"
       >
         {showRowTracker && layoutState && rowComplete && onToggleRowComplete ? (
           <div
-            className="pointer-events-auto absolute z-20 flex flex-col border-r border-zinc-200/80 bg-zinc-50/95 dark:border-zinc-700 dark:bg-zinc-900/95"
+            className="pointer-events-auto absolute z-20 flex flex-col border-r border-rose-100/90 bg-white/95 shadow-sm"
             style={{
               left: LABEL_SIZE,
               top: layoutState.offsetY,
@@ -358,8 +436,8 @@ export function GridCanvas({
             {rowComplete.map((done, r) => (
               <label
                 key={r}
-                className={`flex shrink-0 cursor-pointer items-center justify-center gap-0.5 border-b border-zinc-200/60 last:border-b-0 dark:border-zinc-700/80 ${
-                  done ? "bg-emerald-500/20 dark:bg-emerald-500/15" : ""
+                className={`flex shrink-0 cursor-pointer items-center justify-center gap-0.5 border-b border-rose-100/70 last:border-b-0 ${
+                  done ? "bg-emerald-100/50" : ""
                 }`}
                 style={{ height: layoutState.cell }}
               >
@@ -367,12 +445,12 @@ export function GridCanvas({
                   type="checkbox"
                   checked={done}
                   onChange={() => onToggleRowComplete(r)}
-                  className="h-3.5 w-3.5 rounded border-zinc-400 text-emerald-600"
+                  className="h-3.5 w-3.5 rounded border-rose-200 text-emerald-600"
                   aria-label={`Row ${r + 1} complete`}
                 />
                 <span
                   className={`min-w-[1rem] text-center text-[10px] font-medium tabular-nums ${
-                    done ? "text-emerald-700 line-through dark:text-emerald-400" : "text-zinc-600 dark:text-zinc-400"
+                    done ? "text-emerald-800 line-through" : "text-stone-600"
                   }`}
                 >
                   {r + 1}
@@ -383,7 +461,8 @@ export function GridCanvas({
         ) : null}
         <canvas
           ref={canvasRef}
-          className="absolute inset-0 h-full w-full touch-none"
+          style={{ display: "block", width: canvasCssW, height: canvasCssH }}
+          className="touch-none"
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
         />
