@@ -1,6 +1,6 @@
 export const LABEL_SIZE = 28;
 export const ROW_TRACKER_SIDEBAR_PX = 44;
-export const MIN_CELL = 6;
+export const MIN_CELL = 10;
 export const MAX_CELL = 32;
 
 function clamp(n: number, lo: number, hi: number): number {
@@ -10,6 +10,8 @@ function clamp(n: number, lo: number, hi: number): number {
 export type GridCanvasLayoutOptions = {
   /** Extra width (px) reserved left of the grid for row tracker (checkbox + label). */
   rowSidebarPx?: number;
+  /** Skip fit-to-container calculation and use this exact cell size. Offsets are flush to gutters (no centering). */
+  forcedCell?: number;
 };
 
 export type GridCanvasLayout = {
@@ -42,11 +44,15 @@ export function computeGridCanvasLayout(
   const leftGutter = LABEL_SIZE + rowSidebarPx;
   const usableW = cssW - leftGutter;
   const usableH = cssH - topGutter;
-  const cell = clamp(Math.floor(Math.min(usableW / gridWidth, usableH / gridHeight)), MIN_CELL, MAX_CELL);
+  const forcedCell = options?.forcedCell;
+  const cell =
+    forcedCell != null
+      ? forcedCell
+      : clamp(Math.floor(Math.min(usableW / gridWidth, usableH / gridHeight)), MIN_CELL, MAX_CELL);
   const gridWpx = cell * gridWidth;
   const gridHpx = cell * gridHeight;
-  const offsetX = leftGutter + Math.max(0, (usableW - gridWpx) / 2);
-  const offsetY = topGutter + Math.max(0, (usableH - gridHpx) / 2);
+  const offsetX = forcedCell != null ? leftGutter : leftGutter + Math.max(0, (usableW - gridWpx) / 2);
+  const offsetY = forcedCell != null ? topGutter : topGutter + Math.max(0, (usableH - gridHpx) / 2);
   return {
     topGutter,
     leftGutter,
