@@ -1,7 +1,7 @@
 "use client";
 
 import { AuthModal } from "@/components/AuthModal";
-import { GridCanvas } from "@/components/GridCanvas";
+import { ImageTools } from "@/components/ImageTools";
 import { PatternSidebar } from "@/components/PatternSidebar";
 import { useAutoSave } from "@/hooks/useAutoSave";
 import { usePatternHistory } from "@/hooks/usePatternHistory";
@@ -303,11 +303,12 @@ export default function Home() {
               </div>
 
               <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-                <GridCanvas
+                <ImageTools
                   gridWidth={gridW}
                   gridHeight={gridH}
                   cells={cells}
                   onCommit={handleCommitGrid}
+                  onApplyConvertedGrid={(g) => commit(g)}
                   className="min-h-0"
                 />
               </div>

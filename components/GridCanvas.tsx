@@ -1,11 +1,9 @@
 "use client";
 
 import { cloneGrid } from "@/lib/gridFormat";
+import { computeGridCanvasLayout, type GridCanvasLayout } from "@/lib/gridCanvasLayout";
+import { drawImageContain } from "@/lib/imageCanvasUtils";
 import { useCallback, useEffect, useRef, useState } from "react";
-
-const LABEL_SIZE = 28;
-const MIN_CELL = 6;
-const MAX_CELL = 32;
 
 export type GridTool = "pencil" | "eraser";
 
@@ -15,10 +13,39 @@ export type GridCanvasProps = {
   cells: boolean[][];
   onCommit: (next: boolean[][]) => void;
   className?: string;
+  /** When set with opacity &gt; 0, image is drawn behind the grid (contain) and empty cells stay transparent. */
+  underlayImage?: CanvasImageSource | null;
+  /** 0–1; defaults to 1 when an image is present. */
+  underlayOpacity?: number;
 };
 
 function clamp(n: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, n));
+}
+
+function fillMarginsOutsideGrid(
+  ctx: CanvasRenderingContext2D,
+  cssW: number,
+  cssH: number,
+  bg: string,
+  layout: GridCanvasLayout,
+): void {
+  const { label, offsetX, offsetY, gridWpx, gridHpx, areaW, areaH } = layout;
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, cssW, label);
+  ctx.fillRect(0, label, label, cssH - label);
+  const x0 = label;
+  const y0 = label;
+  const x1 = label + areaW;
+  const y1 = label + areaH;
+  const gx0 = offsetX;
+  const gy0 = offsetY;
+  const gx1 = offsetX + gridWpx;
+  const gy1 = offsetY + gridHpx;
+  if (gy0 > y0) ctx.fillRect(x0, y0, areaW, gy0 - y0);
+  if (gy1 < y1) ctx.fillRect(x0, gy1, areaW, y1 - gy1);
+  if (gx0 > x0) ctx.fillRect(x0, gy0, gx0 - x0, gridHpx);
+  if (gx1 < x1) ctx.fillRect(gx1, gy0, x1 - gx1, gridHpx);
 }
 
 function paintLine(
@@ -58,7 +85,15 @@ function paintLine(
   }
 }
 
-export function GridCanvas({ gridWidth, gridHeight, cells, onCommit, className }: GridCanvasProps) {
+export function GridCanvas({
+  gridWidth,
+  gridHeight,
+  cells,
+  onCommit,
+  className,
+  underlayImage,
+  underlayOpacity = 1,
+}: GridCanvasProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [tool, setTool] = useState<GridTool>("pencil");
@@ -69,7 +104,8 @@ export function GridCanvas({ gridWidth, gridHeight, cells, onCommit, className }
   const drawingRef = useRef(false);
   const rafRef = useRef(0);
 
-  const cellDimsRef = useRef({ cell: 16, label: LABEL_SIZE });
+  const opacity = clamp(underlayOpacity, 0, 1);
+  const showUnderlay = Boolean(underlayImage) && opacity > 0;
 
   const scheduleDraw = useCallback(() => {
     if (rafRef.current) return;
@@ -88,16 +124,8 @@ export function GridCanvas({ gridWidth, gridHeight, cells, onCommit, className }
       canvas.style.height = `${cssH}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      const label = LABEL_SIZE;
-      const areaW = cssW - label;
-      const areaH = cssH - label;
-      const cell = clamp(Math.floor(Math.min(areaW / gridWidth, areaH / gridHeight)), MIN_CELL, MAX_CELL);
-      cellDimsRef.current = { cell, label };
-
-      const gridWpx = cell * gridWidth;
-      const gridHpx = cell * gridHeight;
-      const offsetX = label + Math.max(0, (areaW - gridWpx) / 2);
-      const offsetY = label + Math.max(0, (areaH - gridHpx) / 2);
+      const layout = computeGridCanvasLayout(cssW, cssH, gridWidth, gridHeight);
+      const { label, cell, offsetX, offsetY, gridWpx, gridHpx } = layout;
 
       const data = draftRef.current ?? cells;
 
@@ -109,8 +137,21 @@ export function GridCanvas({ gridWidth, gridHeight, cells, onCommit, className }
       const fillOn = dark ? "#a1a1aa" : "#3f3f46";
       const labelColor = dark ? "#a1a1aa" : "#71717a";
 
-      ctx.fillStyle = bg;
-      ctx.fillRect(0, 0, cssW, cssH);
+      if (showUnderlay) {
+        ctx.clearRect(0, 0, cssW, cssH);
+        fillMarginsOutsideGrid(ctx, cssW, cssH, bg, layout);
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(offsetX, offsetY, gridWpx, gridHpx);
+        ctx.clip();
+        ctx.globalAlpha = opacity;
+        drawImageContain(ctx, underlayImage!, offsetX, offsetY, gridWpx, gridHpx);
+        ctx.globalAlpha = 1;
+        ctx.restore();
+      } else {
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, cssW, cssH);
+      }
 
       ctx.font = "11px system-ui, sans-serif";
       ctx.fillStyle = labelColor;
@@ -139,7 +180,7 @@ export function GridCanvas({ gridWidth, gridHeight, cells, onCommit, className }
         }
       }
     });
-  }, [cells, gridWidth, gridHeight, size.cssW, size.cssH]);
+  }, [cells, gridWidth, gridHeight, size.cssW, size.cssH, showUnderlay, underlayImage, opacity]);
 
   useEffect(() => {
     scheduleDraw();
@@ -164,20 +205,16 @@ export function GridCanvas({ gridWidth, gridHeight, cells, onCommit, className }
       const rect = canvas.getBoundingClientRect();
       const x = clientX - rect.left;
       const y = clientY - rect.top;
-      const { cell, label } = cellDimsRef.current;
-      const areaW = size.cssW - label;
-      const areaH = size.cssH - label;
-      const gridWpx = cell * gridWidth;
-      const gridHpx = cell * gridHeight;
-      const offsetX = label + Math.max(0, (areaW - gridWpx) / 2);
-      const offsetY = label + Math.max(0, (areaH - gridHpx) / 2);
+      const layout = computeGridCanvasLayout(size.cssW, size.cssH, gridWidth, gridHeight);
+      const { cell: cellSize, offsetX, offsetY, gridWpx, gridHpx } = layout;
       const px = x - offsetX;
       const py = y - offsetY;
       if (px < 0 || py < 0) return null;
-      const c = Math.floor(px / cell);
-      const r = Math.floor(py / cell);
-      if (r < 0 || r >= gridHeight || c < 0 || c >= gridWidth) return null;
-      return { r, c };
+      const col = Math.floor(px / cellSize);
+      const row = Math.floor(py / cellSize);
+      if (row < 0 || row >= gridHeight || col < 0 || col >= gridWidth) return null;
+      if (px >= gridWpx || py >= gridHpx) return null;
+      return { r: row, c: col };
     },
     [gridWidth, gridHeight, size.cssW, size.cssH],
   );
