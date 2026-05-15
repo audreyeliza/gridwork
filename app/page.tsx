@@ -2,6 +2,7 @@
 
 import { AuthModal } from "@/components/AuthModal";
 import { ImageTools } from "@/components/ImageTools";
+import { YarnEstimator } from "@/components/YarnEstimator";
 import { PatternSidebar } from "@/components/PatternSidebar";
 import { useAutoSave } from "@/hooks/useAutoSave";
 import { usePatternHistory } from "@/hooks/usePatternHistory";
@@ -17,6 +18,12 @@ import {
   resizeGridPreserve,
   serializeGridCells,
 } from "@/lib/gridFormat";
+import {
+  DEFAULT_PATTERN_YARN_SETTINGS,
+  parsePatternYarnSettings,
+  serializePatternYarnSettings,
+  type PatternYarnSettings,
+} from "@/lib/yarnSettings";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
 import type { Session, SupabaseClient, User } from "@supabase/supabase-js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -54,12 +61,29 @@ export default function Home() {
 
   const [gridW, setGridW] = useState(10);
   const [gridH, setGridH] = useState(10);
+  const [yarnSettings, setYarnSettings] = useState<PatternYarnSettings>(DEFAULT_PATTERN_YARN_SETTINGS);
   const { cells, commit, replace, reset, undo, redo, canUndo, canRedo } = usePatternHistory(gridW, gridH);
 
   const activePattern = useMemo(
     () => patterns.find((p) => p.id === selectedPatternId) ?? null,
     [patterns, selectedPatternId],
   );
+
+  const { filledCellCount, emptyCellCount } = useMemo(() => {
+    let filled = 0;
+    let empty = 0;
+    for (const row of cells) {
+      for (const cell of row) {
+        if (cell) filled += 1;
+        else empty += 1;
+      }
+    }
+    return { filledCellCount: filled, emptyCellCount: empty };
+  }, [cells]);
+
+  const handleYarnSettingsChange = useCallback((next: PatternYarnSettings) => {
+    setYarnSettings(next);
+  }, []);
 
   const patternsRef = useRef(patterns);
   useEffect(() => {
@@ -119,6 +143,7 @@ export default function Home() {
         setGridW(10);
         setGridH(10);
         reset(createEmptyGrid(10, 10));
+        setYarnSettings({ ...DEFAULT_PATTERN_YARN_SETTINGS });
         return;
       }
 
@@ -131,6 +156,7 @@ export default function Home() {
         setGridW(w);
         setGridH(h);
         reset(parseGridData(fromList.grid_data, w, h));
+        setYarnSettings(parsePatternYarnSettings(fromList.yarn_settings));
         return;
       }
 
@@ -141,6 +167,7 @@ export default function Home() {
         setGridW(w);
         setGridH(h);
         reset(parseGridData(data.grid_data, w, h));
+        setYarnSettings(parsePatternYarnSettings(data.yarn_settings));
         setPatterns((prev) => (prev.some((p) => p.id === data.id) ? prev : [data, ...prev]));
       });
     }, 0);
@@ -159,7 +186,7 @@ export default function Home() {
       grid_width: 10,
       grid_height: 10,
       progress_data: {},
-      yarn_settings: {},
+      yarn_settings: serializePatternYarnSettings(DEFAULT_PATTERN_YARN_SETTINGS),
     });
     if (error) {
       console.error(error);
@@ -194,7 +221,10 @@ export default function Home() {
     [replace, cells, gridW],
   );
 
-  const dirtyKey = useMemo(() => JSON.stringify({ gridW, gridH, cells }), [gridW, gridH, cells]);
+  const dirtyKey = useMemo(
+    () => JSON.stringify({ gridW, gridH, cells, yarnSettings }),
+    [gridW, gridH, cells, yarnSettings],
+  );
 
   const persistPattern = useCallback(async () => {
     if (!supabase || !user || !selectedPatternId || !activePattern) return;
@@ -206,10 +236,10 @@ export default function Home() {
       grid_height: gridH,
       grid_data: serializeGridCells(cells),
       progress_data: activePattern.progress_data ?? {},
-      yarn_settings: activePattern.yarn_settings ?? {},
+      yarn_settings: serializePatternYarnSettings(yarnSettings),
     });
     if (error) console.error(error);
-  }, [supabase, user, selectedPatternId, activePattern, gridW, gridH, cells]);
+  }, [supabase, user, selectedPatternId, activePattern, gridW, gridH, cells, yarnSettings]);
 
   useAutoSave({
     enabled: Boolean(supabase && user && selectedPatternId && activePattern),
@@ -302,14 +332,25 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-                <ImageTools
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 lg:flex-row lg:items-stretch">
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+                  <ImageTools
+                    gridWidth={gridW}
+                    gridHeight={gridH}
+                    cells={cells}
+                    onCommit={handleCommitGrid}
+                    onApplyConvertedGrid={(g) => commit(g)}
+                    className="min-h-0"
+                  />
+                </div>
+                <YarnEstimator
                   gridWidth={gridW}
                   gridHeight={gridH}
-                  cells={cells}
-                  onCommit={handleCommitGrid}
-                  onApplyConvertedGrid={(g) => commit(g)}
-                  className="min-h-0"
+                  filledCellCount={filledCellCount}
+                  emptyCellCount={emptyCellCount}
+                  value={yarnSettings}
+                  onChange={handleYarnSettingsChange}
+                  className="w-full shrink-0 lg:w-80"
                 />
               </div>
             </div>
