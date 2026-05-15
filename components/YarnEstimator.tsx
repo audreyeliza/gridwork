@@ -65,7 +65,7 @@ export function YarnEstimator({
 
   return (
     <section
-      className={`relative z-10 flex shrink-0 flex-col gap-3 rounded-xl border border-sky-100/90 bg-white/95 p-4 shadow-sm pointer-events-auto ${className ?? ""}`}
+      className={`relative z-10 flex shrink-0 flex-col gap-3 rounded-xl border border-periwinkle/20 bg-white/95 p-4 shadow-sm pointer-events-auto ${className ?? ""}`}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
@@ -74,15 +74,15 @@ export function YarnEstimator({
             {units === "imperial" ? "Yards & ounces" : "Meters & grams"}
           </p>
         </div>
-        <div className="inline-flex rounded-full border border-sky-100 bg-white/90 p-0.5 text-xs shadow-sm">
+        <div className="inline-flex rounded-full border border-periwinkle/25 bg-white/90 p-0.5 text-xs shadow-sm">
           <button
             type="button"
             aria-pressed={units === "imperial"}
             onClick={() => setUnits("imperial")}
-            className={`rounded-full px-2.5 py-1 font-medium ${
+            className={`rounded-full px-2.5 py-1 font-medium transition-colors duration-150 ${
               units === "imperial"
-                ? "bg-sky-400 text-white shadow-sm"
-                : "text-stone-600 hover:bg-sky-50"
+                ? "bg-brand text-white shadow-sm"
+                : "text-gray-700 hover:bg-pink-50 hover:text-gray-900"
             }`}
           >
             Imperial
@@ -91,10 +91,10 @@ export function YarnEstimator({
             type="button"
             aria-pressed={units === "metric"}
             onClick={() => setUnits("metric")}
-            className={`rounded-full px-2.5 py-1 font-medium ${
+            className={`rounded-full px-2.5 py-1 font-medium transition-colors duration-150 ${
               units === "metric"
-                ? "bg-sky-400 text-white shadow-sm"
-                : "text-stone-600 hover:bg-sky-50"
+                ? "bg-brand text-white shadow-sm"
+                : "text-gray-700 hover:bg-pink-50 hover:text-gray-900"
             }`}
           >
             Metric
@@ -116,7 +116,7 @@ export function YarnEstimator({
             onChange={(e) =>
               onChange({ ...value, weight: e.target.value as YarnWeightCategory })
             }
-            className="rounded-lg border border-sky-100 bg-amber-50/20 px-2 py-1.5 text-sm text-stone-900"
+            className="rounded-lg border border-periwinkle/20 bg-white px-2 py-1.5 text-sm text-stone-900"
           >
             {YARN_WEIGHT_CATEGORIES.map((w) => (
               <option key={w} value={w}>
@@ -134,7 +134,7 @@ export function YarnEstimator({
             value={value.hookSize}
             onChange={(e) => onChange({ ...value, hookSize: e.target.value })}
             placeholder='e.g. "5.5 mm"'
-            className="rounded-lg border border-sky-100 bg-amber-50/20 px-2 py-1.5 text-sm text-stone-900"
+            className="rounded-lg border border-periwinkle/20 bg-white px-2 py-1.5 text-sm text-stone-900"
           />
         </label>
 
@@ -165,7 +165,7 @@ export function YarnEstimator({
         </label>
       </div>
 
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-xl border border-sky-50 bg-sky-50/40 px-3 py-2 text-sm">
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-xl border border-periwinkle/15 bg-periwinkle/8 px-3 py-2 text-sm">
         {units === "imperial" ? (
           <>
             <dt className="text-stone-500">Yards</dt>
