@@ -6,6 +6,8 @@ import { useCallback, useId, useRef, useState } from "react";
 
 export type ImageReferenceMode = "none" | "underlay" | "convert";
 
+import type { PatternProgressState } from "@/lib/progressData";
+
 export type ImageToolsProps = {
   gridWidth: number;
   gridHeight: number;
@@ -14,6 +16,8 @@ export type ImageToolsProps = {
   /** Receives the threshold-generated grid as one editable commit. */
   onApplyConvertedGrid: (next: boolean[][]) => void;
   className?: string;
+  progress?: PatternProgressState;
+  onToggleRowComplete?: (row: number) => void;
 };
 
 export function ImageTools({
@@ -23,6 +27,8 @@ export function ImageTools({
   onCommit,
   onApplyConvertedGrid,
   className,
+  progress,
+  onToggleRowComplete,
 }: ImageToolsProps) {
   const fileInputId = useId();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -170,6 +176,9 @@ export function ImageTools({
         onCommit={onCommit}
         underlayImage={mode === "underlay" ? image : null}
         underlayOpacity={underlayOpacity}
+        rowComplete={progress?.rowComplete}
+        currentRow={progress?.currentRow}
+        onToggleRowComplete={onToggleRowComplete}
         className="min-h-0"
       />
     </div>
