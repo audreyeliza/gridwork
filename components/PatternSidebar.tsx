@@ -14,6 +14,7 @@ export type PatternSidebarProps = {
   onOpenAuth: () => void;
   onRenamePattern?: (id: string, newName: string) => void;
   onDeletePattern?: (id: string) => Promise<void>;
+  onTogglePublic?: (id: string, isPublic: boolean) => void;
 };
 
 function formatUpdatedAt(iso: string): string {
@@ -33,6 +34,24 @@ function TrashIcon() {
   );
 }
 
+function GlobeIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="8" cy="8" r="5.5" />
+      <path d="M2.5 8h11M8 2.5a8 8 0 010 11M8 2.5a8 8 0 000 11" />
+    </svg>
+  );
+}
+
+function LockClosedIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="7" width="10" height="7" rx="1.5" />
+      <path d="M5 7V5a3 3 0 016 0v2" />
+    </svg>
+  );
+}
+
 export function PatternSidebar({
   user,
   patterns,
@@ -43,6 +62,7 @@ export function PatternSidebar({
   onOpenAuth,
   onRenamePattern,
   onDeletePattern,
+  onTogglePublic,
 }: PatternSidebarProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
@@ -158,8 +178,23 @@ export function PatternSidebar({
                       }`}>
                         {p.name}
                       </span>
-                      <span className="block text-xs font-normal text-stone-500">{formatUpdatedAt(p.updated_at)}</span>
+                      <span className="block text-xs font-normal text-stone-500">
+                        {p.is_public && (
+                          <span className="mr-1 text-teal-600">Public ·</span>
+                        )}
+                        {formatUpdatedAt(p.updated_at)}
+                      </span>
                     </button>
+                    {onTogglePublic && (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onTogglePublic(p.id, !(p.is_public ?? false)); }}
+                        title={p.is_public ? "Make private" : "Make public"}
+                        className="shrink-0 rounded-md p-1.5 opacity-0 transition-all group-hover:opacity-100 hover:bg-stone-50 text-stone-400 hover:text-stone-600"
+                      >
+                        {p.is_public ? <GlobeIcon /> : <LockClosedIcon />}
+                      </button>
+                    )}
                     {onDeletePattern && (
                       <button
                         type="button"

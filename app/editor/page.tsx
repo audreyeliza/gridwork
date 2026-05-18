@@ -40,6 +40,8 @@ import {
   serializeImageSettings,
   type PatternImageSettings,
 } from "@/lib/imageSettings";
+import { setPatternPublic } from "@/lib/galleryHelpers";
+import { generateGridThumbnail } from "@/lib/thumbnailUtils";
 import { getSupabaseBrowserClient, resetSupabaseBrowserClient } from "@/lib/supabase";
 import type { Session, SupabaseClient, User } from "@supabase/supabase-js";
 import Link from "next/link";
@@ -294,6 +296,7 @@ export default function EditorPage() {
 
   const handleSaveCurrentAsPattern = useCallback(async () => {
     if (!supabase || !user) return;
+    const thumbnail = generateGridThumbnail(cells);
     const { data, error } = await upsertPattern(supabase, {
       user_id: user.id,
       name: "Untitled",
@@ -303,6 +306,7 @@ export default function EditorPage() {
       progress_data: serializeProgressData(progress),
       yarn_settings: serializePatternYarnSettings(yarnSettings),
       image_settings: serializeImageSettings(imageSettings),
+      thumbnail: thumbnail || null,
     });
     if (error) {
       console.error(error);
@@ -476,8 +480,22 @@ export default function EditorPage() {
     [gridW, gridH, cells, yarnSettings, progress, imageSettings],
   );
 
+  const handleTogglePublic = useCallback(
+    async (id: string, isPublic: boolean) => {
+      if (!supabase || !user) return;
+      setPatterns((prev) => prev.map((p) => (p.id === id ? { ...p, is_public: isPublic } : p)));
+      const { error } = await setPatternPublic(supabase, id, user.id, isPublic);
+      if (error) {
+        console.error(error);
+        setPatterns((prev) => prev.map((p) => (p.id === id ? { ...p, is_public: !isPublic } : p)));
+      }
+    },
+    [supabase, user],
+  );
+
   const persistPattern = useCallback(async () => {
     if (!supabase || !user || !selectedPatternId || !activePattern) return;
+    const thumbnail = generateGridThumbnail(cells);
     const { error } = await upsertPattern(supabase, {
       id: selectedPatternId,
       user_id: user.id,
@@ -488,20 +506,44 @@ export default function EditorPage() {
       progress_data: serializeProgressData(progress),
       yarn_settings: serializePatternYarnSettings(yarnSettings),
       image_settings: serializeImageSettings(imageSettings),
+      thumbnail: thumbnail || null,
     });
     if (error) console.error(error);
   }, [supabase, user, selectedPatternId, activePattern, gridW, gridH, cells, yarnSettings, progress, imageSettings]);
+
+  const [saveIndicator, setSaveIndicator] = useState<"idle" | "pending" | "saving" | "saved">("idle");
+  const savedTimerRef = useRef<number | undefined>(undefined);
+  const dirtyKeyMountRef = useRef(false);
+
+  // Mark pending whenever the user changes something (skip initial mount)
+  useEffect(() => {
+    if (!dirtyKeyMountRef.current) { dirtyKeyMountRef.current = true; return; }
+    setSaveIndicator((prev) => (prev === "saving" ? prev : "pending"));
+  }, [dirtyKey]);
+
+  // Shared save handler — used by both autosave and the manual Save button
+  const handleSave = useCallback(async () => {
+    if (!supabase || !user || !selectedPatternId || !activePattern) return;
+    setSaveIndicator("saving");
+    await persistPattern();
+    setSaveIndicator("saved");
+    if (savedTimerRef.current) window.clearTimeout(savedTimerRef.current);
+    savedTimerRef.current = window.setTimeout(
+      () => setSaveIndicator("idle"),
+      2500,
+    ) as unknown as number;
+  }, [supabase, user, selectedPatternId, activePattern, persistPattern]);
 
   useAutoSave({
     enabled: Boolean(supabase && user && selectedPatternId && activePattern),
     delayMs: 2000,
     dirtyKey,
-    onSave: persistPattern,
+    onSave: handleSave,
   });
 
   return (
     <div className="flex h-screen flex-col bg-white/65 text-stone-800 max-md:h-auto max-md:min-h-screen">
-      <header className="relative z-20 flex shrink-0 items-center justify-between border-b border-white/40 bg-white/80 px-4 py-4 shadow-sm backdrop-blur-md">
+      <header className="relative z-20 flex h-16 shrink-0 items-center justify-between border-b border-white/40 bg-white/80 px-4 shadow-sm backdrop-blur-md">
         <div className="flex items-center gap-3 md:gap-5">
           <Link
             href="/"
@@ -517,9 +559,12 @@ export default function EditorPage() {
           >
             {sidebarOpen ? "✕ Close" : "Patterns"}
           </button>
-          {/* Learn link — desktop only */}
+          {/* Learn / Gallery links — desktop only */}
           <Link href="/learn" className="hidden text-sm text-gray-700 transition-colors duration-150 hover:text-violet-700 md:inline">
             Learn
+          </Link>
+          <Link href="/gallery" className="hidden text-sm text-gray-700 transition-colors duration-150 hover:text-violet-700 md:inline">
+            Gallery
           </Link>
         </div>
 
@@ -564,6 +609,13 @@ export default function EditorPage() {
                 className="block px-4 py-3 text-sm text-gray-700 hover:bg-stone-50"
               >
                 Learn
+              </Link>
+              <Link
+                href="/gallery"
+                onClick={() => setMenuOpen(false)}
+                className="block border-t border-stone-100 px-4 py-3 text-sm text-gray-700 hover:bg-stone-50"
+              >
+                Gallery
               </Link>
               {user ? (
                 <>
@@ -616,6 +668,7 @@ export default function EditorPage() {
               onOpenAuth={() => setAuthModalOpen(true)}
               onRenamePattern={handleRenamePattern}
               onDeletePattern={handleDeletePattern}
+              onTogglePublic={handleTogglePublic}
             />
           </div>
 
@@ -626,11 +679,33 @@ export default function EditorPage() {
               </div>
             ) : (
               <div className="flex min-h-0 flex-1 flex-col gap-4 max-md:flex-none">
-                <p className="shrink-0 text-sm text-stone-500">
-                  Session: {session ? "signed in" : "guest"}
-                  {selectedPatternId ? ` · pattern ${selectedPatternId.slice(0, 8)}…` : ""}
-                  {user && selectedPatternId ? " · autosave ~2s" : ""}
-                </p>
+                <div className="flex shrink-0 items-center gap-1.5 text-xs">
+                  {user && selectedPatternId ? (
+                    <>
+                      <span className={`h-1.5 w-1.5 rounded-full transition-colors ${
+                        saveIndicator === "saving"
+                          ? "animate-pulse bg-amber-400"
+                          : saveIndicator === "saved"
+                            ? "bg-teal-500"
+                            : saveIndicator === "pending"
+                              ? "bg-amber-400"
+                              : "bg-stone-300"
+                      }`} />
+                      <span className={
+                        saveIndicator === "saved" ? "text-teal-600" :
+                        saveIndicator === "pending" ? "text-stone-500" :
+                        "text-stone-400"
+                      }>
+                        {saveIndicator === "saving" ? "Saving…" :
+                         saveIndicator === "saved" ? "Saved" :
+                         saveIndicator === "pending" ? "Unsaved changes" :
+                         "Autosave on"}
+                      </span>
+                    </>
+                  ) : !user ? (
+                    <span className="text-stone-400">Sign in to save your work</span>
+                  ) : null}
+                </div>
 
                 {user && !selectedPatternId && (
                   <div className="flex shrink-0 items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
@@ -760,6 +835,20 @@ export default function EditorPage() {
                     >
                       Next row
                     </button>
+                    {user && selectedPatternId && (
+                      <button
+                        type="button"
+                        disabled={saveIndicator === "saving"}
+                        onClick={() => void handleSave()}
+                        className={`rounded-full px-3 py-1.5 text-sm font-medium shadow-sm transition-colors disabled:opacity-50 max-md:px-2 max-md:py-1 max-md:text-xs ${
+                          saveIndicator === "saved"
+                            ? "border border-teal-200 bg-teal-50 text-teal-700"
+                            : "border border-brand/30 bg-brand/8 text-brand hover:bg-brand/15"
+                        }`}
+                      >
+                        {saveIndicator === "saving" ? "Saving…" : saveIndicator === "saved" ? "Saved ✓" : "Save"}
+                      </button>
+                    )}
                     <button
                       id="tutorial-print"
                       type="button"

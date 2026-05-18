@@ -19,13 +19,16 @@ export type Pattern = {
   progress_data: Json;
   yarn_settings: Json;
   image_settings?: Json;
+  is_public?: boolean;
+  thumbnail?: string | null;
+  likes_count?: number;
+  copies_count?: number;
   updated_at: string;
 };
 
-export type PatternInsert = Omit<Pattern, "id" | "updated_at"> & {
+export type PatternInsert = Omit<Pattern, "id" | "updated_at" | "likes_count" | "copies_count"> & {
   id?: string;
   updated_at?: string;
-  image_settings?: Json;
 };
 
 export type PatternUpsert = PatternInsert;

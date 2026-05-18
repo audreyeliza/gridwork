@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { LearnMobileMenu } from "@/components/LearnMobileMenu";
 
 export const metadata: Metadata = {
   title: "How to filet crochet — Gridwork",
@@ -8,20 +9,24 @@ export const metadata: Metadata = {
 
 export default function LearnPage() {
   return (
-    <div className="min-h-screen text-stone-800">
-      <header className="z-20 flex shrink-0 items-center justify-between border-b border-white/40 bg-white/80 px-4 py-4 shadow-sm backdrop-blur-md">
+    <div className="flex min-h-screen flex-col text-stone-800">
+      <header className="z-20 flex h-16 shrink-0 items-center justify-between border-b border-white/40 bg-white/80 px-4 shadow-sm backdrop-blur-md">
         <div className="flex items-center gap-5">
           <Link href="/" className="font-serif text-xl font-bold text-brand hover:text-brand-dark">
             Gridwork
           </Link>
-          <span className="text-sm font-medium text-gray-700">Learn</span>
+          <span className="hidden text-sm font-medium text-gray-700 md:inline">Learn</span>
+          <Link href="/gallery" className="hidden text-sm text-gray-700 transition-colors duration-150 hover:text-violet-700 md:inline">
+            Gallery
+          </Link>
         </div>
         <Link
           href="/editor"
-          className="rounded-full bg-brand px-4 py-1.5 text-sm font-medium text-white shadow-sm transition-all duration-200 hover:bg-[#D4457F]"
+          className="hidden items-center rounded-full bg-brand px-4 py-1.5 text-sm font-medium text-white shadow-sm transition-all duration-200 hover:bg-[#D4457F] md:inline-flex"
         >
           Open editor
         </Link>
+        <LearnMobileMenu />
       </header>
 
       <div className="mx-auto max-w-2xl px-6 pb-32 pt-12">

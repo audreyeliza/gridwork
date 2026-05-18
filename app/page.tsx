@@ -73,17 +73,24 @@ export default function Home() {
     await supabase.auth.signOut();
   }, [supabase]);
 
+  const [menuOpen, setMenuOpen] = useState(false);
+
   return (
     <div className="flex h-screen flex-col text-stone-800">
-      <header className="z-20 flex shrink-0 items-center justify-between border-b border-white/40 bg-white/80 px-4 py-4 shadow-sm backdrop-blur-md">
+      <header className="z-20 flex h-16 shrink-0 items-center justify-between border-b border-white/40 bg-white/80 px-4 shadow-sm backdrop-blur-md">
         <div className="flex items-center gap-5">
           <span className="font-serif text-xl font-bold text-brand">Gridwork</span>
-          <Link href="/learn" className="text-sm text-gray-700 transition-colors duration-150 hover:text-violet-700">
+          <Link href="/learn" className="hidden text-sm text-gray-700 transition-colors duration-150 hover:text-violet-700 md:inline">
             Learn
           </Link>
+          <Link href="/gallery" className="hidden text-sm text-gray-700 transition-colors duration-150 hover:text-violet-700 md:inline">
+            Gallery
+          </Link>
         </div>
+
+        {/* Desktop right side */}
         {user ? (
-          <div className="flex items-center gap-2">
+          <div className="hidden items-center gap-2 md:flex">
             <span className="max-w-[160px] truncate text-xs text-stone-500">{user.email}</span>
             <button
               type="button"
@@ -97,11 +104,61 @@ export default function Home() {
           <button
             type="button"
             onClick={() => setAuthModalOpen(true)}
-            className="cursor-pointer rounded-full bg-brand px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-brand-dark"
+            className="hidden cursor-pointer rounded-full bg-brand px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-brand-dark md:inline-flex"
           >
             Log in
           </button>
         )}
+
+        {/* Mobile hamburger */}
+        <div className="relative md:hidden">
+          <button
+            type="button"
+            onClick={() => setMenuOpen((p) => !p)}
+            className="rounded-md border border-stone-200 bg-white/80 px-2.5 py-1.5 text-xs font-medium text-stone-700 hover:bg-stone-50"
+            aria-label="Menu"
+          >
+            {menuOpen ? "✕" : "☰"}
+          </button>
+          {menuOpen && (
+            <div className="absolute right-0 top-full z-50 mt-1 w-48 overflow-hidden rounded-xl border border-stone-200 bg-white shadow-lg">
+              <Link
+                href="/learn"
+                onClick={() => setMenuOpen(false)}
+                className="block px-4 py-3 text-sm text-gray-700 hover:bg-stone-50"
+              >
+                Learn
+              </Link>
+              <Link
+                href="/gallery"
+                onClick={() => setMenuOpen(false)}
+                className="block border-t border-stone-100 px-4 py-3 text-sm text-gray-700 hover:bg-stone-50"
+              >
+                Gallery
+              </Link>
+              {user ? (
+                <>
+                  <div className="border-t border-stone-100 px-4 py-2 text-xs text-stone-500 truncate">{user.email}</div>
+                  <button
+                    type="button"
+                    onClick={() => { void handleLogout(); setMenuOpen(false); }}
+                    className="w-full border-t border-stone-100 px-4 py-3 text-left text-sm text-stone-700 hover:bg-stone-50"
+                  >
+                    Log out
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => { setAuthModalOpen(true); setMenuOpen(false); }}
+                  className="w-full border-t border-stone-100 px-4 py-3 text-left text-sm font-medium text-brand hover:bg-pink-50"
+                >
+                  Log in
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </header>
 
       <main className="flex flex-1 flex-col items-center justify-center px-6">
