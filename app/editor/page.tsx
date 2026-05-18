@@ -9,6 +9,7 @@ import { useAutoSave } from "@/hooks/useAutoSave";
 import { usePatternHistory } from "@/hooks/usePatternHistory";
 import {
   fetchPatternById,
+  deletePattern,
   fetchPatternsForUser,
   type Pattern,
   upsertPattern,
@@ -33,6 +34,12 @@ import {
   serializePatternYarnSettings,
   type PatternYarnSettings,
 } from "@/lib/yarnSettings";
+import {
+  DEFAULT_PATTERN_IMAGE_SETTINGS,
+  parseImageSettings,
+  serializeImageSettings,
+  type PatternImageSettings,
+} from "@/lib/imageSettings";
 import { getSupabaseBrowserClient, resetSupabaseBrowserClient } from "@/lib/supabase";
 import type { Session, SupabaseClient, User } from "@supabase/supabase-js";
 import Link from "next/link";
@@ -110,11 +117,17 @@ export default function EditorPage() {
   const [lockedRatio, setLockedRatio] = useState<number | null>(null);
   const [yarnOpen, setYarnOpen] = useState(false);
   const [imageCropExpanded, setImageCropExpanded] = useState(false);
+  const [gridFullscreen, setGridFullscreen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const [gridW, setGridW] = useState(10);
   const [gridH, setGridH] = useState(10);
   const [yarnSettings, setYarnSettings] = useState<PatternYarnSettings>(DEFAULT_PATTERN_YARN_SETTINGS);
   const [progress, setProgress] = useState<PatternProgressState>(() => defaultProgressState(10));
+  const [imageSettings, setImageSettings] = useState<PatternImageSettings>(DEFAULT_PATTERN_IMAGE_SETTINGS);
+  /** Incremented each time a pattern's data is fully loaded from the DB, triggering ImageTools reinit. */
+  const [imageSettingsLoadKey, setImageSettingsLoadKey] = useState("");
   const { cells, commit, replace, reset, undo, redo, canUndo, canRedo } = usePatternHistory(gridW, gridH);
 
   const activePattern = useMemo(
@@ -136,6 +149,10 @@ export default function EditorPage() {
 
   const handleYarnSettingsChange = useCallback((next: PatternYarnSettings) => {
     setYarnSettings(next);
+  }, []);
+
+  const handleImageSettingsChange = useCallback((next: PatternImageSettings) => {
+    setImageSettings(next);
   }, []);
 
   const patternsRef = useRef(patterns);
@@ -199,6 +216,8 @@ export default function EditorPage() {
       reset(createEmptyGrid(10, 10));
       setYarnSettings({ ...DEFAULT_PATTERN_YARN_SETTINGS });
       setProgress(defaultProgressState(10));
+      setImageSettings({ ...DEFAULT_PATTERN_IMAGE_SETTINGS });
+      setImageSettingsLoadKey("unsaved-" + Date.now());
     }, 0);
     return () => {
       cancelled = true;
@@ -219,6 +238,8 @@ export default function EditorPage() {
         reset(parseGridData(fromList.grid_data, w, h));
         setYarnSettings(parsePatternYarnSettings(fromList.yarn_settings));
         setProgress(parseProgressData(fromList.progress_data, h));
+        setImageSettings(parseImageSettings(fromList.image_settings));
+        setImageSettingsLoadKey(fromList.id + "-" + fromList.updated_at);
         return;
       }
 
@@ -231,6 +252,8 @@ export default function EditorPage() {
         reset(parseGridData(data.grid_data, w, h));
         setYarnSettings(parsePatternYarnSettings(data.yarn_settings));
         setProgress(parseProgressData(data.progress_data, h));
+        setImageSettings(parseImageSettings(data.image_settings));
+        setImageSettingsLoadKey(data.id + "-" + data.updated_at);
         setPatterns((prev) => (prev.some((p) => p.id === data.id) ? prev : [data, ...prev]));
       });
     }, 0);
@@ -268,6 +291,26 @@ export default function EditorPage() {
     await loadPatterns(supabase, user.id);
     if (data?.id) setSelectedPatternId(data.id);
   }, [supabase, user, loadPatterns]);
+
+  const handleSaveCurrentAsPattern = useCallback(async () => {
+    if (!supabase || !user) return;
+    const { data, error } = await upsertPattern(supabase, {
+      user_id: user.id,
+      name: "Untitled",
+      grid_data: serializeGridCells(cells),
+      grid_width: gridW,
+      grid_height: gridH,
+      progress_data: serializeProgressData(progress),
+      yarn_settings: serializePatternYarnSettings(yarnSettings),
+      image_settings: serializeImageSettings(imageSettings),
+    });
+    if (error) {
+      console.error(error);
+      return;
+    }
+    await loadPatterns(supabase, user.id);
+    if (data?.id) setSelectedPatternId(data.id);
+  }, [supabase, user, cells, gridW, gridH, progress, yarnSettings, imageSettings, loadPatterns]);
 
   const handleCommitGrid = useCallback(
     (next: boolean[][]) => {
@@ -393,6 +436,22 @@ export default function EditorPage() {
     [supabase, user, patterns],
   );
 
+  const handleDeletePattern = useCallback(
+    async (id: string) => {
+      if (!supabase || !user) return;
+      // Optimistic removal
+      setPatterns((prev) => prev.filter((p) => p.id !== id));
+      if (selectedPatternId === id) setSelectedPatternId(null);
+      const { error } = await deletePattern(supabase, id, user.id);
+      if (error) {
+        console.error(error);
+        // Reload on failure to restore the list
+        await loadPatterns(supabase, user.id);
+      }
+    },
+    [supabase, user, selectedPatternId, loadPatterns],
+  );
+
   const handleStepCurrentRow = useCallback((delta: number) => {
     setProgress((p) => ({
       ...p,
@@ -401,8 +460,20 @@ export default function EditorPage() {
   }, [gridH]);
 
   const dirtyKey = useMemo(
-    () => JSON.stringify({ gridW, gridH, cells, yarnSettings, progress }),
-    [gridW, gridH, cells, yarnSettings, progress],
+    () => JSON.stringify({
+      gridW, gridH, cells, yarnSettings, progress,
+      imageMode: imageSettings.mode,
+      imageUrlSig: imageSettings.imageDataUrl?.length ?? 0,
+      imageUnderlayOpacity: imageSettings.underlayOpacityPct,
+      imageCropRect: imageSettings.cropRect,
+      imageAppliedCrop: imageSettings.appliedCrop,
+      imagePanX: imageSettings.panX,
+      imagePanY: imageSettings.panY,
+      imageThreshold: imageSettings.threshold,
+      imageDarkIsFilled: imageSettings.darkIsFilled,
+      imagePositionLocked: imageSettings.positionLocked,
+    }),
+    [gridW, gridH, cells, yarnSettings, progress, imageSettings],
   );
 
   const persistPattern = useCallback(async () => {
@@ -416,9 +487,10 @@ export default function EditorPage() {
       grid_data: serializeGridCells(cells),
       progress_data: serializeProgressData(progress),
       yarn_settings: serializePatternYarnSettings(yarnSettings),
+      image_settings: serializeImageSettings(imageSettings),
     });
     if (error) console.error(error);
-  }, [supabase, user, selectedPatternId, activePattern, gridW, gridH, cells, yarnSettings, progress]);
+  }, [supabase, user, selectedPatternId, activePattern, gridW, gridH, cells, yarnSettings, progress, imageSettings]);
 
   useAutoSave({
     enabled: Boolean(supabase && user && selectedPatternId && activePattern),
@@ -428,21 +500,32 @@ export default function EditorPage() {
   });
 
   return (
-    <div className="flex h-screen flex-col bg-white/65 text-stone-800">
-      <header className="z-20 flex shrink-0 items-center justify-between border-b border-white/40 bg-white/80 px-4 py-4 shadow-sm backdrop-blur-md">
-        <div className="flex items-center gap-5">
+    <div className="flex h-screen flex-col bg-white/65 text-stone-800 max-md:h-auto max-md:min-h-screen">
+      <header className="relative z-20 flex shrink-0 items-center justify-between border-b border-white/40 bg-white/80 px-4 py-4 shadow-sm backdrop-blur-md">
+        <div className="flex items-center gap-3 md:gap-5">
           <Link
             href="/"
             className="font-serif text-xl font-bold text-brand hover:text-brand-dark"
           >
             Gridwork
           </Link>
-          <Link href="/learn" className="text-sm text-gray-700 transition-colors duration-150 hover:text-violet-700">
+          {/* Patterns drawer toggle — narrow only */}
+          <button
+            type="button"
+            onClick={() => setSidebarOpen((p) => !p)}
+            className="rounded-md border border-stone-200 bg-white/80 px-2.5 py-1.5 text-xs font-medium text-stone-700 hover:bg-stone-50 md:hidden"
+          >
+            {sidebarOpen ? "✕ Close" : "Patterns"}
+          </button>
+          {/* Learn link — desktop only */}
+          <Link href="/learn" className="hidden text-sm text-gray-700 transition-colors duration-150 hover:text-violet-700 md:inline">
             Learn
           </Link>
         </div>
+
+        {/* Desktop right side */}
         {user ? (
-          <div className="flex items-center gap-2">
+          <div className="hidden items-center gap-2 md:flex">
             <span className="max-w-[160px] truncate text-xs text-stone-500">{user.email}</span>
             <button
               type="button"
@@ -457,37 +540,110 @@ export default function EditorPage() {
             id="tutorial-login"
             type="button"
             onClick={() => setAuthModalOpen(true)}
-            className="cursor-pointer rounded-full bg-brand px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-brand-dark"
+            className="hidden cursor-pointer rounded-full bg-brand px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-brand-dark md:inline-flex"
           >
             Log in
           </button>
         )}
+
+        {/* Narrow: hamburger + dropdown */}
+        <div className="relative md:hidden">
+          <button
+            type="button"
+            onClick={() => setMenuOpen((p) => !p)}
+            className="rounded-md border border-stone-200 bg-white/80 px-2.5 py-1.5 text-xs font-medium text-stone-700 hover:bg-stone-50"
+            aria-label="Menu"
+          >
+            {menuOpen ? "✕" : "☰"}
+          </button>
+          {menuOpen && (
+            <div className="absolute right-0 top-full z-50 mt-1 w-48 overflow-hidden rounded-xl border border-stone-200 bg-white shadow-lg">
+              <Link
+                href="/learn"
+                onClick={() => setMenuOpen(false)}
+                className="block px-4 py-3 text-sm text-gray-700 hover:bg-stone-50"
+              >
+                Learn
+              </Link>
+              {user ? (
+                <>
+                  <div className="border-t border-stone-100 px-4 py-2 text-xs text-stone-500 truncate">{user.email}</div>
+                  <button
+                    type="button"
+                    onClick={() => { void handleLogout(); setMenuOpen(false); }}
+                    className="w-full border-t border-stone-100 px-4 py-3 text-left text-sm text-stone-700 hover:bg-stone-50"
+                  >
+                    Log out
+                  </button>
+                </>
+              ) : (
+                <button
+                  id="tutorial-login"
+                  type="button"
+                  onClick={() => { setAuthModalOpen(true); setMenuOpen(false); }}
+                  className="w-full border-t border-stone-100 px-4 py-3 text-left text-sm font-medium text-brand hover:bg-pink-50"
+                >
+                  Log in
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </header>
 
-      <div className="flex min-h-0 flex-1">
-          <PatternSidebar
-            user={user}
-            patterns={patterns}
-            patternsLoading={patternsLoading}
-            selectedPatternId={selectedPatternId}
-            onSelectPattern={setSelectedPatternId}
-            onCreateNew={handleCreateNew}
-            onOpenAuth={() => setAuthModalOpen(true)}
-            onRenamePattern={handleRenamePattern}
-          />
+      <div className="relative flex min-h-0 flex-1">
+          {/* Narrow backdrop — closes drawer when tapping outside */}
+          {sidebarOpen && (
+            <div
+              className="fixed inset-0 z-30 bg-black/30 md:hidden"
+              onClick={() => setSidebarOpen(false)}
+            />
+          )}
 
-          <main className="flex min-h-0 min-w-0 flex-1 flex-col p-6">
+          {/* Sidebar: always inline on md+; slide-in drawer on narrow */}
+          <div
+            className={`max-md:absolute max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:shadow-2xl max-md:transition-transform max-md:duration-200 md:flex md:shrink-0 ${
+              sidebarOpen ? "max-md:translate-x-0" : "max-md:-translate-x-full"
+            }`}
+          >
+            <PatternSidebar
+              user={user}
+              patterns={patterns}
+              patternsLoading={patternsLoading}
+              selectedPatternId={selectedPatternId}
+              onSelectPattern={(id) => { setSelectedPatternId(id); setSidebarOpen(false); }}
+              onCreateNew={handleCreateNew}
+              onOpenAuth={() => setAuthModalOpen(true)}
+              onRenamePattern={handleRenamePattern}
+              onDeletePattern={handleDeletePattern}
+            />
+          </div>
+
+          <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto p-6 max-md:p-3">
             {configError ? (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100">
                 {configError}
               </div>
             ) : (
-              <div className="flex min-h-0 flex-1 flex-col gap-4">
+              <div className="flex min-h-0 flex-1 flex-col gap-4 max-md:flex-none">
                 <p className="shrink-0 text-sm text-stone-500">
                   Session: {session ? "signed in" : "guest"}
                   {selectedPatternId ? ` · pattern ${selectedPatternId.slice(0, 8)}…` : ""}
                   {user && selectedPatternId ? " · autosave ~2s" : ""}
                 </p>
+
+                {user && !selectedPatternId && (
+                  <div className="flex shrink-0 items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                    <span>This pattern isn't saved yet.</span>
+                    <button
+                      type="button"
+                      onClick={() => void handleSaveCurrentAsPattern()}
+                      className="rounded-full bg-brand px-3 py-1 text-xs font-medium text-white shadow-sm hover:bg-brand-dark"
+                    >
+                      Save pattern
+                    </button>
+                  </div>
+                )}
 
                 <div
                   id="tutorial-grid-size"
@@ -563,12 +719,12 @@ export default function EditorPage() {
                     />
                   </label>
 
-                  <div id="tutorial-row-progress" className="flex flex-wrap gap-2">
+                  <div id="tutorial-row-progress" className="flex flex-wrap gap-2 max-md:w-full">
                     {/* Yarn drawer toggle: only shown below xl breakpoint */}
                     <button
                       type="button"
                       onClick={() => setYarnOpen((p) => !p)}
-                      className="rounded-full border border-stone-200 bg-white px-3 py-1.5 text-sm font-medium text-stone-700 shadow-sm hover:bg-stone-50 xl:hidden"
+                      className="rounded-full border border-stone-200 bg-white px-3 py-1.5 text-sm font-medium text-stone-700 shadow-sm hover:bg-stone-50 xl:hidden max-md:px-2 max-md:py-1 max-md:text-xs"
                     >
                       {yarnOpen ? "Hide Yarn Estimate" : "Yarn Estimate"}
                     </button>
@@ -576,7 +732,7 @@ export default function EditorPage() {
                       type="button"
                       disabled={!canUndo}
                       onClick={() => undo()}
-                      className="rounded-full border border-stone-200 bg-white px-3 py-1.5 text-sm font-medium text-stone-700 shadow-sm hover:bg-stone-50 disabled:opacity-40"
+                      className="rounded-full border border-stone-200 bg-white px-3 py-1.5 text-sm font-medium text-stone-700 shadow-sm hover:bg-stone-50 disabled:opacity-40 max-md:px-2 max-md:py-1 max-md:text-xs"
                     >
                       Undo
                     </button>
@@ -584,7 +740,7 @@ export default function EditorPage() {
                       type="button"
                       disabled={!canRedo}
                       onClick={() => redo()}
-                      className="rounded-full border border-stone-200 bg-white px-3 py-1.5 text-sm font-medium text-stone-700 shadow-sm hover:bg-stone-50 disabled:opacity-40"
+                      className="rounded-full border border-stone-200 bg-white px-3 py-1.5 text-sm font-medium text-stone-700 shadow-sm hover:bg-stone-50 disabled:opacity-40 max-md:px-2 max-md:py-1 max-md:text-xs"
                     >
                       Redo
                     </button>
@@ -592,7 +748,7 @@ export default function EditorPage() {
                       type="button"
                       disabled={progress.currentRow <= 0}
                       onClick={() => handleStepCurrentRow(-1)}
-                      className="rounded-full border border-stone-200 bg-white px-3 py-1.5 text-sm font-medium text-stone-700 shadow-sm hover:bg-stone-50 disabled:opacity-40"
+                      className="rounded-full border border-stone-200 bg-white px-3 py-1.5 text-sm font-medium text-stone-700 shadow-sm hover:bg-stone-50 disabled:opacity-40 max-md:px-2 max-md:py-1 max-md:text-xs"
                     >
                       Prev row
                     </button>
@@ -600,7 +756,7 @@ export default function EditorPage() {
                       type="button"
                       disabled={progress.currentRow >= gridH - 1}
                       onClick={() => handleStepCurrentRow(1)}
-                      className="rounded-full border border-stone-200 bg-white px-3 py-1.5 text-sm font-medium text-stone-700 shadow-sm hover:bg-stone-50 disabled:opacity-40"
+                      className="rounded-full border border-stone-200 bg-white px-3 py-1.5 text-sm font-medium text-stone-700 shadow-sm hover:bg-stone-50 disabled:opacity-40 max-md:px-2 max-md:py-1 max-md:text-xs"
                     >
                       Next row
                     </button>
@@ -612,15 +768,15 @@ export default function EditorPage() {
                         if (!selectedPatternId) return;
                         window.open(`/print/${selectedPatternId}`, "_blank", "noopener,noreferrer");
                       }}
-                      className="rounded-full border border-stone-200 bg-white px-3 py-1.5 text-sm font-medium text-stone-700 shadow-sm hover:bg-stone-50 disabled:opacity-40"
+                      className="rounded-full border border-stone-200 bg-white px-3 py-1.5 text-sm font-medium text-stone-700 shadow-sm hover:bg-stone-50 disabled:opacity-40 max-md:px-2 max-md:py-1 max-md:text-xs"
                     >
                       Print
                     </button>
                   </div>
                 </div>
 
-                <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 xl:flex-row xl:items-stretch">
-                  <div className="relative z-0 flex min-h-0 min-w-0 flex-1 flex-col">
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 xl:flex-row xl:items-stretch max-md:flex-none">
+                  <div className={`relative flex min-h-0 min-w-0 flex-1 flex-col max-md:flex-none transition-all duration-200 ${gridFullscreen ? "z-30 pointer-events-none" : "z-0"}`}>
                     <ImageTools
                       gridWidth={gridW}
                       gridHeight={gridH}
@@ -630,16 +786,30 @@ export default function EditorPage() {
                       onBestFitGrid={handleBestFitGrid}
                       onImageLoad={handleImageLoad}
                       onCropExpandedChange={setImageCropExpanded}
+                      onGridFullscreenChange={setGridFullscreen}
+                      onUndo={undo}
+                      onRedo={redo}
+                      canUndo={canUndo}
+                      canRedo={canRedo}
+                      onStepRow={handleStepCurrentRow}
                       progress={progress}
                       onToggleRowComplete={handleToggleRowComplete}
-                      className="min-h-0"
+                      savedImageSettings={imageSettings}
+                      imageSettingsLoadKey={imageSettingsLoadKey}
+                      onImageSettingsChange={handleImageSettingsChange}
+                      className="min-h-0 max-md:flex-none"
                     />
                   </div>
 
-                  {/* Yarn estimator: always visible on xl+, drawer toggle on narrower; hidden when crop fullscreen */}
+                  {/* Yarn estimator: always visible on xl+, drawer toggle on narrower; blurred when crop or grid is fullscreen */}
                   <div
-                    className={`xl:flex xl:w-80 xl:shrink-0 xl:flex-col ${yarnOpen ? "flex flex-col" : "hidden xl:flex"}`}
-                    style={imageCropExpanded ? { visibility: "hidden", pointerEvents: "none" } : undefined}
+                    className={`xl:flex xl:w-80 xl:shrink-0 xl:flex-col transition-all duration-200 ${
+                      yarnOpen ? "flex flex-col" : "hidden xl:flex"
+                    } ${
+                      imageCropExpanded || gridFullscreen
+                        ? "pointer-events-none opacity-30 blur-sm"
+                        : "pointer-events-auto opacity-100 blur-none"
+                    }`}
                   >
                     <YarnEstimator
                       gridWidth={gridW}

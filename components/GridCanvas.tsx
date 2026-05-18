@@ -39,6 +39,15 @@ export type GridCanvasProps = {
   rowComplete?: boolean[];
   currentRow?: number;
   onToggleRowComplete?: (row: number) => void;
+  /** Optional undo/redo wired into the fullscreen toolbar. */
+  onUndo?: () => void;
+  onRedo?: () => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
+  /** Step current row by +1 / -1 (fullscreen toolbar). */
+  onStepRow?: (delta: number) => void;
+  /** Called when fullscreen state toggles. */
+  onFullscreenChange?: (fullscreen: boolean) => void;
 };
 
 function clamp(n: number, lo: number, hi: number): number {
@@ -129,11 +138,18 @@ export function GridCanvas({
   rowComplete,
   currentRow = 0,
   onToggleRowComplete,
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
+  onStepRow,
+  onFullscreenChange,
 }: GridCanvasProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [tool, setTool] = useState<GridTool>("pencil");
   const [zoom, setZoom] = useState<ZoomLevel>("fit");
+  const [fullscreen, setFullscreen] = useState(false);
   /** Container size — used at fit zoom only. */
   const [containerSize, setContainerSize] = useState({ cssW: 400, cssH: 400 });
   const [layoutState, setLayoutState] = useState<GridCanvasLayout | null>(null);
@@ -307,6 +323,37 @@ export function GridCanvas({
     return () => ro.disconnect();
   }, []);
 
+  useEffect(() => {
+    onFullscreenChange?.(fullscreen);
+    document.body.style.overflow = fullscreen ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [fullscreen, onFullscreenChange]);
+
+  useEffect(() => {
+    if (!fullscreen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setFullscreen(false);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [fullscreen]);
+
+  // Auto-scroll the canvas container to keep the current row in view in fullscreen
+  useEffect(() => {
+    if (!fullscreen || !wrapRef.current || !layoutState) return;
+    const container = wrapRef.current;
+    const rowTop = layoutState.offsetY + currentRow * layoutState.cell;
+    const rowBottom = rowTop + layoutState.cell;
+    const { scrollTop, clientHeight } = container;
+    if (rowTop < scrollTop) {
+      container.scrollTo({ top: rowTop - 8, behavior: "smooth" });
+    } else if (rowBottom > scrollTop + clientHeight) {
+      container.scrollTo({ top: rowBottom - clientHeight + 8, behavior: "smooth" });
+    }
+  }, [fullscreen, currentRow, layoutState]);
+
   const clientToCell = useCallback(
     (clientX: number, clientY: number): { r: number; c: number } | null => {
       const canvas = canvasRef.current;
@@ -378,62 +425,154 @@ export function GridCanvas({
     scheduleDraw();
   };
 
+  const checkedRows = rowComplete ? rowComplete.filter(Boolean).length : 0;
+  const totalRows = rowComplete ? rowComplete.length : 0;
+  const progressPct = totalRows > 0 ? Math.round((checkedRows / totalRows) * 100) : 0;
+  const progressComplete = totalRows > 0 && checkedRows === totalRows;
+
+  const toolbarButtonCls = "rounded-full border border-stone-200 bg-white px-3 py-1 text-xs font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-40";
+
   return (
-    <div className={`flex min-h-0 flex-1 flex-col gap-3 ${className ?? ""}`}>
-      {/* Toolbar: tool + zoom */}
-      <div className="relative z-40 flex shrink-0 flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-stone-500">Tool</span>
-          <div id="tutorial-pencil" className="inline-flex rounded-full border border-brand/20 bg-white/90 p-0.5 shadow-sm">
+    <div
+      className={fullscreen ? "gap-3 p-4" : `flex min-h-0 flex-1 flex-col gap-3 ${className ?? ""}`}
+      style={
+        fullscreen
+          ? {
+              position: "fixed",
+              inset: 0,
+              zIndex: 200,
+              backgroundColor: "#ffffff",
+              isolation: "isolate",
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+              pointerEvents: "auto",
+            }
+          : undefined
+      }
+    >
+      {/* Progress bar — shown when row tracking is active */}
+      {showRowTracker && totalRows > 0 && (
+        <div className="flex shrink-0 items-center gap-2">
+          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-stone-100">
+            <div
+              className="h-full rounded-full transition-all duration-300"
+              style={{
+                width: `${progressPct}%`,
+                backgroundColor: progressComplete ? "#E8609A" : "#F9A87A",
+              }}
+            />
+          </div>
+          <span className="shrink-0 text-[11px] font-medium tabular-nums text-stone-500">
+            {progressComplete ? "Complete! 🎉" : `${progressPct}%`}
+          </span>
+        </div>
+      )}
+
+      {/* Toolbar */}
+      <div className="relative z-40 flex shrink-0 flex-wrap items-center gap-3" style={{ flexShrink: 0 }}>
+        {/* Tool + Zoom — hidden in fullscreen (read-only follow-along mode) */}
+        {!fullscreen && (
+          <>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-stone-500">Tool</span>
+              <div id="tutorial-pencil" className="inline-flex rounded-full border border-brand/20 bg-white/90 p-0.5 shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => setTool("pencil")}
+                  className={`rounded-full px-3 py-1 text-xs font-medium transition-colors duration-150 ${
+                    tool === "pencil"
+                      ? "bg-brand text-white shadow-sm"
+                      : "text-gray-700 hover:bg-pink-50 hover:text-gray-900"
+                  }`}
+                >
+                  Pencil
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTool("eraser")}
+                  className={`rounded-full px-3 py-1 text-xs font-medium transition-colors duration-150 ${
+                    tool === "eraser"
+                      ? "bg-brand text-white shadow-sm"
+                      : "text-gray-700 hover:bg-pink-50 hover:text-gray-900"
+                  }`}
+                >
+                  Eraser
+                </button>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-stone-500">Zoom</span>
+              <div className="inline-flex rounded-full border border-stone-200 bg-white/90 p-0.5 shadow-sm">
+                {(["fit", "100", "150"] as ZoomLevel[]).map((z) => (
+                  <button
+                    key={z}
+                    type="button"
+                    onClick={() => setZoom(z)}
+                    className={`rounded-full px-3 py-1 text-xs font-medium transition-colors duration-150 ${
+                      zoom === z
+                        ? "bg-brand text-white shadow-sm"
+                        : "text-gray-700 hover:bg-pink-50 hover:text-gray-900"
+                    }`}
+                  >
+                    {z === "fit" ? "Fit" : `${z}%`}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Fullscreen: Prev row / Next row + Exit */}
+        {fullscreen && (
+          <div className="flex w-full items-center gap-2">
+            {onStepRow !== undefined && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => onStepRow(-1)}
+                  disabled={currentRow <= 0}
+                  className={toolbarButtonCls}
+                >
+                  Prev row
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onStepRow(1)}
+                  disabled={currentRow >= gridHeight - 1}
+                  className={toolbarButtonCls}
+                >
+                  Next row
+                </button>
+              </>
+            )}
             <button
               type="button"
-              onClick={() => setTool("pencil")}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors duration-150 ${
-                tool === "pencil"
-                  ? "bg-brand text-white shadow-sm"
-                  : "text-gray-700 hover:bg-pink-50 hover:text-gray-900"
-              }`}
+              onClick={() => setFullscreen(false)}
+              className="ml-auto rounded-full border border-stone-300 bg-white px-4 py-1.5 text-xs font-medium text-stone-700 shadow-sm transition-colors hover:bg-stone-50"
             >
-              Pencil
-            </button>
-            <button
-              type="button"
-              onClick={() => setTool("eraser")}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors duration-150 ${
-                tool === "eraser"
-                  ? "bg-brand text-white shadow-sm"
-                  : "text-gray-700 hover:bg-pink-50 hover:text-gray-900"
-              }`}
-            >
-              Eraser
+              ✕ Exit fullscreen
             </button>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-stone-500">Zoom</span>
-          <div className="inline-flex rounded-full border border-stone-200 bg-white/90 p-0.5 shadow-sm">
-            {(["fit", "100", "150"] as ZoomLevel[]).map((z) => (
-              <button
-                key={z}
-                type="button"
-                onClick={() => setZoom(z)}
-                className={`rounded-full px-3 py-1 text-xs font-medium transition-colors duration-150 ${
-                  zoom === z
-                    ? "bg-brand text-white shadow-sm"
-                    : "text-gray-700 hover:bg-pink-50 hover:text-gray-900"
-                }`}
-              >
-                {z === "fit" ? "Fit" : `${z}%`}
-              </button>
-            ))}
-          </div>
-        </div>
+        )}
+
+        {/* Normal mode: fullscreen entry button */}
+        {!fullscreen && (
+          <button
+            type="button"
+            onClick={() => setFullscreen(true)}
+            className="ml-auto rounded-full border border-stone-200 bg-white/90 px-3 py-1 text-xs font-medium text-stone-600 shadow-sm hover:bg-stone-50"
+          >
+            ⛶ Fullscreen
+          </button>
+        )}
       </div>
 
-      {/* Canvas container — flex-1 min-h-0 gives it a definite height (remaining space after toolbar); overflow-auto scrolls the canvas */}
+      {/* Canvas container */}
       <div
         ref={wrapRef}
         className="relative min-h-0 w-full flex-1 overflow-auto rounded-xl border border-rose-100/80 bg-white/90 shadow-sm"
+        style={fullscreen ? { flex: 1, minHeight: 0, overflow: "auto" } : undefined}
       >
         {showRowTracker && layoutState && rowComplete && onToggleRowComplete ? (
           <div
@@ -473,7 +612,7 @@ export function GridCanvas({
         ) : null}
         <canvas
           ref={canvasRef}
-          style={{ display: "block", width: canvasCssW, height: canvasCssH }}
+          style={{ display: "block", width: canvasCssW, height: canvasCssH, pointerEvents: fullscreen ? "none" : "auto" }}
           className="touch-none"
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}

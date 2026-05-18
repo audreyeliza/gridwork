@@ -8,6 +8,11 @@ import {
   otsuThreshold,
   type CropRect,
 } from "@/lib/imageCanvasUtils";
+import {
+  compressImageToDataUrl,
+  loadImageFromDataUrl,
+  type PatternImageSettings,
+} from "@/lib/imageSettings";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 export type ImageReferenceMode = "none" | "underlay" | "convert";
@@ -23,9 +28,21 @@ export type ImageToolsProps = {
   onBestFitGrid?: (w: number, h: number) => void;
   onImageLoad?: (naturalWidth: number, naturalHeight: number) => void;
   onCropExpandedChange?: (expanded: boolean) => void;
+  onGridFullscreenChange?: (fullscreen: boolean) => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
+  onStepRow?: (delta: number) => void;
   className?: string;
   progress?: PatternProgressState;
   onToggleRowComplete?: (row: number) => void;
+  /** Saved image settings from the DB — applied when imageSettingsLoadKey changes. */
+  savedImageSettings?: PatternImageSettings | null;
+  /** Changing this key triggers a full reinit from savedImageSettings. */
+  imageSettingsLoadKey?: string;
+  /** Called whenever any image setting changes (for autosave). */
+  onImageSettingsChange?: (s: PatternImageSettings) => void;
 };
 
 const MAX_BEST_FIT_CELLS = 80;
@@ -334,9 +351,18 @@ export function ImageTools({
   onBestFitGrid,
   onImageLoad,
   onCropExpandedChange,
+  onGridFullscreenChange,
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
+  onStepRow,
   className,
   progress,
   onToggleRowComplete,
+  savedImageSettings,
+  imageSettingsLoadKey,
+  onImageSettingsChange,
 }: ImageToolsProps) {
   const fileInputId = useId();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -352,6 +378,7 @@ export function ImageTools({
   const [darkIsFilled, setDarkIsFilled] = useState(true);
   const [status, setStatus] = useState<string | null>(null);
 
+  const [gridFullscreen, setGridFullscreen] = useState(false);
   const [cropRect, setCropRect] = useState<CropRect>(FULL_CROP);
   const [appliedCrop, setAppliedCrop] = useState<CropRect | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -361,6 +388,10 @@ export function ImageTools({
   const [positionLocked, setPositionLocked] = useState(false);
   const [cropExpanded, setCropExpanded] = useState(false);
   const [expandedSize, setExpandedSize] = useState({ w: 700, h: 400 });
+
+  const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
+  /** When true, the image-change effect skips its state reset (used when loading from saved settings). */
+  const skipImageResetRef = useRef(false);
 
   const thresholdRef = useRef(threshold);
   const darkIsFilledRef = useRef(darkIsFilled);
@@ -374,8 +405,13 @@ export function ImageTools({
   useEffect(() => { panXRef.current = panX; }, [panX]);
   useEffect(() => { panYRef.current = panY; }, [panY]);
 
-  // When source image changes, reset working image and all crop/pan state
+  // When source image changes, reset working image and all crop/pan state.
+  // Skip when restoring from saved settings (skipImageResetRef prevents overwriting restored state).
   useEffect(() => {
+    if (skipImageResetRef.current) {
+      skipImageResetRef.current = false;
+      return;
+    }
     setWorkingImage(image);
     setCropRect(FULL_CROP);
     setAppliedCrop(null);
@@ -388,8 +424,11 @@ export function ImageTools({
   // Compute expanded canvas size from viewport when modal opens
   useEffect(() => {
     if (!cropExpanded) return;
+    const narrow = window.innerWidth < 768;
     const padding = 96;
-    const w = Math.min(Math.round(window.innerWidth * 0.8) - 48, 900);
+    const w = narrow
+      ? window.innerWidth - 32
+      : Math.min(Math.round(window.innerWidth * 0.8) - 48, 900);
     const h = Math.min(Math.round(w * (PREVIEW_H / PREVIEW_W)), Math.round(window.innerHeight * 0.8) - padding);
     setExpandedSize({ w, h });
   }, [cropExpanded]);
@@ -422,8 +461,65 @@ export function ImageTools({
     queueMicrotask(() => onApplyConvertedGrid(next));
   }, [mode, workingImage, gridWidth, gridHeight, panX, panY, onApplyConvertedGrid]);
 
+  // Reinitialize all image state when the load key changes (new pattern loaded from DB).
+  useEffect(() => {
+    if (!imageSettingsLoadKey) return;
+    const s = savedImageSettings;
+    setMode(s?.mode ?? "none");
+    setUnderlayOpacityPct(s?.underlayOpacityPct ?? 65);
+    setThreshold(s?.threshold ?? 140);
+    setDarkIsFilled(s?.darkIsFilled ?? true);
+    setCropRect(s?.cropRect ?? FULL_CROP);
+    setAppliedCrop(s?.appliedCrop ?? null);
+    setPanX(s?.panX ?? 0);
+    setPanY(s?.panY ?? 0);
+    setPositionLocked(s?.positionLocked ?? false);
+
+    if (s?.imageDataUrl) {
+      setImageDataUrl(s.imageDataUrl);
+      loadImageFromDataUrl(s.imageDataUrl)
+        .then((img) => {
+          skipImageResetRef.current = true;
+          setImage(img);
+          setWorkingImage(img);
+        })
+        .catch(() => {
+          setImage(null);
+          setWorkingImage(null);
+          setImageDataUrl(null);
+        });
+    } else {
+      setImage(null);
+      setWorkingImage(null);
+      setImageDataUrl(null);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [imageSettingsLoadKey]);
+
+  // Report current image settings to parent for autosave.
+  useEffect(() => {
+    onImageSettingsChange?.({
+      mode,
+      imageDataUrl,
+      underlayOpacityPct,
+      threshold,
+      darkIsFilled,
+      cropRect,
+      appliedCrop,
+      panX,
+      panY,
+      positionLocked,
+    });
+  }, [mode, imageDataUrl, underlayOpacityPct, threshold, darkIsFilled, cropRect, appliedCrop, panX, panY, positionLocked, onImageSettingsChange]);
+
+  const handleGridFullscreenChange = useCallback((fs: boolean) => {
+    setGridFullscreen(fs);
+    onGridFullscreenChange?.(fs);
+  }, [onGridFullscreenChange]);
+
   const clearImage = useCallback(() => {
     setImage(null);
+    setImageDataUrl(null);
     setStatus(null);
     if (fileRef.current) fileRef.current.value = "";
   }, []);
@@ -438,7 +534,9 @@ export function ImageTools({
       setStatus(null);
       try {
         const img = await loadImageFromFile(file);
+        const dataUrl = await compressImageToDataUrl(img);
         setImage(img);
+        setImageDataUrl(dataUrl);
         setThreshold(otsuThreshold(img));
         onImageLoad?.(img.naturalWidth, img.naturalHeight);
         const dims = bestFitDimensions(img, 1.0);
@@ -454,7 +552,9 @@ export function ImageTools({
     async (type: TransformType) => {
       if (!workingImage) return;
       const newImg = await applyTransform(workingImage, type);
+      const dataUrl = await compressImageToDataUrl(newImg);
       setWorkingImage(newImg);
+      setImageDataUrl(dataUrl);
     },
     [workingImage],
   );
@@ -574,11 +674,12 @@ export function ImageTools({
       {/* Expanded crop modal */}
       {cropExpanded && workingImage && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex flex-col bg-white md:items-center md:justify-center md:bg-black/60 md:backdrop-blur-sm"
           onClick={(e) => { if (e.target === e.currentTarget) setCropExpanded(false); }}
         >
-          <div className="flex flex-col gap-3 rounded-2xl bg-white p-6 shadow-2xl" style={{ maxWidth: "95vw" }}>
-            <div className="flex items-center justify-between gap-4">
+          <div className="flex flex-1 flex-col rounded-none bg-white shadow-2xl md:max-w-[95vw] md:flex-none md:rounded-2xl md:gap-3 md:p-6">
+            {/* Header: sticky bar on narrow, inline on desktop */}
+            <div className="flex shrink-0 items-center justify-between gap-4 border-b border-stone-200 px-4 py-3 md:border-b-0 md:px-0 md:py-0">
               <span className="text-sm font-semibold text-stone-800">Crop image</span>
               <div className="flex items-center gap-2">
                 <button
@@ -606,12 +707,16 @@ export function ImageTools({
                 </button>
               </div>
             </div>
-            {cropCanvasJSX(expandedCropCanvasRef, expandedSize.w, expandedSize.h)}
+            {/* Canvas: fills remaining viewport on narrow, inline on desktop */}
+            <div className="flex flex-1 items-center justify-center overflow-auto p-4 md:flex-none md:p-0">
+              {cropCanvasJSX(expandedCropCanvasRef, expandedSize.w, expandedSize.h)}
+            </div>
           </div>
         </div>
       )}
 
-      <div className="relative z-30 flex shrink-0 flex-col gap-3 rounded-xl border border-rose-100/90 bg-white/95 p-3 shadow-sm">
+      {!gridFullscreen && (
+      <div className="relative z-30 flex shrink-0 flex-col gap-3 rounded-xl border border-rose-100/90 bg-white/95 p-3 shadow-sm max-h-52 overflow-y-auto md:max-h-80">
 
         {/* Upload row */}
         <div className="flex flex-wrap items-center gap-2">
@@ -855,8 +960,9 @@ export function ImageTools({
 
         {status ? <p className="text-xs text-amber-800">{status}</p> : null}
       </div>
+      )}
 
-      <div className="relative z-0 flex min-h-0 flex-1 flex-col">
+      <div className="relative z-0 flex min-h-[320px] flex-1 flex-col">
         <GridCanvas
           gridWidth={gridWidth}
           gridHeight={gridHeight}
@@ -870,6 +976,12 @@ export function ImageTools({
           rowComplete={progress?.rowComplete}
           currentRow={progress?.currentRow}
           onToggleRowComplete={onToggleRowComplete}
+          onFullscreenChange={handleGridFullscreenChange}
+          onUndo={onUndo}
+          onRedo={onRedo}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          onStepRow={onStepRow}
           className="min-h-0"
         />
       </div>

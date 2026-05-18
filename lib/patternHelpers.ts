@@ -18,12 +18,14 @@ export type Pattern = {
   grid_height: number;
   progress_data: Json;
   yarn_settings: Json;
+  image_settings?: Json;
   updated_at: string;
 };
 
 export type PatternInsert = Omit<Pattern, "id" | "updated_at"> & {
   id?: string;
   updated_at?: string;
+  image_settings?: Json;
 };
 
 export type PatternUpsert = PatternInsert;
