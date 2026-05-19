@@ -92,6 +92,61 @@ export async function copyPublicPattern(
   return { newPatternId: data as string | null, error: error as Error | null };
 }
 
+export type UserSearchResult = {
+  display_name: string;
+  public_pattern_count: number;
+};
+
+export async function searchUsers(
+  supabase: SupabaseClient,
+  query: string,
+): Promise<UserSearchResult[]> {
+  const { data: profiles } = await supabase
+    .from("profiles")
+    .select("user_id, display_name")
+    .ilike("display_name", `%${query.trim()}%`)
+    .limit(3);
+
+  if (!profiles || profiles.length === 0) return [];
+
+  const rows = profiles as { user_id: string; display_name: string }[];
+  const userIds = rows.map((p) => p.user_id);
+
+  const { data: patternRows } = await supabase
+    .from("patterns")
+    .select("user_id")
+    .eq("is_public", true)
+    .in("user_id", userIds);
+
+  const countByUserId = new Map<string, number>();
+  for (const row of (patternRows ?? []) as { user_id: string }[]) {
+    countByUserId.set(row.user_id, (countByUserId.get(row.user_id) ?? 0) + 1);
+  }
+
+  return rows.map((p) => ({
+    display_name: p.display_name,
+    public_pattern_count: countByUserId.get(p.user_id) ?? 0,
+  }));
+}
+
+export async function fetchPublicPatternsByUserId(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<{ data: GalleryPattern[]; error: Error | null }> {
+  const { data, error } = await supabase
+    .from("patterns")
+    .select(
+      "id, user_id, name, grid_width, grid_height, thumbnail, likes_count, copies_count, updated_at",
+    )
+    .eq("is_public", true)
+    .eq("user_id", userId)
+    .order("updated_at", { ascending: false });
+  return {
+    data: (data as GalleryPattern[] | null) ?? [],
+    error: error as Error | null,
+  };
+}
+
 export async function setPatternPublic(
   supabase: SupabaseClient,
   patternId: string,

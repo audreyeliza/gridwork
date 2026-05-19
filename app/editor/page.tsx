@@ -1,6 +1,7 @@
 "use client";
 
 import { AuthModal } from "@/components/AuthModal";
+import { DisplayNameModal } from "@/components/DisplayNameModal";
 import { ImageTools } from "@/components/ImageTools";
 import { YarnEstimator } from "@/components/YarnEstimator";
 import { PatternSidebar } from "@/components/PatternSidebar";
@@ -41,6 +42,7 @@ import {
   type PatternImageSettings,
 } from "@/lib/imageSettings";
 import { setPatternPublic } from "@/lib/galleryHelpers";
+import { fetchProfile, upsertProfile } from "@/lib/profileHelpers";
 import { generateGridThumbnail } from "@/lib/thumbnailUtils";
 import { getSupabaseBrowserClient, resetSupabaseBrowserClient } from "@/lib/supabase";
 import type { Session, SupabaseClient, User } from "@supabase/supabase-js";
@@ -122,6 +124,11 @@ export default function EditorPage() {
   const [gridFullscreen, setGridFullscreen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+
+  const [displayName, setDisplayName] = useState<string | null>(null);
+  const [displayNameModalOpen, setDisplayNameModalOpen] = useState(false);
+  const [displayNameModalMsg, setDisplayNameModalMsg] = useState<string | undefined>(undefined);
+  const skippedDisplayNameRef = useRef(false);
 
   const [gridW, setGridW] = useState(10);
   const [gridH, setGridH] = useState(10);
@@ -207,6 +214,22 @@ export default function EditorPage() {
     }, 0);
     return () => window.clearTimeout(id);
   }, [supabase, user, loadPatterns]);
+
+  useEffect(() => {
+    if (!supabase || !user) {
+      setDisplayName(null);
+      skippedDisplayNameRef.current = false;
+      return;
+    }
+    void fetchProfile(supabase, user.id).then(({ data }) => {
+      if (data) {
+        setDisplayName(data.display_name);
+      } else if (!skippedDisplayNameRef.current) {
+        setDisplayNameModalMsg(undefined);
+        setDisplayNameModalOpen(true);
+      }
+    });
+  }, [supabase, user]);
 
   useEffect(() => {
     if (selectedPatternId !== null) return;
@@ -480,9 +503,23 @@ export default function EditorPage() {
     [gridW, gridH, cells, yarnSettings, progress, imageSettings],
   );
 
+  const handleSaveDisplayName = useCallback(
+    async (name: string) => {
+      if (!supabase || !user) return;
+      const { error } = await upsertProfile(supabase, user.id, name);
+      if (!error) setDisplayName(name);
+    },
+    [supabase, user],
+  );
+
   const handleTogglePublic = useCallback(
     async (id: string, isPublic: boolean) => {
       if (!supabase || !user) return;
+      if (isPublic && !displayName) {
+        setDisplayNameModalMsg("You need a display name before sharing patterns publicly.");
+        setDisplayNameModalOpen(true);
+        return;
+      }
       setPatterns((prev) => prev.map((p) => (p.id === id ? { ...p, is_public: isPublic } : p)));
       const { error } = await setPatternPublic(supabase, id, user.id, isPublic);
       if (error) {
@@ -490,7 +527,7 @@ export default function EditorPage() {
         setPatterns((prev) => prev.map((p) => (p.id === id ? { ...p, is_public: !isPublic } : p)));
       }
     },
-    [supabase, user],
+    [supabase, user, displayName],
   );
 
   const persistPattern = useCallback(async () => {
@@ -571,7 +608,12 @@ export default function EditorPage() {
         {/* Desktop right side */}
         {user ? (
           <div className="hidden items-center gap-2 md:flex">
-            <span className="max-w-[160px] truncate text-xs text-stone-500">{user.email}</span>
+            <Link
+              href="/profile"
+              className="text-sm text-gray-700 transition-colors duration-150 hover:text-violet-700"
+            >
+              Profile
+            </Link>
             <button
               type="button"
               onClick={() => void handleLogout()}
@@ -619,7 +661,13 @@ export default function EditorPage() {
               </Link>
               {user ? (
                 <>
-                  <div className="border-t border-stone-100 px-4 py-2 text-xs text-stone-500 truncate">{user.email}</div>
+                  <Link
+                    href="/profile"
+                    onClick={() => setMenuOpen(false)}
+                    className="block border-t border-stone-100 px-4 py-3 text-sm text-gray-700 hover:bg-stone-50"
+                  >
+                    Profile
+                  </Link>
                   <button
                     type="button"
                     onClick={() => { void handleLogout(); setMenuOpen(false); }}
@@ -660,6 +708,9 @@ export default function EditorPage() {
           >
             <PatternSidebar
               user={user}
+              supabase={supabase}
+              displayName={displayName}
+              onSaveDisplayName={handleSaveDisplayName}
               patterns={patterns}
               patternsLoading={patternsLoading}
               selectedPatternId={selectedPatternId}
@@ -865,7 +916,7 @@ export default function EditorPage() {
                 </div>
 
                 <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 xl:flex-row xl:items-stretch max-md:flex-none">
-                  <div className={`relative flex min-h-0 min-w-0 flex-1 flex-col max-md:flex-none transition-all duration-200 ${gridFullscreen ? "z-30 pointer-events-none" : "z-0"}`}>
+                  <div className={`relative flex min-h-0 min-w-0 flex-1 flex-col max-md:flex-none transition-all duration-200 ${gridFullscreen ? "z-30 pointer-events-none" : ""}`}>
                     <ImageTools
                       gridWidth={gridW}
                       gridHeight={gridH}
@@ -892,12 +943,12 @@ export default function EditorPage() {
 
                   {/* Yarn estimator: always visible on xl+, drawer toggle on narrower; blurred when crop or grid is fullscreen */}
                   <div
-                    className={`xl:flex xl:w-80 xl:shrink-0 xl:flex-col transition-all duration-200 ${
+                    className={`xl:flex xl:w-80 xl:shrink-0 xl:flex-col ${
                       yarnOpen ? "flex flex-col" : "hidden xl:flex"
                     } ${
                       imageCropExpanded || gridFullscreen
-                        ? "pointer-events-none opacity-30 blur-sm"
-                        : "pointer-events-auto opacity-100 blur-none"
+                        ? "pointer-events-none"
+                        : ""
                     }`}
                   >
                     <YarnEstimator
@@ -915,6 +966,25 @@ export default function EditorPage() {
             )}
           </main>
       </div>
+
+      {supabase && user && (
+        <DisplayNameModal
+          open={displayNameModalOpen}
+          userId={user.id}
+          supabase={supabase}
+          message={displayNameModalMsg}
+          onSaved={(name) => {
+            setDisplayName(name);
+            setDisplayNameModalOpen(false);
+            setDisplayNameModalMsg(undefined);
+          }}
+          onSkip={() => {
+            skippedDisplayNameRef.current = true;
+            setDisplayNameModalOpen(false);
+            setDisplayNameModalMsg(undefined);
+          }}
+        />
+      )}
 
       <TutorialSpotlight />
 

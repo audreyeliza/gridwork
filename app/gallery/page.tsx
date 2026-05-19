@@ -6,10 +6,13 @@ import {
   copyPublicPattern,
   fetchGalleryPatterns,
   fetchUserLikedPatternIds,
+  searchUsers,
   togglePatternLike,
   type GalleryPattern,
   type GallerySortBy,
+  type UserSearchResult,
 } from "@/lib/galleryHelpers";
+import { fetchProfilesByUserIds } from "@/lib/profileHelpers";
 import { getSupabaseBrowserClient, resetSupabaseBrowserClient } from "@/lib/supabase";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import Link from "next/link";
@@ -96,6 +99,8 @@ export default function GalleryPage() {
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
   const [copying, setCopying] = useState<string | null>(null);
   const [previewId, setPreviewId] = useState<string | null>(null);
+  const [displayNames, setDisplayNames] = useState<Map<string, string>>(new Map());
+  const [userResults, setUserResults] = useState<UserSearchResult[]>([]);
 
   const hasMore = patterns.length < total;
   const previewPattern = previewId ? (patterns.find((p) => p.id === previewId) ?? null) : null;
@@ -111,19 +116,33 @@ export default function GalleryPage() {
     if (!supabase) return;
     let cancelled = false;
     setLoading(true);
-    void fetchGalleryPatterns(supabase, {
+    setUserResults([]);
+
+    const patternFetch = fetchGalleryPatterns(supabase, {
       sortBy,
       search: activeSearch,
       page: 0,
       pageSize: PAGE_SIZE,
-    }).then(({ data, total: t, error }) => {
+    }).then(async ({ data, total: t, error }) => {
       if (cancelled) return;
       if (error) console.error(error);
       setPatterns(data);
       setTotal(t);
       setPage(0);
       setLoading(false);
+      const uniqueIds = [...new Set(data.map((p) => p.user_id))];
+      const names = await fetchProfilesByUserIds(supabase, uniqueIds);
+      if (!cancelled) setDisplayNames(names);
     });
+
+    const userFetch = activeSearch.trim()
+      ? searchUsers(supabase, activeSearch).then((results) => {
+          if (!cancelled) setUserResults(results);
+        })
+      : Promise.resolve();
+
+    void Promise.all([patternFetch, userFetch]);
+
     return () => {
       cancelled = true;
     };
@@ -153,7 +172,12 @@ export default function GalleryPage() {
     setPatterns((prev) => [...prev, ...data]);
     setPage(nextPage);
     setLoadingMore(false);
-  }, [supabase, loadingMore, page, sortBy, activeSearch]);
+    const newIds = data.map((p) => p.user_id).filter((id) => !displayNames.has(id));
+    if (newIds.length > 0) {
+      const names = await fetchProfilesByUserIds(supabase, [...new Set(newIds)]);
+      setDisplayNames((prev) => new Map([...prev, ...names]));
+    }
+  }, [supabase, loadingMore, page, sortBy, activeSearch, displayNames]);
 
   const handleLike = useCallback(
     async (patternId: string) => {
@@ -266,6 +290,14 @@ export default function GalleryPage() {
           >
             Editor
           </Link>
+          {user && (
+            <Link
+              href="/profile"
+              className="text-sm text-gray-700 transition-colors duration-150 hover:text-violet-700"
+            >
+              Profile
+            </Link>
+          )}
           {user ? (
             <button
               type="button"
@@ -313,7 +345,13 @@ export default function GalleryPage() {
               </Link>
               {user ? (
                 <>
-                  <div className="border-t border-stone-100 px-4 py-2 text-xs text-stone-500 truncate">{user.email}</div>
+                  <Link
+                    href="/profile"
+                    onClick={() => setMenuOpen(false)}
+                    className="block border-t border-stone-100 px-4 py-3 text-sm text-gray-700 hover:bg-stone-50"
+                  >
+                    Profile
+                  </Link>
                   <button
                     type="button"
                     onClick={() => { void handleLogout(); setMenuOpen(false); }}
@@ -402,6 +440,33 @@ export default function GalleryPage() {
           </div>
         </div>
 
+        {activeSearch && userResults.length > 0 && (
+          <div className="mb-6">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-stone-400">Users</p>
+            <div className="flex flex-col gap-1">
+              {userResults.map((u) => (
+                <div
+                  key={u.display_name}
+                  className="flex items-center justify-between rounded-xl border border-stone-100 bg-white/80 px-4 py-2.5 shadow-sm"
+                >
+                  <span className="text-sm font-medium text-stone-800">@{u.display_name}</span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-stone-400">
+                      {u.public_pattern_count} pattern{u.public_pattern_count === 1 ? "" : "s"}
+                    </span>
+                    <Link
+                      href={`/u/${u.display_name}`}
+                      className="text-xs font-medium text-accent hover:text-accent-dark hover:underline"
+                    >
+                      View profile →
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {!loading && (
           <p className="mb-4 text-sm text-stone-500">
             {total === 0
@@ -430,6 +495,7 @@ export default function GalleryPage() {
                   onPreview={() => setPreviewId(p.id)}
                   copying={copying === p.id}
                   canInteract={Boolean(user)}
+                  makerDisplayName={displayNames.get(p.user_id) ?? null}
                 />
               ))}
             </div>

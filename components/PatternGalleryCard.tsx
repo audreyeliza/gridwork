@@ -1,6 +1,7 @@
 "use client";
 
 import type { GalleryPattern } from "@/lib/galleryHelpers";
+import Link from "next/link";
 
 export type PatternGalleryCardProps = {
   pattern: GalleryPattern;
@@ -11,6 +12,7 @@ export type PatternGalleryCardProps = {
   onPreview: () => void;
   copying: boolean;
   canInteract: boolean;
+  makerDisplayName?: string | null;
 };
 
 function HeartIcon({ filled }: { filled: boolean }) {
@@ -57,8 +59,9 @@ export function PatternGalleryCard({
   onPreview,
   copying,
   canInteract,
+  makerDisplayName,
 }: PatternGalleryCardProps) {
-  const makerTag = `Maker ${pattern.user_id.slice(0, 6).toUpperCase()}`;
+  const makerTag = makerDisplayName ?? `Maker ${pattern.user_id.slice(0, 6).toUpperCase()}`;
 
   return (
     <div className="flex flex-col overflow-hidden rounded-2xl border border-brand/10 bg-white/90 shadow-sm transition-all duration-200 hover:border-brand/20 hover:shadow-md">
@@ -114,7 +117,17 @@ export function PatternGalleryCard({
       {/* Info */}
       <div className="flex flex-col gap-1 p-3">
         <p className="truncate text-sm font-semibold text-stone-900">{pattern.name}</p>
-        <p className="text-xs text-stone-400">{makerTag}</p>
+        {makerDisplayName ? (
+          <Link
+            href={`/u/${makerDisplayName}`}
+            className="truncate text-xs text-stone-400 hover:text-accent hover:underline"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {makerTag}
+          </Link>
+        ) : (
+          <p className="truncate text-xs text-stone-400">{makerTag}</p>
+        )}
 
         <div className="mt-1 flex items-center gap-1.5">
           <button
