@@ -2,10 +2,24 @@
 
 import type { User } from "@supabase/supabase-js";
 import type { Pattern } from "@/lib/patternHelpers";
-import { useRef, useState } from "react";
+import { checkDisplayNameAvailable } from "@/lib/profileHelpers";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { useCallback, useRef, useState } from "react";
+
+const NAME_REGEX = /^[a-zA-Z0-9_]+$/;
+
+function validateDisplayName(name: string): string | null {
+  if (name.length < 3) return "At least 3 characters";
+  if (name.length > 30) return "30 characters maximum";
+  if (!NAME_REGEX.test(name)) return "Letters, numbers, underscores only";
+  return null;
+}
 
 export type PatternSidebarProps = {
   user: User | null;
+  supabase?: SupabaseClient | null;
+  displayName?: string | null;
+  onSaveDisplayName?: (name: string) => Promise<void>;
   patterns: Pattern[];
   patternsLoading: boolean;
   selectedPatternId: string | null;
@@ -52,8 +66,27 @@ function LockClosedIcon() {
   );
 }
 
+function PencilIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M11 2.5l2.5 2.5-7 7H4v-2.5l7-7z" />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 8l3.5 3.5L13 4" />
+    </svg>
+  );
+}
+
 export function PatternSidebar({
   user,
+  supabase,
+  displayName,
+  onSaveDisplayName,
   patterns,
   patternsLoading,
   selectedPatternId,
@@ -69,6 +102,60 @@ export function PatternSidebar({
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Display name inline edit state
+  const [editingDisplayName, setEditingDisplayName] = useState(false);
+  const [dnInput, setDnInput] = useState("");
+  const [dnLocalError, setDnLocalError] = useState<string | null>(null);
+  const [dnAvailability, setDnAvailability] = useState<"idle" | "checking" | "available" | "taken">("idle");
+  const [dnSaving, setDnSaving] = useState(false);
+  const dnDebounceRef = useRef<number | undefined>(undefined);
+  const dnInputRef = useRef<HTMLInputElement>(null);
+
+  const startEditDisplayName = useCallback(() => {
+    setDnInput(displayName ?? "");
+    setDnLocalError(null);
+    setDnAvailability("idle");
+    setEditingDisplayName(true);
+    window.setTimeout(() => { dnInputRef.current?.select(); dnInputRef.current?.focus(); }, 0);
+  }, [displayName]);
+
+  const cancelEditDisplayName = useCallback(() => {
+    if (dnDebounceRef.current !== undefined) window.clearTimeout(dnDebounceRef.current);
+    setEditingDisplayName(false);
+  }, []);
+
+  const handleDnChange = useCallback(
+    (value: string) => {
+      setDnInput(value);
+      const err = validateDisplayName(value);
+      setDnLocalError(err);
+
+      if (dnDebounceRef.current !== undefined) window.clearTimeout(dnDebounceRef.current);
+
+      if (err || value.trim() === "") {
+        setDnAvailability("idle");
+        return;
+      }
+
+      setDnAvailability("checking");
+      dnDebounceRef.current = window.setTimeout(() => {
+        if (!supabase || !user) return;
+        void checkDisplayNameAvailable(supabase, value, user.id).then((available) => {
+          setDnAvailability(available ? "available" : "taken");
+        });
+      }, 500) as unknown as number;
+    },
+    [supabase, user],
+  );
+
+  const commitDisplayName = useCallback(async () => {
+    if (dnLocalError || dnAvailability !== "available" || dnSaving || !onSaveDisplayName) return;
+    setDnSaving(true);
+    await onSaveDisplayName(dnInput.trim());
+    setDnSaving(false);
+    setEditingDisplayName(false);
+  }, [dnLocalError, dnAvailability, dnSaving, dnInput, onSaveDisplayName]);
 
   const startEdit = (p: Pattern) => {
     setEditingId(p.id);
@@ -212,6 +299,77 @@ export function PatternSidebar({
           </ul>
         )}
       </div>
+
+      {/* User profile section */}
+      {user && (
+        <div className="shrink-0 border-t border-brand/10 px-4 py-3">
+          {editingDisplayName ? (
+            <div className="mt-1.5">
+              <div className="flex items-center gap-1">
+                <input
+                  ref={dnInputRef}
+                  type="text"
+                  value={dnInput}
+                  onChange={(e) => handleDnChange(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void commitDisplayName();
+                    if (e.key === "Escape") cancelEditDisplayName();
+                  }}
+                  onBlur={() => {
+                    window.setTimeout(() => {
+                      if (document.activeElement !== dnInputRef.current) cancelEditDisplayName();
+                    }, 150);
+                  }}
+                  maxLength={30}
+                  placeholder="display_name"
+                  className="min-w-0 flex-1 rounded-lg border border-brand/30 bg-white px-2 py-1 text-xs text-stone-900 outline-none focus:ring-1 focus:ring-brand/30"
+                />
+                <button
+                  type="button"
+                  onClick={() => void commitDisplayName()}
+                  disabled={dnLocalError !== null || dnAvailability !== "available" || dnSaving}
+                  title="Save"
+                  className="shrink-0 rounded-md p-1 text-teal-600 hover:bg-teal-50 disabled:opacity-40"
+                >
+                  <CheckIcon />
+                </button>
+              </div>
+              <div className="mt-0.5 min-h-[14px] text-[10px]">
+                {dnLocalError && dnInput !== "" && (
+                  <span className="text-brand">{dnLocalError}</span>
+                )}
+                {!dnLocalError && dnAvailability === "checking" && (
+                  <span className="text-stone-400">Checking…</span>
+                )}
+                {!dnLocalError && dnAvailability === "available" && (
+                  <span className="text-teal-600">✓ available</span>
+                )}
+                {!dnLocalError && dnAvailability === "taken" && (
+                  <span className="text-brand">✗ taken</span>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="mt-1 flex items-center gap-1.5">
+              {displayName ? (
+                <span className="text-xs font-medium text-stone-700">{displayName}</span>
+              ) : (
+                <span className="text-xs text-stone-400">No display name set</span>
+              )}
+              {onSaveDisplayName && (
+                <button
+                  type="button"
+                  onClick={startEditDisplayName}
+                  title="Edit display name"
+                  className="shrink-0 rounded p-0.5 text-stone-400 hover:bg-stone-100 hover:text-stone-600"
+                >
+                  <PencilIcon />
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Delete confirmation modal */}
       {confirmDeleteId && (
