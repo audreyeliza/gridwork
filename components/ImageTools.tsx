@@ -1,6 +1,8 @@
 "use client";
 
 import { GridCanvas } from "@/components/GridCanvas";
+import type { GridTool } from "@/components/GridCanvas";
+import { createPortal } from "react-dom";
 import {
   drawImageWithTransform,
   imageToThresholdGrid,
@@ -43,11 +45,16 @@ export type ImageToolsProps = {
   imageSettingsLoadKey?: string;
   /** Called whenever any image setting changes (for autosave). */
   onImageSettingsChange?: (s: PatternImageSettings) => void;
+  /** When set, image controls are portaled into this element instead of rendered inline. */
+  sidePanelTarget?: HTMLElement | null;
+  /** External draw tool override — passed through to GridCanvas. */
+  toolOverride?: GridTool;
+  onToolOverrideChange?: (tool: GridTool) => void;
 };
 
 const MAX_BEST_FIT_CELLS = 80;
 const PREVIEW_W = 280;
-const PREVIEW_H = 160;
+const PREVIEW_H = 200;
 const HANDLE_HALF = 8;
 const HANDLE_SIZE = 8;
 const FULL_CROP: CropRect = { x: 0, y: 0, w: 1, h: 1 };
@@ -363,6 +370,9 @@ export function ImageTools({
   savedImageSettings,
   imageSettingsLoadKey,
   onImageSettingsChange,
+  sidePanelTarget,
+  toolOverride,
+  onToolOverrideChange,
 }: ImageToolsProps) {
   const fileInputId = useId();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -541,11 +551,12 @@ export function ImageTools({
         onImageLoad?.(img.naturalWidth, img.naturalHeight);
         const dims = bestFitDimensions(img, 1.0);
         onBestFitGrid?.(dims.w, dims.h);
+        if (mode === "none") setMode("underlay");
       } catch {
         setStatus("Could not load that image.");
       }
     },
-    [onBestFitGrid, onImageLoad],
+    [onBestFitGrid, onImageLoad, mode],
   );
 
   const handleTransform = useCallback(
@@ -664,10 +675,263 @@ export function ImageTools({
       onPointerDown={onCropPointerDown}
       onPointerMove={onCropPointerMove}
       onPointerUp={onCropPointerUp}
-      className={`rounded-lg border border-rose-100 ${positionLocked ? "cursor-not-allowed" : cropCursor}`}
-      style={{ width: w, height: h, display: "block" }}
+      className={`${positionLocked ? "cursor-not-allowed" : cropCursor}`}
+      style={{ width: w, height: h, display: "block", borderRadius: 12, border: "1px solid rgba(61,42,30,0.12)" }}
     />
   );
+
+  const controlsPanel = !gridFullscreen ? (
+    <div className="relative z-30 flex shrink-0 flex-col gap-3 rounded-xl p-4" style={{ background: "#FBF7EF", border: "1px solid rgba(61,42,30,0.10)" }}>
+
+      {sidePanelTarget && (
+        <div className="mb-1">
+          <div className="font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-muted mb-1">Reference image</div>
+          <div className="font-serif text-[20px] font-bold leading-none tracking-[-0.01em] text-text-strong">Import & convert</div>
+        </div>
+      )}
+
+      {/* Upload row */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-semibold text-stone-700">Reference image</span>
+        <input
+          ref={fileRef}
+          id={fileInputId}
+          type="file"
+          accept="image/*"
+          className="sr-only"
+          onChange={(e) => void onPickFile(e.target.files?.[0] ?? null)}
+        />
+        <label
+          htmlFor={fileInputId}
+          className="cursor-pointer rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-medium text-rose-800 hover:bg-rose-100"
+        >
+          Upload…
+        </label>
+        {image ? (
+          <button
+            type="button"
+            onClick={clearImage}
+            className="text-xs font-medium text-stone-500 underline decoration-rose-200 hover:text-rose-700"
+          >
+            Clear image
+          </button>
+        ) : null}
+      </div>
+
+      {/* Image section */}
+      {workingImage ? (
+        <div className="flex flex-col gap-2">
+          {/* Crop header */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[11px] text-stone-500">Crop</span>
+            <button
+              type="button"
+              onClick={() => setCropExpanded(true)}
+              title="Expand crop preview"
+              className="rounded-full border border-gray-300 px-2 py-0.5 text-[11px] font-medium text-gray-700 hover:bg-pink-50"
+            >
+              ⤢
+            </button>
+            <button
+              type="button"
+              onClick={applyCrop}
+              disabled={positionLocked}
+              className="rounded-full bg-brand px-2.5 py-0.5 text-[11px] font-medium text-white shadow-sm transition-colors disabled:opacity-50 hover:bg-brand-dark"
+            >
+              Apply Crop
+            </button>
+            <button
+              type="button"
+              onClick={resetCrop}
+              disabled={positionLocked}
+              className="rounded-full border border-gray-300 px-2.5 py-0.5 text-[11px] font-medium text-gray-700 transition-colors disabled:opacity-40 hover:bg-pink-50"
+            >
+              Reset
+            </button>
+            {appliedCrop && (
+              <span className="text-[11px] text-stone-400">
+                Applied {Math.round(appliedCrop.w * 100)}%×{Math.round(appliedCrop.h * 100)}%
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => setPositionLocked((p) => !p)}
+              title={positionLocked ? "Unlock position" : "Lock position — freeze crop and pan"}
+              className={`ml-auto rounded-md border border-gray-300 bg-white/80 p-1.5 transition-colors hover:bg-pink-50 ${
+                positionLocked ? "text-brand" : "text-gray-400"
+              }`}
+            >
+              {positionLocked ? (
+                <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="2" y="7" width="12" height="8" rx="1.5" />
+                  <path d="M5 7V5a3 3 0 016 0v2" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="2" y="7" width="12" height="8" rx="1.5" />
+                  <path d="M5 7V5a3 3 0 016 0V2" />
+                </svg>
+              )}
+            </button>
+          </div>
+
+          {/* Normal crop canvas (hidden when expanded modal is open) */}
+          {!cropExpanded && cropCanvasJSX(cropCanvasRef, PREVIEW_W, PREVIEW_H)}
+
+          {/* Pan controls */}
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center gap-2">
+              <span className="w-16 text-[11px] text-stone-500">X offset</span>
+              <input
+                type="range"
+                min={-50}
+                max={50}
+                step={1}
+                value={panX}
+                disabled={positionLocked}
+                onChange={(e) => setPanX(Number(e.target.value))}
+                className="flex-1 disabled:opacity-40"
+              />
+              <span className="w-8 text-right tabular-nums text-[11px] text-stone-500">{panX > 0 ? `+${panX}` : panX}%</span>
+              {panX !== 0 && !positionLocked && (
+                <button type="button" onClick={() => setPanX(0)} className="text-[10px] text-stone-400 hover:text-stone-600">↩</button>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-16 text-[11px] text-stone-500">Y offset</span>
+              <input
+                type="range"
+                min={-50}
+                max={50}
+                step={1}
+                value={panY}
+                disabled={positionLocked}
+                onChange={(e) => setPanY(Number(e.target.value))}
+                className="flex-1 disabled:opacity-40"
+              />
+              <span className="w-8 text-right tabular-nums text-[11px] text-stone-500">{panY > 0 ? `+${panY}` : panY}%</span>
+              {panY !== 0 && !positionLocked && (
+                <button type="button" onClick={() => setPanY(0)} className="text-[10px] text-stone-400 hover:text-stone-600">↩</button>
+              )}
+            </div>
+          </div>
+
+          {/* Transform controls */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] text-stone-500">Transform</span>
+            {(["flipH", "flipV", "rotateLeft", "rotateRight"] as TransformType[]).map((type) => (
+              <button
+                key={type}
+                type="button"
+                onClick={() => void handleTransform(type)}
+                disabled={positionLocked}
+                className="rounded-full border border-gray-300 bg-white px-2 py-0.5 text-[11px] font-medium text-gray-700 transition-colors hover:bg-pink-50 hover:text-gray-900 disabled:opacity-40"
+              >
+                {type === "flipH" ? "Flip H" : type === "flipV" ? "Flip V" : type === "rotateLeft" ? "↺ 90°" : "↻ 90°"}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Mode selector */}
+      <div className="flex flex-wrap gap-2">
+        {(
+          [
+            ["underlay", "Underlay"],
+            ["convert", "Auto-convert"],
+          ] as const
+        ).map(([m, label]) => (
+          <button
+            key={m}
+            type="button"
+            onClick={() => setMode(m)}
+            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors duration-150 ${
+              mode === m
+                ? "border-transparent bg-brand text-white shadow-sm"
+                : "border border-gray-300 bg-white text-gray-700 hover:bg-pink-50 hover:text-gray-900"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {mode === "underlay" && workingImage ? (
+        <label className="flex max-w-xs flex-col gap-1 text-xs text-stone-600">
+          Underlay opacity ({underlayOpacityPct}%)
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={underlayOpacityPct}
+            onChange={(e) => setUnderlayOpacityPct(Number(e.target.value))}
+          />
+        </label>
+      ) : null}
+
+      {mode === "convert" && workingImage ? (
+        <div className="flex max-w-md flex-col gap-2">
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs text-stone-600">
+                Threshold — pixels {darkIsFilled ? "below" : "above"} this value fill cells
+              </span>
+              <div className="flex shrink-0 items-center gap-1.5">
+                <div className="inline-flex rounded-full border border-stone-200 bg-white p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setDarkIsFilled(true)}
+                    className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors duration-150 ${
+                      darkIsFilled ? "bg-brand text-white shadow-sm" : "text-gray-700 hover:bg-pink-50"
+                    }`}
+                  >
+                    Dark fills
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDarkIsFilled(false)}
+                    className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors duration-150 ${
+                      !darkIsFilled ? "bg-brand text-white shadow-sm" : "text-gray-700 hover:bg-pink-50"
+                    }`}
+                  >
+                    Light fills
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { if (workingImage) setThreshold(otsuThreshold(workingImage)); }}
+                  className="rounded-full border border-accent/30 bg-accent/8 px-2.5 py-0.5 text-[11px] font-medium text-accent hover:bg-accent/15"
+                >
+                  Suggest
+                </button>
+              </div>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={255}
+              value={threshold}
+              onChange={(e) => setThreshold(Number(e.target.value))}
+            />
+            <span className="tabular-nums text-xs text-stone-500">{threshold}</span>
+          </div>
+          <button
+            type="button"
+            onClick={applyConversion}
+            className="w-fit rounded-full bg-brand px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-brand-dark"
+          >
+            Apply to grid
+          </button>
+          <p className="text-[11px] leading-snug text-stone-500">
+            Uses canvas grayscale + threshold. Crop and pan apply before conversion. Result is merged as a normal edit (undo available).
+          </p>
+        </div>
+      ) : null}
+
+      {status ? <p className="text-xs text-amber-800">{status}</p> : null}
+    </div>
+  ) : null;
 
   return (
     <div id="tutorial-image-tools" className={`flex min-h-0 flex-1 flex-col gap-3 ${className ?? ""}`}>
@@ -715,252 +979,7 @@ export function ImageTools({
         </div>
       )}
 
-      {!gridFullscreen && (
-      <div className="relative z-30 flex shrink-0 flex-col gap-3 rounded-xl border border-rose-100/90 bg-white/95 p-3 shadow-sm max-h-52 overflow-y-auto md:max-h-80">
-
-        {/* Upload row */}
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-semibold text-stone-700">Reference image</span>
-          <input
-            ref={fileRef}
-            id={fileInputId}
-            type="file"
-            accept="image/*"
-            className="sr-only"
-            onChange={(e) => void onPickFile(e.target.files?.[0] ?? null)}
-          />
-          <label
-            htmlFor={fileInputId}
-            className="cursor-pointer rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-medium text-rose-800 hover:bg-rose-100"
-          >
-            Upload…
-          </label>
-          {image ? (
-            <button
-              type="button"
-              onClick={clearImage}
-              className="text-xs font-medium text-stone-500 underline decoration-rose-200 hover:text-rose-700"
-            >
-              Clear image
-            </button>
-          ) : null}
-        </div>
-
-        {/* Image section */}
-        {workingImage ? (
-          <div className="flex flex-col gap-2">
-            {/* Crop header */}
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[11px] text-stone-500">Crop</span>
-              <button
-                type="button"
-                onClick={() => setCropExpanded(true)}
-                title="Expand crop preview"
-                className="rounded-full border border-gray-300 px-2 py-0.5 text-[11px] font-medium text-gray-700 hover:bg-pink-50"
-              >
-                ⤢
-              </button>
-              <button
-                type="button"
-                onClick={applyCrop}
-                disabled={positionLocked}
-                className="rounded-full bg-brand px-2.5 py-0.5 text-[11px] font-medium text-white shadow-sm transition-colors disabled:opacity-50 hover:bg-brand-dark"
-              >
-                Apply Crop
-              </button>
-              <button
-                type="button"
-                onClick={resetCrop}
-                disabled={positionLocked}
-                className="rounded-full border border-gray-300 px-2.5 py-0.5 text-[11px] font-medium text-gray-700 transition-colors disabled:opacity-40 hover:bg-pink-50"
-              >
-                Reset
-              </button>
-              {appliedCrop && (
-                <span className="text-[11px] text-stone-400">
-                  Applied {Math.round(appliedCrop.w * 100)}%×{Math.round(appliedCrop.h * 100)}%
-                </span>
-              )}
-              <button
-                type="button"
-                onClick={() => setPositionLocked((p) => !p)}
-                title={positionLocked ? "Unlock position" : "Lock position — freeze crop and pan"}
-                className={`ml-auto rounded-md border border-gray-300 bg-white/80 p-1.5 transition-colors hover:bg-pink-50 ${
-                  positionLocked ? "text-brand" : "text-gray-400"
-                }`}
-              >
-                {positionLocked ? (
-                  <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="2" y="7" width="12" height="8" rx="1.5" />
-                    <path d="M5 7V5a3 3 0 016 0v2" />
-                  </svg>
-                ) : (
-                  <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="2" y="7" width="12" height="8" rx="1.5" />
-                    <path d="M5 7V5a3 3 0 016 0V2" />
-                  </svg>
-                )}
-              </button>
-            </div>
-
-            {/* Normal crop canvas (hidden when expanded modal is open) */}
-            {!cropExpanded && cropCanvasJSX(cropCanvasRef, PREVIEW_W, PREVIEW_H)}
-
-            {/* Pan controls */}
-            <div className="flex flex-col gap-1.5">
-              <div className="flex items-center gap-2">
-                <span className="w-16 text-[11px] text-stone-500">X offset</span>
-                <input
-                  type="range"
-                  min={-50}
-                  max={50}
-                  step={1}
-                  value={panX}
-                  disabled={positionLocked}
-                  onChange={(e) => setPanX(Number(e.target.value))}
-                  className="flex-1 disabled:opacity-40"
-                />
-                <span className="w-8 text-right tabular-nums text-[11px] text-stone-500">{panX > 0 ? `+${panX}` : panX}%</span>
-                {panX !== 0 && !positionLocked && (
-                  <button type="button" onClick={() => setPanX(0)} className="text-[10px] text-stone-400 hover:text-stone-600">↩</button>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-16 text-[11px] text-stone-500">Y offset</span>
-                <input
-                  type="range"
-                  min={-50}
-                  max={50}
-                  step={1}
-                  value={panY}
-                  disabled={positionLocked}
-                  onChange={(e) => setPanY(Number(e.target.value))}
-                  className="flex-1 disabled:opacity-40"
-                />
-                <span className="w-8 text-right tabular-nums text-[11px] text-stone-500">{panY > 0 ? `+${panY}` : panY}%</span>
-                {panY !== 0 && !positionLocked && (
-                  <button type="button" onClick={() => setPanY(0)} className="text-[10px] text-stone-400 hover:text-stone-600">↩</button>
-                )}
-              </div>
-            </div>
-
-            {/* Transform controls */}
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-[11px] text-stone-500">Transform</span>
-              {(["flipH", "flipV", "rotateLeft", "rotateRight"] as TransformType[]).map((type) => (
-                <button
-                  key={type}
-                  type="button"
-                  onClick={() => void handleTransform(type)}
-                  disabled={positionLocked}
-                  className="rounded-full border border-gray-300 bg-white px-2 py-0.5 text-[11px] font-medium text-gray-700 transition-colors hover:bg-pink-50 hover:text-gray-900 disabled:opacity-40"
-                >
-                  {type === "flipH" ? "Flip H" : type === "flipV" ? "Flip V" : type === "rotateLeft" ? "↺ 90°" : "↻ 90°"}
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : null}
-
-        {/* Mode selector */}
-        <div className="flex flex-wrap gap-2">
-          {(
-            [
-              ["none", "Off"],
-              ["underlay", "Underlay"],
-              ["convert", "Auto-convert"],
-            ] as const
-          ).map(([m, label]) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => setMode(m)}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors duration-150 ${
-                mode === m
-                  ? "border-transparent bg-brand text-white shadow-sm"
-                  : "border border-gray-300 bg-white text-gray-700 hover:bg-pink-50 hover:text-gray-900"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {mode === "underlay" && workingImage ? (
-          <label className="flex max-w-xs flex-col gap-1 text-xs text-stone-600">
-            Underlay opacity ({underlayOpacityPct}%)
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={underlayOpacityPct}
-              onChange={(e) => setUnderlayOpacityPct(Number(e.target.value))}
-            />
-          </label>
-        ) : null}
-
-        {mode === "convert" && workingImage ? (
-          <div className="flex max-w-md flex-col gap-2">
-            <div className="flex flex-col gap-1">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs text-stone-600">
-                  Threshold — pixels {darkIsFilled ? "below" : "above"} this value fill cells
-                </span>
-                <div className="flex shrink-0 items-center gap-1.5">
-                  <div className="inline-flex rounded-full border border-stone-200 bg-white p-0.5">
-                    <button
-                      type="button"
-                      onClick={() => setDarkIsFilled(true)}
-                      className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors duration-150 ${
-                        darkIsFilled ? "bg-brand text-white shadow-sm" : "text-gray-700 hover:bg-pink-50"
-                      }`}
-                    >
-                      Dark fills
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDarkIsFilled(false)}
-                      className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors duration-150 ${
-                        !darkIsFilled ? "bg-brand text-white shadow-sm" : "text-gray-700 hover:bg-pink-50"
-                      }`}
-                    >
-                      Light fills
-                    </button>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => { if (workingImage) setThreshold(otsuThreshold(workingImage)); }}
-                    className="rounded-full border border-accent/30 bg-accent/8 px-2.5 py-0.5 text-[11px] font-medium text-accent hover:bg-accent/15"
-                  >
-                    Suggest
-                  </button>
-                </div>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={255}
-                value={threshold}
-                onChange={(e) => setThreshold(Number(e.target.value))}
-              />
-              <span className="tabular-nums text-xs text-stone-500">{threshold}</span>
-            </div>
-            <button
-              type="button"
-              onClick={applyConversion}
-              className="w-fit rounded-full bg-brand px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-brand-dark"
-            >
-              Apply to grid
-            </button>
-            <p className="text-[11px] leading-snug text-stone-500">
-              Uses canvas grayscale + threshold. Crop and pan apply before conversion. Result is merged as a normal edit (undo available).
-            </p>
-          </div>
-        ) : null}
-
-        {status ? <p className="text-xs text-amber-800">{status}</p> : null}
-      </div>
-      )}
+      {sidePanelTarget && controlsPanel && createPortal(controlsPanel, sidePanelTarget)}
 
       <div className="relative z-0 flex min-h-[320px] flex-1 flex-col">
         <GridCanvas
@@ -982,6 +1001,8 @@ export function ImageTools({
           canUndo={canUndo}
           canRedo={canRedo}
           onStepRow={onStepRow}
+          toolOverride={toolOverride}
+          onToolOverrideChange={onToolOverrideChange}
           className="min-h-0"
         />
       </div>

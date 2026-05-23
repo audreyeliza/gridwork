@@ -11,7 +11,7 @@ import { drawImageWithTransform, type CropRect } from "@/lib/imageCanvasUtils";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export type GridTool = "pencil" | "eraser";
-type ZoomLevel = "fit" | "100" | "150";
+export type ZoomLevel = "fit" | "100" | "150";
 
 const ZOOM_CELL_SIZE: Record<ZoomLevel, number | null> = {
   fit: null,
@@ -48,6 +48,9 @@ export type GridCanvasProps = {
   onStepRow?: (delta: number) => void;
   /** Called when fullscreen state toggles. */
   onFullscreenChange?: (fullscreen: boolean) => void;
+  /** External tool control — when provided, overrides internal pencil/eraser state. */
+  toolOverride?: GridTool;
+  onToolOverrideChange?: (tool: GridTool) => void;
 };
 
 function clamp(n: number, lo: number, hi: number): number {
@@ -144,10 +147,17 @@ export function GridCanvas({
   canRedo,
   onStepRow,
   onFullscreenChange,
+  toolOverride,
+  onToolOverrideChange,
 }: GridCanvasProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [tool, setTool] = useState<GridTool>("pencil");
+  const [toolInternal, setToolInternal] = useState<GridTool>("pencil");
+  const tool = toolOverride ?? toolInternal;
+  const setTool = (t: GridTool) => {
+    if (onToolOverrideChange) onToolOverrideChange(t);
+    else setToolInternal(t);
+  };
   const [zoom, setZoom] = useState<ZoomLevel>("fit");
   const [fullscreen, setFullscreen] = useState(false);
   /** Container size — used at fit zoom only. */
@@ -223,7 +233,7 @@ export function GridCanvas({
 
       const bg = "#fffbf5";
       const line = "#e7e5e4";
-      const fillOn = "#F0569A";
+      const fillOn = "#1F1410";
       const labelColor = "#78716c";
 
       if (showUnderlay) {
@@ -277,8 +287,21 @@ export function GridCanvas({
 
       const cr = showRowTracker && rowComplete ? currentRow : -1;
       if (cr >= 0 && cr < gridHeight) {
-        ctx.fillStyle = "rgba(249, 168, 122, 0.35)";
+        ctx.fillStyle = "rgba(168,70,111,0.10)";
         ctx.fillRect(offsetX, offsetY + cr * cell, gridWpx, cell);
+        ctx.save();
+        ctx.strokeStyle = "#A8466F";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 2]);
+        ctx.beginPath();
+        ctx.moveTo(offsetX, offsetY + cr * cell + 0.5);
+        ctx.lineTo(offsetX + gridWpx, offsetY + cr * cell + 0.5);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(offsetX, offsetY + (cr + 1) * cell - 0.5);
+        ctx.lineTo(offsetX + gridWpx, offsetY + (cr + 1) * cell - 0.5);
+        ctx.stroke();
+        ctx.restore();
       }
     });
   }, [
@@ -451,75 +474,40 @@ export function GridCanvas({
           : undefined
       }
     >
-      {/* Progress bar — shown when row tracking is active */}
-      {showRowTracker && totalRows > 0 && (
-        <div className="flex shrink-0 items-center gap-2">
-          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-stone-100">
-            <div
-              className="h-full rounded-full transition-all duration-300"
-              style={{
-                width: `${progressPct}%`,
-                backgroundColor: progressComplete ? "#E8609A" : "#F9A87A",
-              }}
-            />
-          </div>
-          <span className="shrink-0 text-[11px] font-medium tabular-nums text-stone-500">
-            {progressComplete ? "Complete! 🎉" : `${progressPct}%`}
-          </span>
-        </div>
-      )}
-
       {/* Toolbar */}
       <div className="relative z-40 flex shrink-0 flex-wrap items-center gap-3" style={{ flexShrink: 0 }}>
         {/* Tool + Zoom — hidden in fullscreen (read-only follow-along mode) */}
         {!fullscreen && (
           <>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-stone-500">Tool</span>
-              <div id="tutorial-pencil" className="inline-flex rounded-full border border-brand/20 bg-white/90 p-0.5 shadow-sm">
-                <button
-                  type="button"
-                  onClick={() => setTool("pencil")}
-                  className={`rounded-full px-3 py-1 text-xs font-medium transition-colors duration-150 ${
-                    tool === "pencil"
-                      ? "bg-brand text-white shadow-sm"
-                      : "text-gray-700 hover:bg-pink-50 hover:text-gray-900"
-                  }`}
-                >
-                  Pencil
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTool("eraser")}
-                  className={`rounded-full px-3 py-1 text-xs font-medium transition-colors duration-150 ${
-                    tool === "eraser"
-                      ? "bg-brand text-white shadow-sm"
-                      : "text-gray-700 hover:bg-pink-50 hover:text-gray-900"
-                  }`}
-                >
-                  Eraser
-                </button>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-stone-500">Zoom</span>
-              <div className="inline-flex rounded-full border border-stone-200 bg-white/90 p-0.5 shadow-sm">
-                {(["fit", "100", "150"] as ZoomLevel[]).map((z) => (
+            {toolOverride === undefined && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-stone-500">Tool</span>
+                <div id="tutorial-pencil" className="inline-flex rounded-full border border-brand/20 bg-white/90 p-0.5 shadow-sm">
                   <button
-                    key={z}
                     type="button"
-                    onClick={() => setZoom(z)}
+                    onClick={() => setTool("pencil")}
                     className={`rounded-full px-3 py-1 text-xs font-medium transition-colors duration-150 ${
-                      zoom === z
+                      tool === "pencil"
                         ? "bg-brand text-white shadow-sm"
                         : "text-gray-700 hover:bg-pink-50 hover:text-gray-900"
                     }`}
                   >
-                    {z === "fit" ? "Fit" : `${z}%`}
+                    Pencil
                   </button>
-                ))}
+                  <button
+                    type="button"
+                    onClick={() => setTool("eraser")}
+                    className={`rounded-full px-3 py-1 text-xs font-medium transition-colors duration-150 ${
+                      tool === "eraser"
+                        ? "bg-brand text-white shadow-sm"
+                        : "text-gray-700 hover:bg-pink-50 hover:text-gray-900"
+                    }`}
+                  >
+                    Eraser
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
           </>
         )}
 
@@ -568,55 +556,98 @@ export function GridCanvas({
         )}
       </div>
 
-      {/* Canvas container */}
+      {/* Canvas container — outer: positions HUD; inner: scrolls */}
       <div
-        ref={wrapRef}
-        className="relative min-h-0 w-full flex-1 overflow-auto rounded-xl border border-rose-100/80 bg-white/90 shadow-sm"
-        style={fullscreen ? { flex: 1, minHeight: 0, overflow: "auto" } : undefined}
+        className="relative min-h-0 w-full flex-1 overflow-hidden rounded-xl border border-rose-100/80 bg-white/90 shadow-sm"
+        style={fullscreen ? { flex: 1, minHeight: 0 } : undefined}
       >
-        {showRowTracker && layoutState && rowComplete && onToggleRowComplete ? (
-          <div
-            className="pointer-events-auto absolute z-20 flex flex-col border-r border-rose-100/90 bg-white/95 shadow-sm"
-            style={{
-              left: LABEL_SIZE,
-              top: layoutState.offsetY,
-              width: ROW_TRACKER_SIDEBAR_PX,
-              height: layoutState.gridHpx,
-            }}
-          >
-            {rowComplete.map((done, r) => (
-              <label
-                key={r}
-                className={`flex shrink-0 cursor-pointer items-center justify-center gap-0.5 border-b border-rose-100/70 last:border-b-0 ${
-                  done ? "bg-emerald-100/50" : ""
-                }`}
-                style={{ height: layoutState.cell }}
-              >
-                <input
-                  type="checkbox"
-                  checked={done}
-                  onChange={() => onToggleRowComplete(r)}
-                  className="h-3.5 w-3.5 rounded border-rose-200 text-emerald-600"
-                  aria-label={`Row ${r + 1} complete`}
-                />
-                <span
-                  className={`min-w-[1rem] text-center text-[10px] font-medium tabular-nums ${
-                    done ? "text-emerald-800 line-through" : "text-stone-600"
+        <div
+          ref={wrapRef}
+          className="absolute inset-0 overflow-auto"
+        >
+          {showRowTracker && layoutState && rowComplete && onToggleRowComplete ? (
+            <div
+              className="pointer-events-auto absolute z-20 flex flex-col border-r border-rose-100/90 bg-white/95 shadow-sm"
+              style={{
+                left: LABEL_SIZE,
+                top: layoutState.offsetY,
+                width: ROW_TRACKER_SIDEBAR_PX,
+                height: layoutState.gridHpx,
+              }}
+            >
+              {rowComplete.map((done, r) => (
+                <label
+                  key={r}
+                  className={`flex shrink-0 cursor-pointer items-center justify-center gap-0.5 border-b border-rose-100/70 last:border-b-0 ${
+                    done ? "bg-[rgba(168,70,111,0.06)]" : ""
+                  } ${r === currentRow ? "border-l-2 border-l-[#A8466F]" : ""}`}
+                  style={{ height: layoutState.cell }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={done}
+                    onChange={() => onToggleRowComplete(r)}
+                    className="sr-only"
+                    aria-label={`Row ${r + 1} complete`}
+                  />
+                  <span
+                    className="relative inline-flex shrink-0 items-center justify-center"
+                    style={{
+                      width: 12,
+                      height: 12,
+                      borderRadius: 4,
+                      border: done ? "1.5px solid #A8466F" : "1.5px solid rgba(168,70,111,0.35)",
+                      background: done ? "#A8466F" : "#fff",
+                    }}
+                  >
+                    {done && (
+                      <svg viewBox="0 0 8 6" width="8" height="6" fill="none" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M1 3l2 2 4-4" />
+                      </svg>
+                    )}
+                  </span>
+                  <span
+                    className={`min-w-[1rem] text-center text-[10px] font-medium tabular-nums ${
+                      done ? "line-through" : "text-stone-600"
+                    }`}
+                    style={done ? { color: "#A8466F" } : undefined}
+                  >
+                    {r + 1}
+                  </span>
+                </label>
+              ))}
+            </div>
+          ) : null}
+          <canvas
+            ref={canvasRef}
+            style={{ display: "block", width: canvasCssW, height: canvasCssH, pointerEvents: fullscreen ? "none" : "auto" }}
+            className="touch-none"
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+          />
+        </div>
+
+        {/* Zoom HUD — positioned relative to outer wrapper, not affected by scroll */}
+        {!fullscreen && (
+          <div className="absolute bottom-2 right-2 z-10 pointer-events-auto">
+            <div className="inline-flex rounded-full border border-stone-200 bg-white/95 p-0.5 shadow-sm">
+              {(["fit", "100", "150"] as ZoomLevel[]).map((z) => (
+                <button
+                  key={z}
+                  type="button"
+                  onClick={() => setZoom(z)}
+                  className={`rounded-full px-3 py-1 text-xs font-medium transition-colors duration-150 ${
+                    zoom === z
+                      ? "bg-brand text-white shadow-sm"
+                      : "text-gray-700 hover:bg-pink-50 hover:text-gray-900"
                   }`}
                 >
-                  {r + 1}
-                </span>
-              </label>
-            ))}
+                  {z === "fit" ? "Fit" : `${z}%`}
+                </button>
+              ))}
+            </div>
           </div>
-        ) : null}
-        <canvas
-          ref={canvasRef}
-          style={{ display: "block", width: canvasCssW, height: canvasCssH, pointerEvents: fullscreen ? "none" : "auto" }}
-          className="touch-none"
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-        />
+        )}
       </div>
     </div>
   );

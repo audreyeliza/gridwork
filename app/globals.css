@@ -1,30 +1,44 @@
 @import "tailwindcss";
 
 :root {
-  --background: #fffbf5;
-  --foreground: #44403c;
+  --background: #FBF7EF;
+  --foreground: #3D2A1E;
   color-scheme: light;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-lato);
-  --font-serif: var(--font-playfair);
-  --font-mono: var(--font-geist-mono);
-  --color-brand: #E8609A;
-  --color-brand-dark: #D4457F;
-  --color-accent: #9B6FD4;
-  --color-accent-dark: #7D55B8;
+  --font-sans: var(--font-nunito);
+  --font-serif: var(--font-lora);
+  --font-mono: var(--font-jetbrains-mono);
+
+  /* Primary CTA — deep rose */
+  --color-brand: #A8466F;
+  --color-brand-dark: #8B345A;
+  --color-brand-text: #FBF7EF;
+
+  /* Accent — warm terracotta */
+  --color-accent: #B85A35;
+  --color-accent-dark: #8E4128;
+  --color-accent-soft: #E8B89F;
+
+  /* Text scale */
+  --color-text-strong: #1F1410;
+  --color-muted: #7A6A5F;
+  --color-muted-strong: #5C4D43;
+
+  /* Surfaces */
+  --color-surface: #FBF7EF;
+  --color-divider: rgba(61,42,30,0.10);
+
+  /* Pill */
+  --color-pill-bg: rgba(184,90,53,0.10);
+  --color-pill-text: #8E4128;
+
+  /* Gradient blob colours — kept for AppGradient */
   --color-coral: #F9A87A;
   --color-periwinkle: #8B9FE8;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #fff7ed;
-    --foreground: #292524;
-  }
 }
 
 body {

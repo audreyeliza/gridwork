@@ -1,196 +1,83 @@
 "use client";
 
-import { AuthModal } from "@/components/AuthModal";
-import { getSupabaseBrowserClient, resetSupabaseBrowserClient } from "@/lib/supabase";
-import type { SupabaseClient, User } from "@supabase/supabase-js";
+import { CrochetMark } from "@/components/CrochetMark";
+import { NavUserSection } from "@/components/NavUserSection";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
-
-type SupabaseInit = {
-  supabase: SupabaseClient | null;
-  configError: string | null;
-};
-
-function initSupabaseClient(): SupabaseInit {
-  try {
-    return { supabase: getSupabaseBrowserClient(), configError: null };
-  } catch (e) {
-    return {
-      supabase: null,
-      configError: e instanceof Error ? e.message : "Supabase is not configured.",
-    };
-  }
-}
 
 export default function Home() {
-  const [supabaseInit, setSupabaseInit] = useState<SupabaseInit>(() => ({
-    supabase: null,
-    configError: null,
-  }));
-
-  useEffect(() => {
-    let cancelled = false;
-    let initialTimer: number | undefined;
-    let retryTimer: number | undefined;
-    const run = (attempt: number) => {
-      if (cancelled) return;
-      const next = initSupabaseClient();
-      if (cancelled) return;
-      setSupabaseInit(next);
-      const missing =
-        next.configError?.includes("Missing NEXT_PUBLIC_SUPABASE_URL") ||
-        next.configError?.includes("Missing NEXT_PUBLIC_SUPABASE_ANON_KEY");
-      if (missing && attempt < 1 && !cancelled) {
-        resetSupabaseBrowserClient();
-        retryTimer = window.setTimeout(() => run(attempt + 1), 50) as unknown as number;
-      }
-    };
-    initialTimer = window.setTimeout(() => run(0), 0) as unknown as number;
-    return () => {
-      cancelled = true;
-      if (initialTimer !== undefined) window.clearTimeout(initialTimer);
-      if (retryTimer !== undefined) window.clearTimeout(retryTimer);
-    };
-  }, []);
-
-  const { supabase, configError } = supabaseInit;
-  const [user, setUser] = useState<User | null>(null);
-  const [authModalOpen, setAuthModalOpen] = useState(false);
-
-  useEffect(() => {
-    if (!supabase) return;
-    void supabase.auth.getSession().then(({ data: { session: s } }) => {
-      setUser(s?.user ?? null);
-    });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      setUser(newSession?.user ?? null);
-    });
-    return () => subscription.unsubscribe();
-  }, [supabase]);
-
-  const handleLogout = useCallback(async () => {
-    if (!supabase) return;
-    await supabase.auth.signOut();
-  }, [supabase]);
-
-  const [menuOpen, setMenuOpen] = useState(false);
-
   return (
-    <div className="flex h-screen flex-col text-stone-800">
-      <header className="z-20 flex h-16 shrink-0 items-center justify-between border-b border-white/40 bg-white/80 px-4 shadow-sm backdrop-blur-md">
-        <div className="flex items-center gap-5">
-          <span className="font-serif text-xl font-bold text-brand">Gridwork</span>
-          <Link href="/learn" className="hidden text-sm text-gray-700 transition-colors duration-150 hover:text-violet-700 md:inline">
-            Learn
-          </Link>
-          <Link href="/gallery" className="hidden text-sm text-gray-700 transition-colors duration-150 hover:text-violet-700 md:inline">
-            Gallery
-          </Link>
+    <div className="flex h-screen flex-col">
+      <header className="z-20 flex h-[68px] items-center justify-between px-8">
+        <div className="flex items-center gap-9">
+          <span className="inline-flex items-center gap-[9px] font-serif text-2xl font-bold leading-none tracking-[-0.01em] text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">
+            <CrochetMark size={22} color="#fff" />
+            Gridwork
+          </span>
+          <nav className="hidden items-center gap-7 md:flex">
+            <span className="inline-flex items-center gap-[7px] text-sm font-bold text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">
+              <span className="inline-block size-[6px] rounded-full bg-white" />
+              Home
+            </span>
+            <Link href="/learn" className="text-sm font-semibold text-white/85 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">Learn</Link>
+            <Link href="/gallery" className="text-sm font-semibold text-white/85 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">Gallery</Link>
+            <Link href="/editor" className="text-sm font-semibold text-white/85 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">Editor</Link>
+          </nav>
         </div>
-
-        {/* Desktop right side */}
-        {user ? (
-          <div className="hidden items-center gap-2 md:flex">
-            <span className="max-w-[160px] truncate text-xs text-stone-500">{user.email}</span>
-            <button
-              type="button"
-              onClick={() => void handleLogout()}
-              className="cursor-pointer rounded-full border border-stone-200 bg-white px-3 py-1.5 text-sm font-medium text-stone-600 shadow-sm hover:bg-stone-50"
-            >
-              Log out
-            </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setAuthModalOpen(true)}
-            className="hidden cursor-pointer rounded-full bg-brand px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-brand-dark md:inline-flex"
-          >
-            Log in
-          </button>
-        )}
-
-        {/* Mobile hamburger */}
-        <div className="relative md:hidden">
-          <button
-            type="button"
-            onClick={() => setMenuOpen((p) => !p)}
-            className="rounded-md border border-stone-200 bg-white/80 px-2.5 py-1.5 text-xs font-medium text-stone-700 hover:bg-stone-50"
-            aria-label="Menu"
-          >
-            {menuOpen ? "✕" : "☰"}
-          </button>
-          {menuOpen && (
-            <div className="absolute right-0 top-full z-50 mt-1 w-48 overflow-hidden rounded-xl border border-stone-200 bg-white shadow-lg">
-              <Link
-                href="/learn"
-                onClick={() => setMenuOpen(false)}
-                className="block px-4 py-3 text-sm text-gray-700 hover:bg-stone-50"
-              >
-                Learn
-              </Link>
-              <Link
-                href="/gallery"
-                onClick={() => setMenuOpen(false)}
-                className="block border-t border-stone-100 px-4 py-3 text-sm text-gray-700 hover:bg-stone-50"
-              >
-                Gallery
-              </Link>
-              {user ? (
-                <>
-                  <div className="border-t border-stone-100 px-4 py-2 text-xs text-stone-500 truncate">{user.email}</div>
-                  <button
-                    type="button"
-                    onClick={() => { void handleLogout(); setMenuOpen(false); }}
-                    className="w-full border-t border-stone-100 px-4 py-3 text-left text-sm text-stone-700 hover:bg-stone-50"
-                  >
-                    Log out
-                  </button>
-                </>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => { setAuthModalOpen(true); setMenuOpen(false); }}
-                  className="w-full border-t border-stone-100 px-4 py-3 text-left text-sm font-medium text-brand hover:bg-pink-50"
-                >
-                  Log in
-                </button>
-              )}
-            </div>
-          )}
-        </div>
+        <NavUserSection activePage="home" />
       </header>
 
       <main className="flex flex-1 flex-col items-center justify-center px-6">
-        <div className="text-center">
-          <h1 className="text-5xl font-bold tracking-tight text-stone-800">Gridwork</h1>
-          <p className="mt-4 text-lg text-stone-600">
-            Design filet crochet patterns in your browser.
+        <div className="text-center" style={{ maxWidth: 720 }}>
+          <h1
+            className="font-serif font-bold tracking-[-0.025em] text-text-strong"
+            style={{ fontSize: 112, lineHeight: 0.95, margin: 0 }}
+          >
+            Gridwork
+          </h1>
+
+          <p
+            className="mx-auto mt-5 font-serif italic text-white"
+            style={{ fontSize: 24, lineHeight: 1.4, maxWidth: 540, textShadow: "0 1px 2px rgba(40,20,40,0.18)" }}
+          >
+            Design filet crochet patterns by tapping squares on a grid.
           </p>
-          <div className="mt-10 flex flex-col items-center gap-4">
+
+          <p
+            className="mx-auto mt-[14px] font-sans font-medium text-white/95"
+            style={{ fontSize: 17, lineHeight: 1.55, maxWidth: 480, marginBottom: 40, textShadow: "0 1px 2px rgba(40,20,40,0.18)" }}
+          >
+            Save them, share them, stitch them. A browser tool for charting filet — no signup needed for your first save.
+          </p>
+
+          <div className="flex flex-wrap items-center justify-center gap-[14px]">
             <Link
               href="/editor"
-              className="rounded-full border border-white/60 bg-white/85 px-8 py-3 text-base font-semibold text-[#D4457F] shadow-md backdrop-blur-sm transition-all duration-200 hover:scale-105 hover:bg-white hover:text-[#B03570] hover:shadow-md"
+              className="inline-flex items-center gap-2 rounded-full bg-[#A8466F] px-[30px] py-[15px] text-[15px] font-bold text-[#FBF7EF] transition-colors hover:bg-[#8B345A]"
+              style={{ boxShadow: "0 8px 26px rgba(168,70,111,0.40)" }}
             >
-              Get Started
+              Start a pattern
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M5 12h14M13 6l6 6-6 6" />
+              </svg>
             </Link>
             <Link
-              href="/learn"
-              className="group text-sm font-medium text-white/90 underline-offset-4 transition-all duration-150 hover:text-white hover:underline"
+              href="/gallery"
+              className="inline-flex items-center rounded-full border border-[rgba(255,255,255,0.6)] bg-[rgba(255,255,255,0.85)] px-[26px] py-[14px] text-[15px] font-bold text-[#1F1410] backdrop-blur-sm transition-colors hover:bg-white"
+              style={{ boxShadow: "0 4px 18px rgba(40,20,30,0.10)" }}
             >
-              How to filet crochet <span className="inline-block transition-transform duration-150 group-hover:translate-x-1">→</span>
+              Browse gallery
             </Link>
           </div>
+
+          <Link
+            href="/learn"
+            className="mt-[30px] inline-block border-b border-[rgba(255,255,255,0.5)] pb-[2px] font-sans text-[14px] font-semibold text-white/95 transition-colors hover:border-white hover:text-white"
+            style={{ textShadow: "0 1px 2px rgba(40,20,40,0.18)" }}
+          >
+            New to filet crochet? Read the primer →
+          </Link>
         </div>
       </main>
-
-      <AuthModal
-        key={authModalOpen ? "auth-open" : "auth-closed"}
-        open={authModalOpen}
-        onClose={() => setAuthModalOpen(false)}
-        supabase={supabase}
-        supabaseReady={Boolean(supabase || configError)}
-      />
     </div>
   );
 }

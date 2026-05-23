@@ -15,6 +15,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export type UserProfile = {
   user_id: string;
   display_name: string;
+  avatar_url?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -73,6 +74,20 @@ export async function fetchProfileByDisplayName(
     .ilike("display_name", displayName)
     .maybeSingle();
   return { data: data as UserProfile | null, error: error as Error | null };
+}
+
+// Required SQL migration to add avatar support:
+// alter table public.profiles add column if not exists avatar_url text;
+export async function upsertProfileAvatar(
+  supabase: SupabaseClient,
+  userId: string,
+  avatarUrl: string | null,
+): Promise<{ error: Error | null }> {
+  const { error } = await supabase
+    .from("profiles")
+    .update({ avatar_url: avatarUrl, updated_at: new Date().toISOString() })
+    .eq("user_id", userId);
+  return { error: error as Error | null };
 }
 
 /** Batch-fetch display names keyed by user_id. */

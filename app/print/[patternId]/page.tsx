@@ -99,7 +99,7 @@ export default function PrintPatternPage() {
   }, [pattern]);
 
   return (
-    <div id="print-root" className="mx-auto max-w-4xl p-6 print:p-4 print:max-w-none">
+    <div id="print-root" className="mx-auto max-w-5xl p-6 print:p-4 print:max-w-none">
       <p className="no-print mb-4 text-sm text-zinc-600">
         Opening the print dialog… Use your browser’s print dialog to save as PDF if needed.
       </p>
@@ -123,7 +123,7 @@ export default function PrintPatternPage() {
 
           <section className="break-inside-avoid" style={{ pageBreakInside: "avoid" }}>
             <h2 className="mb-2 text-sm font-semibold text-zinc-800 print:text-black">Pattern</h2>
-            <div style={{ maxWidth: "100%", overflow: "hidden" }}>
+            <div style={{ maxWidth: "100%", overflowX: "auto" }}>
               <PrintGridSvg
                 gridWidth={view.w}
                 gridHeight={view.h}

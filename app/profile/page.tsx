@@ -4,8 +4,13 @@ import {
   checkDisplayNameAvailable,
   fetchProfile,
   upsertProfile,
+  upsertProfileAvatar,
 } from "@/lib/profileHelpers";
 import { fetchPatternsForUser, type Pattern } from "@/lib/patternHelpers";
+import { fetchUserLikedPatterns, type GalleryPattern } from "@/lib/galleryHelpers";
+import { CrochetMark } from "@/components/CrochetMark";
+import { NavUserSection } from "@/components/NavUserSection";
+import { PatternGalleryCard } from "@/components/PatternGalleryCard";
 import { getSupabaseBrowserClient, resetSupabaseBrowserClient } from "@/lib/supabase";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import Link from "next/link";
@@ -78,38 +83,40 @@ function ProfilePatternCard({ pattern }: { pattern: Pattern }) {
   return (
     <Link
       href="/editor"
-      className="flex flex-col overflow-hidden rounded-2xl border border-brand/10 bg-white/90 shadow-sm transition-all duration-200 hover:border-brand/20 hover:shadow-md"
+      className="flex flex-col overflow-hidden rounded-[14px] transition-all duration-200 hover:scale-[1.01]"
+      style={{
+        background: "#FBF7EF",
+        boxShadow: "0 6px 20px rgba(40,20,30,0.10), 0 0 0 1px rgba(255,255,255,0.5)",
+      }}
     >
       {/* Thumbnail */}
-      <div className="group/thumb relative aspect-square w-full overflow-hidden bg-stone-50">
+      <div className="group/thumb relative aspect-square w-full overflow-hidden bg-[#F4ECE0]">
         {pattern.thumbnail ? (
           <img
             src={pattern.thumbnail}
             alt={`${pattern.name} preview`}
             className="h-full w-full object-contain"
-            style={{ imageRendering: "pixelated" }}
+            style={{ imageRendering: "pixelated", display: "block" }}
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center">
             <div
-              className="grid gap-px opacity-25"
+              className="grid gap-px opacity-30"
               style={{ gridTemplateColumns: "repeat(6, 1fr)", width: 42, height: 42 }}
             >
               {Array.from({ length: 36 }, (_, i) => (
                 <div
                   key={i}
                   className="aspect-square rounded-[1px]"
-                  style={{ background: (Math.floor(i / 6) + (i % 6)) % 3 === 0 ? "#1c1917" : "#e7e5e4" }}
+                  style={{ background: (Math.floor(i / 6) + (i % 6)) % 3 === 0 ? "#1F1410" : "#D4C9BC" }}
                 />
               ))}
             </div>
           </div>
         )}
-        {/* Grid dimensions */}
-        <span className="absolute bottom-1.5 right-1.5 rounded-md bg-black/35 px-1.5 py-0.5 text-xs font-medium text-white backdrop-blur-sm">
+        <span className="absolute bottom-2 right-2 rounded-full bg-[rgba(31,20,16,0.70)] px-2 py-0.5 font-mono text-[10px] font-medium text-white">
           {pattern.grid_width}×{pattern.grid_height}
         </span>
-        {/* Hover overlay */}
         <span className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover/thumb:bg-black/10">
           <span className="rounded-full bg-black/50 px-2.5 py-1 text-xs font-medium text-white opacity-0 transition-opacity group-hover/thumb:opacity-100">
             Open
@@ -118,31 +125,33 @@ function ProfilePatternCard({ pattern }: { pattern: Pattern }) {
       </div>
 
       {/* Info */}
-      <div className="flex flex-col gap-1.5 p-3">
-        <p className="truncate text-sm font-semibold text-stone-900">{pattern.name}</p>
+      <div className="flex flex-col gap-1.5 p-[10px_13px_13px]">
+        <p className="truncate font-serif text-[15px] font-semibold leading-snug text-text-strong">{pattern.name}</p>
 
-        {/* Public / Private pill */}
-        <span
-          className={`inline-flex w-fit items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
-            isPublic
-              ? "bg-teal-50 text-teal-700"
-              : "bg-stone-100 text-stone-500"
-          }`}
-        >
-          {isPublic ? <GlobeIcon /> : <LockIcon />}
-          {isPublic ? "Public" : "Private"}
-        </span>
+        <div className="flex items-center gap-1.5">
+          {/* Public / Private pill */}
+          <span
+            className={`inline-flex w-fit items-center gap-1 rounded-full px-2 py-0.5 font-sans text-[10px] font-bold uppercase tracking-[0.02em] ${
+              isPublic
+                ? "text-pill-text"
+                : "text-muted"
+            }`}
+            style={{
+              background: isPublic ? "rgba(184,90,53,0.10)" : "rgba(122,106,95,0.10)",
+            }}
+          >
+            {isPublic ? <GlobeIcon /> : <LockIcon />}
+            {isPublic ? "Public" : "Private"}
+          </span>
+        </div>
 
-        {/* Like / copy counts — only meaningful for public patterns */}
         {isPublic && (
           <div className="flex items-center gap-2">
-            <span className="flex items-center gap-1 text-xs text-stone-400">
-              <HeartIcon />
-              {pattern.likes_count ?? 0}
+            <span className="flex items-center gap-1 font-sans text-xs font-semibold text-muted">
+              <HeartIcon />{pattern.likes_count ?? 0}
             </span>
-            <span className="flex items-center gap-1 text-xs text-stone-400">
-              <CopyIcon />
-              {pattern.copies_count ?? 0}
+            <span className="flex items-center gap-1 font-sans text-xs font-semibold text-muted">
+              <CopyIcon />{pattern.copies_count ?? 0}
             </span>
           </div>
         )}
@@ -158,6 +167,216 @@ function PencilIcon() {
     <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M11 2.5l2.5 2.5-7 7H4v-2.5l7-7z" />
     </svg>
+  );
+}
+
+// ─── Avatar crop modal ────────────────────────────────────────────────────────
+
+function AvatarCropModal({
+  open,
+  onClose,
+  onSave,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSave: (dataUrl: string) => void;
+}) {
+  const [imgEl, setImgEl] = useState<HTMLImageElement | null>(null);
+  const [zoom, setZoom] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
+  const dragStart = useRef<{ mx: number; my: number; ox: number; oy: number } | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (open) { setImgEl(null); setZoom(1); setOffset({ x: 0, y: 0 }); }
+  }, [open]);
+
+  useEffect(() => {
+    if (!imgEl) return;
+    const SIZE = 240;
+    const base = SIZE / Math.min(imgEl.naturalWidth, imgEl.naturalHeight);
+    const s = base * zoom;
+    const maxX = Math.max(0, (imgEl.naturalWidth * s - SIZE) / 2);
+    const maxY = Math.max(0, (imgEl.naturalHeight * s - SIZE) / 2);
+    setOffset((p) => ({
+      x: Math.max(-maxX, Math.min(maxX, p.x)),
+      y: Math.max(-maxY, Math.min(maxY, p.y)),
+    }));
+  }, [zoom, imgEl]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !imgEl) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const SIZE = 240;
+    const base = SIZE / Math.min(imgEl.naturalWidth, imgEl.naturalHeight);
+    const s = base * zoom;
+    const w = imgEl.naturalWidth * s;
+    const h = imgEl.naturalHeight * s;
+    const maxX = Math.max(0, (w - SIZE) / 2);
+    const maxY = Math.max(0, (h - SIZE) / 2);
+    const cx = Math.max(-maxX, Math.min(maxX, offset.x));
+    const cy = Math.max(-maxY, Math.min(maxY, offset.y));
+    ctx.clearRect(0, 0, SIZE, SIZE);
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(SIZE / 2, SIZE / 2, SIZE / 2, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.drawImage(imgEl, SIZE / 2 - w / 2 + cx, SIZE / 2 - h / 2 + cy, w, h);
+    ctx.restore();
+  }, [imgEl, zoom, offset]);
+
+  const handleFile = useCallback((file: File) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => { setImgEl(img); setZoom(1); setOffset({ x: 0, y: 0 }); URL.revokeObjectURL(url); };
+    img.src = url;
+  }, []);
+
+  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    setDragging(true);
+    dragStart.current = { mx: e.clientX, my: e.clientY, ox: offset.x, oy: offset.y };
+  };
+
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      if (!dragging || !dragStart.current || !imgEl) return;
+      const SIZE = 240;
+      const base = SIZE / Math.min(imgEl.naturalWidth, imgEl.naturalHeight);
+      const s = base * zoom;
+      const maxX = Math.max(0, (imgEl.naturalWidth * s - SIZE) / 2);
+      const maxY = Math.max(0, (imgEl.naturalHeight * s - SIZE) / 2);
+      const dx = e.clientX - dragStart.current.mx;
+      const dy = e.clientY - dragStart.current.my;
+      setOffset({
+        x: Math.max(-maxX, Math.min(maxX, dragStart.current.ox + dx)),
+        y: Math.max(-maxY, Math.min(maxY, dragStart.current.oy + dy)),
+      });
+    },
+    [dragging, imgEl, zoom],
+  );
+
+  const handleSave = () => {
+    if (!imgEl) return;
+    const SAVE = 128, PREV = 240;
+    const base = PREV / Math.min(imgEl.naturalWidth, imgEl.naturalHeight);
+    const s = base * zoom * (SAVE / PREV);
+    const w = imgEl.naturalWidth * s;
+    const h = imgEl.naturalHeight * s;
+    const maxX = Math.max(0, (w - SAVE) / 2);
+    const maxY = Math.max(0, (h - SAVE) / 2);
+    const cx = Math.max(-maxX, Math.min(maxX, offset.x * (SAVE / PREV)));
+    const cy = Math.max(-maxY, Math.min(maxY, offset.y * (SAVE / PREV)));
+    const c = document.createElement("canvas");
+    c.width = SAVE; c.height = SAVE;
+    const ctx = c.getContext("2d")!;
+    ctx.beginPath();
+    ctx.arc(SAVE / 2, SAVE / 2, SAVE / 2, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.drawImage(imgEl, SAVE / 2 - w / 2 + cx, SAVE / 2 - h / 2 + cy, w, h);
+    onSave(c.toDataURL("image/jpeg", 0.85));
+  };
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      style={{ backdropFilter: "blur(4px)" }}
+      onClick={onClose}
+    >
+      <div
+        className="relative mx-4 w-full max-w-xs rounded-[22px] p-6"
+        style={{ background: "#FBF7EF", boxShadow: "0 20px 60px rgba(40,20,30,0.28)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-4 top-4 rounded-full p-1.5 text-muted hover:text-text-strong"
+        >
+          <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+            <path d="M4 4l8 8M12 4l-8 8" />
+          </svg>
+        </button>
+        <p className="mb-4 font-serif text-xl font-bold text-text-strong">Profile photo</p>
+
+        {!imgEl ? (
+          <button
+            type="button"
+            className="flex w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed py-10"
+            style={{ borderColor: "rgba(168,70,111,0.25)" }}
+            onClick={() => fileRef.current?.click()}
+          >
+            <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mb-2 text-muted">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12" />
+            </svg>
+            <span className="font-sans text-sm font-semibold text-muted">Upload a photo</span>
+          </button>
+        ) : (
+          <div className="flex flex-col items-center gap-4">
+            <canvas
+              ref={canvasRef}
+              width={240}
+              height={240}
+              className="rounded-full"
+              style={{ cursor: dragging ? "grabbing" : "grab", border: "3px solid rgba(168,70,111,0.35)" }}
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={() => setDragging(false)}
+              onMouseLeave={() => setDragging(false)}
+            />
+            <div className="flex w-full items-center gap-3">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" className="shrink-0 text-muted">
+                <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35M11 8v6M8 11h6" />
+              </svg>
+              <input
+                type="range"
+                min={1}
+                max={3}
+                step={0.01}
+                value={zoom}
+                onChange={(e) => setZoom(Number(e.target.value))}
+                className="flex-1 accent-brand"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              className="text-xs font-semibold text-brand hover:text-brand-dark"
+            >
+              Choose a different photo
+            </button>
+          </div>
+        )}
+
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          className="sr-only"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) handleFile(file);
+            e.target.value = "";
+          }}
+        />
+
+        {imgEl && (
+          <button
+            type="button"
+            onClick={handleSave}
+            className="mt-4 w-full rounded-full bg-brand py-2.5 font-sans text-sm font-bold text-[#FBF7EF] hover:bg-brand-dark"
+            style={{ boxShadow: "0 4px 18px rgba(168,70,111,0.30)" }}
+          >
+            Save photo
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -197,8 +416,6 @@ export default function ProfilePage() {
 
   const [user, setUser] = useState<User | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
-
   // Auth state — redirect to home if not logged in
   useEffect(() => {
     if (!supabase) return;
@@ -218,6 +435,8 @@ export default function ProfilePage() {
 
   // Profile data
   const [displayName, setDisplayName] = useState<string | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [avatarModalOpen, setAvatarModalOpen] = useState(false);
   const [patterns, setPatterns] = useState<Pattern[]>([]);
   const [patternsLoading, setPatternsLoading] = useState(false);
 
@@ -226,7 +445,10 @@ export default function ProfilePage() {
     let cancelled = false;
 
     void fetchProfile(supabase, user.id).then(({ data }) => {
-      if (!cancelled) setDisplayName(data?.display_name ?? null);
+      if (!cancelled) {
+        setDisplayName(data?.display_name ?? null);
+        setAvatarUrl(data?.avatar_url ?? null);
+      }
     });
 
     setPatternsLoading(true);
@@ -239,6 +461,24 @@ export default function ProfilePage() {
 
     return () => { cancelled = true; };
   }, [supabase, user]);
+
+  // ── Liked patterns tab ────────────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState<"patterns" | "liked">("patterns");
+  const [likedPatterns, setLikedPatterns] = useState<GalleryPattern[]>([]);
+  const [likedLoading, setLikedLoading] = useState(false);
+
+  useEffect(() => {
+    if (!supabase || !user || activeTab !== "liked") return;
+    let cancelled = false;
+    setLikedLoading(true);
+    void fetchUserLikedPatterns(supabase, user.id).then(({ data }) => {
+      if (!cancelled) {
+        setLikedPatterns(data ?? []);
+        setLikedLoading(false);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [supabase, user, activeTab]);
 
   // ── Inline display name edit ───────────────────────────────────────────────
 
@@ -294,6 +534,15 @@ export default function ProfilePage() {
 
   const canSaveDn = !dnLocalError && dnAvailability === "available" && dnInput.trim() !== "" && !dnSaving;
 
+  const handleSaveAvatar = useCallback(async (dataUrl: string) => {
+    if (!supabase || !user) return;
+    const { error } = await upsertProfileAvatar(supabase, user.id, dataUrl);
+    if (!error) {
+      setAvatarUrl(dataUrl);
+      setAvatarModalOpen(false);
+    }
+  }, [supabase, user]);
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   // Show nothing while waiting for auth — avoids flash of content before redirect
@@ -303,161 +552,250 @@ export default function ProfilePage() {
   const publicCount = patterns.filter((p) => p.is_public).length;
 
   return (
-    <div className="min-h-screen text-stone-800">
-      <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center justify-between border-b border-white/40 bg-white/80 px-4 shadow-sm backdrop-blur-md">
-        <div className="flex items-center gap-5">
-          <Link href="/" className="font-serif text-xl font-bold text-brand hover:text-brand-dark">
+    <div className="min-h-screen">
+      {/* Transparent navbar */}
+      <header className="z-20 flex h-[68px] items-center justify-between px-8">
+        <div className="flex items-center gap-9">
+          <Link href="/" className="inline-flex items-center gap-[9px] font-serif text-2xl font-bold leading-none tracking-[-0.01em] text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">
+            <CrochetMark size={22} color="#fff" />
             Gridwork
           </Link>
-          <Link href="/gallery" className="hidden text-sm text-gray-700 transition-colors duration-150 hover:text-violet-700 md:inline">
-            Gallery
-          </Link>
-          <Link href="/learn" className="hidden text-sm text-gray-700 transition-colors duration-150 hover:text-violet-700 md:inline">
-            Learn
-          </Link>
-          <span className="hidden text-sm font-medium text-stone-700 md:inline">Profile</span>
+          <nav className="hidden items-center gap-7 md:flex">
+            <Link href="/" className="text-sm font-semibold text-white/85 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">Home</Link>
+            <Link href="/learn" className="text-sm font-semibold text-white/85 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">Learn</Link>
+            <Link href="/gallery" className="text-sm font-semibold text-white/85 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">Gallery</Link>
+            <Link href="/editor" className="text-sm font-semibold text-white/85 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">Editor</Link>
+          </nav>
         </div>
-
-        <div className="hidden items-center gap-2 md:flex">
-          <Link
-            href="/editor"
-            className="rounded-full border border-stone-200 bg-white px-3 py-1.5 text-sm font-medium text-stone-600 shadow-sm hover:bg-stone-50"
-          >
-            Editor
-          </Link>
-        </div>
-
-        <div className="relative md:hidden">
-          <button
-            type="button"
-            onClick={() => setMenuOpen((p) => !p)}
-            className="rounded-md border border-stone-200 bg-white/80 px-2.5 py-1.5 text-xs font-medium text-stone-700 hover:bg-stone-50"
-            aria-label="Menu"
-          >
-            {menuOpen ? "✕" : "☰"}
-          </button>
-          {menuOpen && (
-            <div className="absolute right-0 top-full z-50 mt-1 w-48 overflow-hidden rounded-xl border border-stone-200 bg-white shadow-lg">
-              <Link href="/gallery" onClick={() => setMenuOpen(false)} className="block px-4 py-3 text-sm text-gray-700 hover:bg-stone-50">Gallery</Link>
-              <Link href="/learn" onClick={() => setMenuOpen(false)} className="block border-t border-stone-100 px-4 py-3 text-sm text-gray-700 hover:bg-stone-50">Learn</Link>
-              <Link href="/editor" onClick={() => setMenuOpen(false)} className="block border-t border-stone-100 px-4 py-3 text-sm text-gray-700 hover:bg-stone-50">Editor</Link>
-            </div>
-          )}
-        </div>
+        <NavUserSection activePage="profile" />
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 py-8">
+      <main className="mx-auto max-w-7xl px-8 pb-16 pt-0">
         {configError && (
           <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">{configError}</div>
         )}
 
-        {/* Profile heading */}
-        <div className="mb-8 border-b border-stone-100 pb-6">
-          <div className="flex flex-wrap items-center gap-3">
-            {editingDn ? (
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center gap-2">
-                  <input
-                    ref={dnInputRef}
-                    type="text"
-                    value={dnInput}
-                    onChange={(e) => handleDnChange(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && canSaveDn) void commitDn();
-                      if (e.key === "Escape") cancelEditDn();
-                    }}
-                    onBlur={() => {
-                      window.setTimeout(() => {
-                        if (document.activeElement !== dnInputRef.current) cancelEditDn();
-                      }, 150);
-                    }}
-                    maxLength={30}
-                    placeholder="display_name"
-                    className="rounded-xl border border-brand/30 bg-white px-3 py-1.5 font-serif text-2xl font-bold text-stone-900 shadow-sm outline-none focus:ring-1 focus:ring-brand/30"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => void commitDn()}
-                    disabled={!canSaveDn}
-                    className="rounded-full bg-brand px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-brand-dark disabled:opacity-40"
-                  >
-                    {dnSaving ? "Saving…" : "Save"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={cancelEditDn}
-                    className="rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-medium text-stone-600 hover:bg-stone-50"
-                  >
-                    Cancel
-                  </button>
-                </div>
-                <div className="min-h-[16px] pl-1 text-xs">
-                  {dnLocalError && dnInput !== "" && <span className="text-brand">{dnLocalError}</span>}
-                  {!dnLocalError && dnAvailability === "checking" && <span className="text-stone-400">Checking…</span>}
-                  {!dnLocalError && dnAvailability === "available" && <span className="text-teal-600">✓ available</span>}
-                  {!dnLocalError && dnAvailability === "taken" && <span className="text-brand">✗ taken</span>}
-                </div>
+        {/* Journal-style header card */}
+        <div
+          className="mb-7 rounded-[22px]"
+          style={{
+            background: "#FBF7EF",
+            padding: "40px 48px",
+            boxShadow: "0 10px 36px rgba(40,20,30,0.12), 0 0 0 1px rgba(255,255,255,0.5)",
+          }}
+        >
+          {/* Top row: avatar + name + edit + view public */}
+          <div className="mb-4 flex items-center gap-6">
+            {/* Clickable avatar */}
+            <button
+              type="button"
+              onClick={() => setAvatarModalOpen(true)}
+              className="group/avatar relative inline-flex shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-full p-0 font-serif text-[42px] font-bold leading-none text-white"
+              style={{
+                width: 92, height: 92,
+                border: "4px solid #fff",
+                boxShadow: "0 6px 20px rgba(168,70,111,0.25)",
+                background: avatarUrl ? undefined : "linear-gradient(135deg, #F9A87A 0%, #F0569A 50%, #9B6FD4 100%)",
+              }}
+            >
+              {avatarUrl ? (
+                <img src={avatarUrl} alt="Profile" className="h-full w-full object-cover" />
+              ) : (
+                (displayName ?? user.email ?? "?").charAt(0).toUpperCase()
+              )}
+              <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/0 transition-colors group-hover/avatar:bg-black/35">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="opacity-0 transition-opacity group-hover/avatar:opacity-100" aria-hidden="true">
+                  <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" />
+                  <circle cx="12" cy="13" r="4" />
+                </svg>
+              </span>
+            </button>
+
+            <div className="min-w-0 flex-1">
+              <div className="font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-muted" style={{ marginBottom: 4 }}>
+                Maker profile
               </div>
-            ) : (
-              <button
-                type="button"
-                onClick={startEditDn}
-                className="group flex items-center gap-2"
-                title="Edit display name"
-              >
-                <h1 className="font-serif text-3xl font-bold text-stone-900 group-hover:text-stone-700">
+
+              {editingDn ? (
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-2">
+                    <input
+                      ref={dnInputRef}
+                      type="text"
+                      value={dnInput}
+                      onChange={(e) => handleDnChange(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && canSaveDn) void commitDn();
+                        if (e.key === "Escape") cancelEditDn();
+                      }}
+                      onBlur={() => {
+                        window.setTimeout(() => {
+                          if (document.activeElement !== dnInputRef.current) cancelEditDn();
+                        }, 150);
+                      }}
+                      maxLength={30}
+                      placeholder="display_name"
+                      className="rounded-xl border border-brand/30 bg-white px-3 py-1.5 font-serif text-2xl font-bold text-text-strong shadow-sm outline-none focus:ring-1 focus:ring-brand/30"
+                    />
+                    <button type="button" onClick={() => void commitDn()} disabled={!canSaveDn} className="rounded-full bg-brand px-3 py-1.5 text-xs font-bold text-[#FBF7EF] shadow-sm hover:bg-brand-dark disabled:opacity-40">
+                      {dnSaving ? "Saving…" : "Save"}
+                    </button>
+                    <button type="button" onClick={cancelEditDn} className="rounded-full border border-[rgba(61,42,30,0.10)] bg-transparent px-3 py-1.5 text-xs font-semibold text-muted hover:bg-[rgba(61,42,30,0.05)]">
+                      Cancel
+                    </button>
+                  </div>
+                  <div className="min-h-[16px] pl-1 text-xs">
+                    {dnLocalError && dnInput !== "" && <span className="text-brand">{dnLocalError}</span>}
+                    {!dnLocalError && dnAvailability === "checking" && <span className="text-muted">Checking…</span>}
+                    {!dnLocalError && dnAvailability === "available" && <span className="text-green-700">✓ available</span>}
+                    {!dnLocalError && dnAvailability === "taken" && <span className="text-brand">✗ taken</span>}
+                  </div>
+                </div>
+              ) : (
+                <div className="group/dnname inline-flex items-center gap-2 font-serif text-[40px] font-bold leading-none tracking-[-0.02em] text-text-strong">
                   {displayName ? `@${displayName}` : "Set a display name"}
-                </h1>
-                <span className="text-stone-400 opacity-0 transition-opacity group-hover:opacity-100">
-                  <PencilIcon />
-                </span>
-              </button>
-            )}
+                  <button
+                    type="button"
+                    onClick={startEditDn}
+                    title="Edit display name"
+                    className="mb-[-3px] inline-flex items-center justify-center rounded-full p-1.5 text-muted opacity-0 transition-opacity group-hover/dnname:opacity-100 hover:text-brand"
+                  >
+                    <PencilIcon />
+                  </button>
+                </div>
+              )}
+              <p className="mt-1 font-sans text-sm font-medium text-muted">{user.email}</p>
+            </div>
 
             {!editingDn && displayName && (
-              <Link
-                href={`/u/${displayName}`}
-                className="text-sm font-medium text-accent hover:text-accent-dark hover:underline"
-              >
-                View public profile →
+              <Link href={`/u/${displayName}`} className="inline-flex shrink-0 items-center gap-1 font-sans text-[13px] font-bold text-brand hover:text-brand-dark">
+                View public profile
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M5 12h14M13 6l6 6-6 6"/>
+                </svg>
               </Link>
             )}
           </div>
 
-          <p className="mt-1 text-xs text-stone-400">{user.email}</p>
-
-          {!editingDn && (
-            <p className="mt-2 text-sm text-stone-500">
-              {patterns.length === 0
-                ? "No patterns yet."
-                : `${patterns.length} pattern${patterns.length === 1 ? "" : "s"} · ${publicCount} public`}
-            </p>
-          )}
-        </div>
-
-        {/* Pattern grid */}
-        {patternsLoading ? (
-          <div className="flex items-center justify-center py-24">
-            <p className="text-sm text-stone-500">Loading patterns…</p>
-          </div>
-        ) : patterns.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-24 text-center">
-            <p className="text-sm text-stone-400">No patterns yet.</p>
-            <Link
-              href="/editor"
-              className="mt-4 rounded-full border border-stone-200 bg-white px-4 py-2 text-sm font-medium text-stone-700 shadow-sm hover:bg-stone-50"
-            >
-              Go to editor
-            </Link>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-            {patterns.map((p) => (
-              <ProfilePatternCard key={p.id} pattern={p} />
+          {/* Stats strip */}
+          <div
+            className="mt-1 grid grid-cols-4 gap-0 border-t pt-5"
+            style={{ borderColor: "rgba(61,42,30,0.10)" }}
+          >
+            {[
+              { v: String(patterns.length), l: "patterns" },
+              { v: String(publicCount), l: "public" },
+              { v: String(patterns.reduce((acc, p) => acc + (p.likes_count ?? 0), 0)), l: "likes received" },
+              { v: String(patterns.reduce((acc, p) => acc + (p.copies_count ?? 0), 0)), l: "copies" },
+            ].map((s, i) => (
+              <div key={s.l} className={`${i > 0 ? "border-l pl-6" : ""}`} style={{ borderColor: "rgba(61,42,30,0.10)" }}>
+                <div className="font-serif text-[32px] font-bold leading-none tracking-[-0.015em] text-text-strong">{s.v}</div>
+                <div className="mt-1 font-sans text-[12px] font-semibold tracking-[0.02em] text-muted">{s.l}</div>
+              </div>
             ))}
           </div>
+        </div>
+
+        {/* Tabs + New pattern button */}
+        <div className="mb-4 flex items-center justify-between">
+          <div
+            className="inline-flex items-center rounded-full p-[3px]"
+            style={{ background: "rgba(0,0,0,0.20)" }}
+          >
+            {(["patterns", "liked"] as const).map((tab) => {
+              const label = tab === "patterns"
+                ? `My patterns · ${patterns.length}`
+                : `Liked · ${likedPatterns.length}`;
+              const isActive = activeTab === tab;
+              return (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setActiveTab(tab)}
+                  className={`rounded-full px-4 py-[7px] font-sans text-[13px] font-bold transition-all duration-150 ${
+                    isActive ? "bg-white text-[#1F1410] shadow-sm" : "text-white/75 hover:text-white"
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          <Link
+            href="/editor"
+            className="inline-flex items-center gap-1.5 rounded-full bg-brand px-[18px] py-2.5 font-sans text-[13px] font-bold text-[#FBF7EF] hover:bg-brand-dark"
+            style={{ boxShadow: "0 4px 18px rgba(168,70,111,0.30)" }}
+          >
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            New pattern
+          </Link>
+        </div>
+
+        {/* Pattern grid — My patterns tab */}
+        {activeTab === "patterns" && (
+          patternsLoading ? (
+            <div className="flex items-center justify-center py-24">
+              <p className="font-sans text-sm font-medium text-white/70">Loading patterns…</p>
+            </div>
+          ) : patterns.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-24 text-center">
+              <p className="font-sans text-sm font-medium text-white/70">No patterns yet.</p>
+              <Link href="/editor" className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-brand px-5 py-2 font-sans text-sm font-bold text-[#FBF7EF] hover:bg-brand-dark">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+                New pattern
+              </Link>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+              {patterns.map((p) => (
+                <ProfilePatternCard key={p.id} pattern={p} />
+              ))}
+            </div>
+          )
+        )}
+
+        {/* Liked patterns tab */}
+        {activeTab === "liked" && (
+          likedLoading ? (
+            <div className="flex items-center justify-center py-24">
+              <p className="font-sans text-sm font-medium text-white/70">Loading liked patterns…</p>
+            </div>
+          ) : likedPatterns.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-24 text-center">
+              <p className="font-sans text-sm font-medium text-white/70">No liked patterns yet.</p>
+              <Link href="/gallery" className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-white/40 bg-white/15 px-5 py-2 font-sans text-sm font-semibold text-white backdrop-blur-sm hover:bg-white/25">
+                Browse the gallery
+              </Link>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+              {likedPatterns.map((p) => (
+                <PatternGalleryCard
+                  key={p.id}
+                  pattern={p}
+                  isLiked={true}
+                  isOwn={p.user_id === user.id}
+                  onLike={() => {}}
+                  onCopy={() => {}}
+                  onPreview={() => {}}
+                  copying={false}
+                  canInteract={false}
+                />
+              ))}
+            </div>
+          )
         )}
       </main>
+
+      <AvatarCropModal
+        open={avatarModalOpen}
+        onClose={() => setAvatarModalOpen(false)}
+        onSave={(dataUrl) => void handleSaveAvatar(dataUrl)}
+      />
     </div>
   );
 }
