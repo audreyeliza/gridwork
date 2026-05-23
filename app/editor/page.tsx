@@ -1,7 +1,9 @@
 "use client";
 
 import { AuthModal } from "@/components/AuthModal";
+import { CrochetMark } from "@/components/CrochetMark";
 import { DisplayNameModal } from "@/components/DisplayNameModal";
+import { NavUserSection } from "@/components/NavUserSection";
 import { ImageTools } from "@/components/ImageTools";
 import { YarnEstimator } from "@/components/YarnEstimator";
 import { PatternSidebar } from "@/components/PatternSidebar";
@@ -79,6 +81,18 @@ function clampGridSize(n: number): number {
   return Math.floor(n);
 }
 
+function loadLocalImageSettings(key: string): PatternImageSettings | null {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+    const parsed = parseImageSettings(JSON.parse(raw));
+    return parsed.imageDataUrl ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function EditorPage() {
   const [supabaseInit, setSupabaseInit] = useState<SupabaseInit>(() => ({
     supabase: null,
@@ -119,11 +133,16 @@ export default function EditorPage() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [aspectLocked, setAspectLocked] = useState(false);
   const [lockedRatio, setLockedRatio] = useState<number | null>(null);
-  const [yarnOpen, setYarnOpen] = useState(false);
   const [imageCropExpanded, setImageCropExpanded] = useState(false);
   const [gridFullscreen, setGridFullscreen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [editorMode, setEditorMode] = useState<"draw" | "import">("draw");
+  const [isRenamingTitle, setIsRenamingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
+  const [drawMode, setDrawMode] = useState<"block" | "mesh">("block");
+  const [importPanelEl, setImportPanelEl] = useState<HTMLDivElement | null>(null);
+  const [wDraft, setWDraft] = useState<string>("10");
+  const [hDraft, setHDraft] = useState<string>("10");
 
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [displayNameModalOpen, setDisplayNameModalOpen] = useState(false);
@@ -139,10 +158,22 @@ export default function EditorPage() {
   const [imageSettingsLoadKey, setImageSettingsLoadKey] = useState("");
   const { cells, commit, replace, reset, undo, redo, canUndo, canRedo } = usePatternHistory(gridW, gridH);
 
+  const drawTool = drawMode === "block" ? "pencil" as const : "eraser" as const;
+
+  // Keep draft inputs in sync when gridW/gridH are changed externally (preset picker, DB load)
+  useEffect(() => { setWDraft(String(gridW)); }, [gridW]);
+  useEffect(() => { setHDraft(String(gridH)); }, [gridH]);
+
   const activePattern = useMemo(
     () => patterns.find((p) => p.id === selectedPatternId) ?? null,
     [patterns, selectedPatternId],
   );
+
+  const completedCount = useMemo(
+    () => progress.rowComplete.filter(Boolean).length,
+    [progress.rowComplete],
+  );
+  const completedPct = gridH > 0 ? Math.round((completedCount / gridH) * 100) : 0;
 
   const { filledCellCount, emptyCellCount } = useMemo(() => {
     let filled = 0;
@@ -163,6 +194,20 @@ export default function EditorPage() {
   const handleImageSettingsChange = useCallback((next: PatternImageSettings) => {
     setImageSettings(next);
   }, []);
+
+  // Back up image settings to localStorage so they survive refresh / logout.
+  // Debounced 800ms to avoid rapid writes during slider drags.
+  useEffect(() => {
+    const key = selectedPatternId ? `gridwork:imgset:${selectedPatternId}` : "gridwork:imgset:draft";
+    if (!imageSettings.imageDataUrl) {
+      try { localStorage.removeItem(key); } catch {}
+      return;
+    }
+    const timerId = window.setTimeout(() => {
+      try { localStorage.setItem(key, JSON.stringify(imageSettings)); } catch {}
+    }, 800);
+    return () => window.clearTimeout(timerId);
+  }, [imageSettings, selectedPatternId]);
 
   const patternsRef = useRef(patterns);
   useEffect(() => {
@@ -241,7 +286,7 @@ export default function EditorPage() {
       reset(createEmptyGrid(10, 10));
       setYarnSettings({ ...DEFAULT_PATTERN_YARN_SETTINGS });
       setProgress(defaultProgressState(10));
-      setImageSettings({ ...DEFAULT_PATTERN_IMAGE_SETTINGS });
+      setImageSettings(loadLocalImageSettings("gridwork:imgset:draft") ?? { ...DEFAULT_PATTERN_IMAGE_SETTINGS });
       setImageSettingsLoadKey("unsaved-" + Date.now());
     }, 0);
     return () => {
@@ -263,7 +308,8 @@ export default function EditorPage() {
         reset(parseGridData(fromList.grid_data, w, h));
         setYarnSettings(parsePatternYarnSettings(fromList.yarn_settings));
         setProgress(parseProgressData(fromList.progress_data, h));
-        setImageSettings(parseImageSettings(fromList.image_settings));
+        const dbImgA = parseImageSettings(fromList.image_settings);
+        setImageSettings(dbImgA.imageDataUrl ? dbImgA : (loadLocalImageSettings(`gridwork:imgset:${fromList.id}`) ?? dbImgA));
         setImageSettingsLoadKey(fromList.id + "-" + fromList.updated_at);
         return;
       }
@@ -277,7 +323,8 @@ export default function EditorPage() {
         reset(parseGridData(data.grid_data, w, h));
         setYarnSettings(parsePatternYarnSettings(data.yarn_settings));
         setProgress(parseProgressData(data.progress_data, h));
-        setImageSettings(parseImageSettings(data.image_settings));
+        const dbImgB = parseImageSettings(data.image_settings);
+        setImageSettings(dbImgB.imageDataUrl ? dbImgB : (loadLocalImageSettings(`gridwork:imgset:${data.id}`) ?? dbImgB));
         setImageSettingsLoadKey(data.id + "-" + data.updated_at);
         setPatterns((prev) => (prev.some((p) => p.id === data.id) ? prev : [data, ...prev]));
       });
@@ -579,133 +626,276 @@ export default function EditorPage() {
   });
 
   return (
-    <div className="flex h-screen flex-col bg-white/65 text-stone-800 max-md:h-auto max-md:min-h-screen">
-      <header className="relative z-20 flex h-16 shrink-0 items-center justify-between border-b border-white/40 bg-white/80 px-4 shadow-sm backdrop-blur-md">
-        <div className="flex items-center gap-3 md:gap-5">
-          <Link
-            href="/"
-            className="font-serif text-xl font-bold text-brand hover:text-brand-dark"
-          >
+    <div className="relative flex h-screen flex-col max-md:h-auto max-md:min-h-screen">
+      {/* Transparent navbar — absolute over gradient */}
+      <header className="absolute left-0 right-0 top-0 z-20 flex h-[68px] items-center justify-between px-8">
+        <div className="flex items-center gap-7">
+          <Link href="/" className="inline-flex items-center gap-[9px] font-serif text-2xl font-bold leading-none tracking-[-0.01em] text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">
+            <CrochetMark size={22} color="#fff" />
             Gridwork
           </Link>
           {/* Patterns drawer toggle — narrow only */}
-          <button
-            type="button"
-            onClick={() => setSidebarOpen((p) => !p)}
-            className="rounded-md border border-stone-200 bg-white/80 px-2.5 py-1.5 text-xs font-medium text-stone-700 hover:bg-stone-50 md:hidden"
-          >
-            {sidebarOpen ? "✕ Close" : "Patterns"}
+          <button type="button" onClick={() => setSidebarOpen((p) => !p)} className="rounded-md border border-white/40 bg-white/20 px-2.5 py-1.5 text-xs font-semibold text-white backdrop-blur-sm hover:bg-white/30 md:hidden">
+            {sidebarOpen ? "✕" : "Patterns"}
           </button>
-          {/* Learn / Gallery links — desktop only */}
-          <Link href="/learn" className="hidden text-sm text-gray-700 transition-colors duration-150 hover:text-violet-700 md:inline">
-            Learn
-          </Link>
-          <Link href="/gallery" className="hidden text-sm text-gray-700 transition-colors duration-150 hover:text-violet-700 md:inline">
-            Gallery
-          </Link>
+          <nav className="hidden items-center gap-7 md:flex">
+            <Link href="/" className="text-sm font-semibold text-white/85 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">Home</Link>
+            <Link href="/learn" className="text-sm font-semibold text-white/85 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">Learn</Link>
+            <Link href="/gallery" className="text-sm font-semibold text-white/85 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">Gallery</Link>
+            <span className="inline-flex items-center gap-[7px] text-sm font-bold text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">
+              <span className="inline-block size-[6px] rounded-full bg-white" />
+              Editor
+            </span>
+          </nav>
         </div>
-
-        {/* Desktop right side */}
-        {user ? (
-          <div className="hidden items-center gap-2 md:flex">
-            <Link
-              href="/profile"
-              className="text-sm text-gray-700 transition-colors duration-150 hover:text-violet-700"
-            >
-              Profile
-            </Link>
-            <button
-              type="button"
-              onClick={() => void handleLogout()}
-              className="cursor-pointer rounded-full border border-stone-200 bg-white px-3 py-1.5 text-sm font-medium text-stone-600 shadow-sm hover:bg-stone-50"
-            >
-              Log out
-            </button>
-          </div>
-        ) : (
-          <button
-            id="tutorial-login"
-            type="button"
-            onClick={() => setAuthModalOpen(true)}
-            className="hidden cursor-pointer rounded-full bg-brand px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-brand-dark md:inline-flex"
-          >
-            Log in
-          </button>
-        )}
-
-        {/* Narrow: hamburger + dropdown */}
-        <div className="relative md:hidden">
-          <button
-            type="button"
-            onClick={() => setMenuOpen((p) => !p)}
-            className="rounded-md border border-stone-200 bg-white/80 px-2.5 py-1.5 text-xs font-medium text-stone-700 hover:bg-stone-50"
-            aria-label="Menu"
-          >
-            {menuOpen ? "✕" : "☰"}
-          </button>
-          {menuOpen && (
-            <div className="absolute right-0 top-full z-50 mt-1 w-48 overflow-hidden rounded-xl border border-stone-200 bg-white shadow-lg">
-              <Link
-                href="/learn"
-                onClick={() => setMenuOpen(false)}
-                className="block px-4 py-3 text-sm text-gray-700 hover:bg-stone-50"
-              >
-                Learn
-              </Link>
-              <Link
-                href="/gallery"
-                onClick={() => setMenuOpen(false)}
-                className="block border-t border-stone-100 px-4 py-3 text-sm text-gray-700 hover:bg-stone-50"
-              >
-                Gallery
-              </Link>
-              {user ? (
-                <>
-                  <Link
-                    href="/profile"
-                    onClick={() => setMenuOpen(false)}
-                    className="block border-t border-stone-100 px-4 py-3 text-sm text-gray-700 hover:bg-stone-50"
-                  >
-                    Profile
-                  </Link>
-                  <button
-                    type="button"
-                    onClick={() => { void handleLogout(); setMenuOpen(false); }}
-                    className="w-full border-t border-stone-100 px-4 py-3 text-left text-sm text-stone-700 hover:bg-stone-50"
-                  >
-                    Log out
-                  </button>
-                </>
-              ) : (
-                <button
-                  id="tutorial-login"
-                  type="button"
-                  onClick={() => { setAuthModalOpen(true); setMenuOpen(false); }}
-                  className="w-full border-t border-stone-100 px-4 py-3 text-left text-sm font-medium text-brand hover:bg-pink-50"
-                >
-                  Log in
-                </button>
-              )}
-            </div>
-          )}
-        </div>
+        <NavUserSection activePage="editor" loginButtonId="tutorial-login" />
       </header>
 
-      <div className="relative flex min-h-0 flex-1">
-          {/* Narrow backdrop — closes drawer when tapping outside */}
-          {sidebarOpen && (
-            <div
-              className="fixed inset-0 z-30 bg-black/30 md:hidden"
-              onClick={() => setSidebarOpen(false)}
-            />
-          )}
+      {/* Floating cream app panel — inset from viewport edges, sits on gradient */}
+      <div
+        className="absolute inset-x-3 bottom-3 top-[80px] flex flex-col overflow-hidden rounded-[18px] max-md:static max-md:mt-[68px] max-md:h-auto max-md:rounded-none max-md:inset-x-0 max-md:bottom-0"
+        style={{
+          background: "#FBF7EF",
+          boxShadow: "0 10px 40px rgba(40,20,30,0.12), 0 0 0 1px rgba(255,255,255,0.5)",
+        }}
+      >
+        {/* ── Toolbar ── */}
+        <div
+          className="flex shrink-0 flex-wrap items-center justify-between gap-3 px-5 py-3.5"
+          style={{ borderBottom: "1px solid rgba(61,42,30,0.10)" }}
+        >
+          {/* Left: pattern name + save indicator */}
+          <div className="min-w-0">
+            <div className="font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-muted">Editing</div>
+            <div className="flex flex-wrap items-center gap-2">
+              {isRenamingTitle ? (
+                <input
+                  autoFocus
+                  type="text"
+                  value={titleDraft}
+                  onChange={(e) => setTitleDraft(e.target.value)}
+                  onBlur={() => {
+                    if (selectedPatternId && titleDraft.trim()) {
+                      void handleRenamePattern(selectedPatternId, titleDraft.trim());
+                    }
+                    setIsRenamingTitle(false);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      if (selectedPatternId && titleDraft.trim()) {
+                        void handleRenamePattern(selectedPatternId, titleDraft.trim());
+                      }
+                      setIsRenamingTitle(false);
+                    } else if (e.key === "Escape") {
+                      setIsRenamingTitle(false);
+                    }
+                  }}
+                  className="font-serif text-[22px] font-bold leading-none tracking-[-0.01em] text-text-strong bg-transparent border-b-2 border-brand focus:outline-none min-w-[120px]"
+                  style={{ padding: "0 2px" }}
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!selectedPatternId) return;
+                    setTitleDraft(activePattern?.name ?? "");
+                    setIsRenamingTitle(true);
+                  }}
+                  title={selectedPatternId ? "Click to rename" : undefined}
+                  className={`group/ptitle inline-flex items-center gap-1.5 font-serif text-[22px] font-bold leading-none tracking-[-0.01em] text-text-strong text-left ${selectedPatternId ? "cursor-pointer" : "cursor-default"}`}
+                >
+                  {activePattern?.name ?? "Unsaved pattern"}
+                  {selectedPatternId && (
+                    <svg
+                      viewBox="0 0 14 14" width="15" height="15"
+                      fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
+                      className="mb-[-2px] shrink-0 text-muted opacity-0 transition-opacity group-hover/ptitle:opacity-100"
+                    >
+                      <path d="M10 2l2 2-7 7-2.5.5.5-2.5 7-7z" />
+                    </svg>
+                  )}
+                </button>
+              )}
+              {/* Save indicator */}
+              {user && selectedPatternId && (
+                <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.05em] ${
+                  saveIndicator === "saving"
+                    ? "border border-amber-200 bg-amber-50 text-amber-700"
+                    : saveIndicator === "saved"
+                      ? "border border-green-200 bg-green-50 text-green-700"
+                      : saveIndicator === "pending"
+                        ? "border border-orange-200 bg-orange-50 text-orange-700"
+                        : "border border-[rgba(61,42,30,0.10)] text-muted"
+                }`}>
+                  <span className={`size-[6px] rounded-full ${
+                    saveIndicator === "saving" ? "animate-pulse bg-amber-400"
+                    : saveIndicator === "saved" ? "bg-green-600"
+                    : saveIndicator === "pending" ? "bg-orange-400"
+                    : "bg-stone-300"
+                  }`}/>
+                  {saveIndicator === "saving" ? "Saving…" : saveIndicator === "saved" ? "Saved a moment ago" : saveIndicator === "pending" ? "Unsaved changes" : "Autosave on"}
+                </span>
+              )}
+              {!user && <span className="font-sans text-[11px] font-medium text-muted">Sign in to save</span>}
+            </div>
+          </div>
 
-          {/* Sidebar: always inline on md+; slide-in drawer on narrow */}
+          {/* Middle: grid size — tutorial-grid-size */}
+          <div id="tutorial-grid-size" className="flex flex-wrap items-center gap-2">
+            {/* Preset selector */}
+            <div
+              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1"
+              style={{ background: "#fff", border: "1px solid rgba(61,42,30,0.10)" }}
+            >
+              <span className="font-sans text-[11px] font-semibold text-muted">Preset</span>
+              <select
+                value=""
+                onChange={(e) => {
+                  const label = e.target.value;
+                  const preset = GRID_PRESETS.find((p) => p.label === label);
+                  if (!preset) return;
+                  setAspectLocked(false);
+                  handleBestFitGrid(preset.w, preset.h);
+                  e.target.value = "";
+                }}
+                className="max-w-[130px] bg-transparent font-sans text-[12px] font-bold text-text-strong focus:outline-none"
+              >
+                <option value="" disabled>Choose…</option>
+                {GRID_PRESETS.map((p) => (
+                  <option key={p.label} value={p.label}>{p.label}</option>
+                ))}
+              </select>
+            </div>
+            {/* W / aspect-lock / H pill */}
+            <div
+              className="inline-flex items-center rounded-full"
+              style={{ background: "#fff", border: "1px solid rgba(61,42,30,0.10)", padding: "2px" }}
+            >
+              <span className="px-2.5 font-sans text-[11px] font-bold text-muted">W</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={wDraft}
+                onChange={(e) => setWDraft(e.target.value)}
+                onFocus={(e) => e.target.select()}
+                onBlur={() => {
+                  const n = parseInt(wDraft, 10);
+                  if (Number.isNaN(n)) { setWDraft(String(gridW)); } else { handleWidthChange(n); }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    const n = parseInt(wDraft, 10);
+                    if (!Number.isNaN(n)) handleWidthChange(n);
+                    (e.target as HTMLInputElement).blur();
+                  }
+                }}
+                className="w-12 rounded-full bg-white px-2 py-1 font-mono text-[12px] font-bold text-text-strong focus:outline-none"
+                style={{ border: "1px solid rgba(61,42,30,0.10)" }}
+              />
+              <button
+                type="button"
+                onClick={handleToggleAspectLock}
+                title={aspectLocked ? "Unlock aspect ratio" : "Lock aspect ratio"}
+                className={`px-1.5 transition-colors ${aspectLocked ? "text-brand" : "text-muted"}`}
+              >
+                {aspectLocked ? (
+                  <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="12" height="8" rx="1.5"/><path d="M5 7V5a3 3 0 016 0v2"/></svg>
+                ) : (
+                  <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="12" height="8" rx="1.5"/><path d="M5 7V5a3 3 0 016 0V2"/></svg>
+                )}
+              </button>
+              <span className="px-2.5 font-sans text-[11px] font-bold text-muted">H</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={hDraft}
+                onChange={(e) => setHDraft(e.target.value)}
+                onFocus={(e) => e.target.select()}
+                onBlur={() => {
+                  const n = parseInt(hDraft, 10);
+                  if (Number.isNaN(n)) { setHDraft(String(gridH)); } else { handleHeightChange(n); }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    const n = parseInt(hDraft, 10);
+                    if (!Number.isNaN(n)) handleHeightChange(n);
+                    (e.target as HTMLInputElement).blur();
+                  }
+                }}
+                className="w-12 rounded-full bg-white px-2 py-1 font-mono text-[12px] font-bold text-text-strong focus:outline-none"
+                style={{ border: "1px solid rgba(61,42,30,0.10)" }}
+              />
+            </div>
+          </div>
+
+          {/* Right: actions */}
+          <div id="tutorial-row-progress" className="flex flex-wrap items-center gap-1.5">
+            <button type="button" disabled={!canUndo} onClick={() => undo()} className="rounded-full border border-[rgba(61,42,30,0.10)] bg-white px-3 py-1.5 font-sans text-[12px] font-bold text-text-strong hover:bg-[rgba(61,42,30,0.05)] disabled:opacity-40">Undo</button>
+            <button type="button" disabled={!canRedo} onClick={() => redo()} className="rounded-full border border-[rgba(61,42,30,0.10)] bg-white px-3 py-1.5 font-sans text-[12px] font-bold text-muted hover:bg-[rgba(61,42,30,0.05)] disabled:opacity-40">Redo</button>
+            <span className="mx-1 h-5 w-px" style={{ background: "rgba(61,42,30,0.10)" }}/>
+            <button type="button" disabled={progress.currentRow <= 0} onClick={() => handleStepCurrentRow(-1)} className="rounded-full border border-[rgba(61,42,30,0.10)] bg-white px-3 py-1.5 font-sans text-[12px] font-bold text-text-strong hover:bg-[rgba(61,42,30,0.05)] disabled:opacity-40">← Row</button>
+            <button type="button" disabled={progress.currentRow >= gridH - 1} onClick={() => handleStepCurrentRow(1)} className="rounded-full border border-[rgba(61,42,30,0.10)] bg-white px-3 py-1.5 font-sans text-[12px] font-bold text-text-strong hover:bg-[rgba(61,42,30,0.05)] disabled:opacity-40">Row →</button>
+            <span className="mx-1 h-5 w-px" style={{ background: "rgba(61,42,30,0.10)" }}/>
+            <button id="tutorial-print" type="button" disabled={!selectedPatternId} onClick={() => { if (!selectedPatternId) return; window.open(`/print/${selectedPatternId}`, "_blank", "noopener,noreferrer"); }} className="inline-flex items-center gap-1.5 rounded-full border border-[rgba(61,42,30,0.10)] bg-white px-3 py-1.5 font-sans text-[12px] font-bold text-text-strong hover:bg-[rgba(61,42,30,0.05)] disabled:opacity-40">
+              <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="5" width="8" height="10" rx="1.5"/><path d="M3 11V3a1 1 0 011-1h8"/></svg>
+              Print
+            </button>
+            {user && !selectedPatternId && (
+              <button type="button" onClick={() => void handleSaveCurrentAsPattern()} className="rounded-full bg-brand px-3 py-1.5 font-sans text-[12px] font-bold text-[#FBF7EF] hover:bg-brand-dark" style={{ boxShadow: "0 4px 14px rgba(168,70,111,0.30)" }}>
+                Save
+              </button>
+            )}
+            {user && selectedPatternId && (
+              <button type="button" disabled={saveIndicator === "saving"} onClick={() => void handleSave()} className="rounded-full bg-brand px-3 py-1.5 font-sans text-[12px] font-bold text-[#FBF7EF] hover:bg-brand-dark disabled:opacity-50" style={{ boxShadow: "0 4px 14px rgba(168,70,111,0.30)" }}>
+                {saveIndicator === "saving" ? "Saving…" : "Save"}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* ── Mode bar ── */}
+        <div
+          className="flex shrink-0 items-center justify-between gap-3 px-5 py-2"
+          style={{ borderBottom: "1px solid rgba(61,42,30,0.10)", background: "rgba(168,70,111,0.04)" }}
+        >
           <div
-            className={`max-md:absolute max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:shadow-2xl max-md:transition-transform max-md:duration-200 md:flex md:shrink-0 ${
-              sidebarOpen ? "max-md:translate-x-0" : "max-md:-translate-x-full"
-            }`}
+            className="inline-flex items-center rounded-full p-1"
+            style={{ background: "rgba(31,20,16,0.06)" }}
           >
+            {([
+              { key: "draw" as const, label: "Yarn estimator", icon: (
+                <svg viewBox="0 0 14 14" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M10.5 2.5l1 1-7 7-1.5.5.5-1.5 7-7z"/></svg>
+              )},
+              { key: "import" as const, label: "Import image", icon: (
+                <svg viewBox="0 0 14 14" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="1" width="12" height="10" rx="1.5"/><path d="M1 8l3-3 3 3 2-2 4 4"/></svg>
+              )},
+            ] as const).map(({ key, label, icon }) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setEditorMode(key)}
+                className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 font-sans text-[13px] font-bold transition-colors ${
+                  editorMode === key
+                    ? "bg-[#1F1410] text-[#FBF7EF]"
+                    : "text-[#7A6A5F] hover:text-[#3D2A1E]"
+                }`}
+              >
+                {icon}
+                {label}
+              </button>
+            ))}
+          </div>
+          <span className="font-mono text-[11px] text-muted">
+            Row <span className="font-bold text-brand">{progress.currentRow + 1}</span> of {gridH}
+          </span>
+        </div>
+
+        {/* ── Body: sidebar | canvas | right panel ── */}
+        <div className="relative flex min-h-0 flex-1">
+          {sidebarOpen && (
+            <div className="fixed inset-0 z-30 bg-black/30 md:hidden" onClick={() => setSidebarOpen(false)} />
+          )}
+          <div className={`max-md:absolute max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:shadow-2xl max-md:transition-transform max-md:duration-200 md:flex md:shrink-0 ${sidebarOpen ? "max-md:translate-x-0" : "max-md:-translate-x-full"}`}>
             <PatternSidebar
               user={user}
               supabase={supabase}
@@ -723,200 +913,46 @@ export default function EditorPage() {
             />
           </div>
 
-          <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto p-6 max-md:p-3">
+          <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto p-5 max-md:p-3">
             {configError ? (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100">
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 font-sans text-sm text-amber-900">
                 {configError}
               </div>
             ) : (
               <div className="flex min-h-0 flex-1 flex-col gap-4 max-md:flex-none">
-                <div className="flex shrink-0 items-center gap-1.5 text-xs">
-                  {user && selectedPatternId ? (
-                    <>
-                      <span className={`h-1.5 w-1.5 rounded-full transition-colors ${
-                        saveIndicator === "saving"
-                          ? "animate-pulse bg-amber-400"
-                          : saveIndicator === "saved"
-                            ? "bg-teal-500"
-                            : saveIndicator === "pending"
-                              ? "bg-amber-400"
-                              : "bg-stone-300"
-                      }`} />
-                      <span className={
-                        saveIndicator === "saved" ? "text-teal-600" :
-                        saveIndicator === "pending" ? "text-stone-500" :
-                        "text-stone-400"
-                      }>
-                        {saveIndicator === "saving" ? "Saving…" :
-                         saveIndicator === "saved" ? "Saved" :
-                         saveIndicator === "pending" ? "Unsaved changes" :
-                         "Autosave on"}
-                      </span>
-                    </>
-                  ) : !user ? (
-                    <span className="text-stone-400">Sign in to save your work</span>
-                  ) : null}
-                </div>
-
-                {user && !selectedPatternId && (
-                  <div className="flex shrink-0 items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                    <span>This pattern isn't saved yet.</span>
-                    <button
-                      type="button"
-                      onClick={() => void handleSaveCurrentAsPattern()}
-                      className="rounded-full bg-brand px-3 py-1 text-xs font-medium text-white shadow-sm hover:bg-brand-dark"
-                    >
-                      Save pattern
-                    </button>
-                  </div>
-                )}
-
-                <div
-                  id="tutorial-grid-size"
-                  className="flex shrink-0 flex-wrap items-end gap-3"
-                >
-                  {/* Presets */}
-                  <div className="flex flex-col gap-1 text-xs font-medium text-stone-600">
-                    <span>Presets</span>
-                    <select
-                      value=""
-                      onChange={(e) => {
-                        const label = e.target.value;
-                        const preset = GRID_PRESETS.find((p) => p.label === label);
-                        if (!preset) return;
-                        setAspectLocked(false);
-                        handleBestFitGrid(preset.w, preset.h);
-                        e.target.value = "";
-                      }}
-                      className="rounded-lg border border-brand/15 bg-white px-2 py-1 text-sm text-stone-900 shadow-sm"
-                    >
-                      <option value="" disabled>
-                        Choose…
-                      </option>
-                      {GRID_PRESETS.map((p) => (
-                        <option key={p.label} value={p.label}>
-                          {p.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Width / aspect-lock / Height */}
-                  <label className="flex flex-col gap-1 text-xs font-medium text-stone-600">
-                    Width
-                    <input
-                      type="number"
-                      min={5}
-                      max={200}
-                      value={gridW}
-                      onChange={(e) => handleWidthChange(Number(e.target.value))}
-                      className="w-20 rounded-lg border border-rose-100 bg-white px-2 py-1 text-sm text-stone-900 shadow-sm"
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    onClick={handleToggleAspectLock}
-                    title={aspectLocked ? "Unlock aspect ratio" : "Lock aspect ratio"}
-                    className={`mt-4 rounded-md border border-gray-300 bg-white/80 p-1.5 transition-colors hover:bg-pink-50 ${
-                      aspectLocked ? "text-brand" : "text-gray-400"
-                    }`}
-                  >
-                    {aspectLocked ? (
-                      <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                        <rect x="2" y="7" width="12" height="8" rx="1.5" />
-                        <path d="M5 7V5a3 3 0 016 0v2" />
-                      </svg>
-                    ) : (
-                      <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                        <rect x="2" y="7" width="12" height="8" rx="1.5" />
-                        <path d="M5 7V5a3 3 0 016 0V2" />
-                      </svg>
-                    )}
-                  </button>
-                  <label className="flex flex-col gap-1 text-xs font-medium text-stone-600">
-                    Height
-                    <input
-                      type="number"
-                      min={5}
-                      max={200}
-                      value={gridH}
-                      onChange={(e) => handleHeightChange(Number(e.target.value))}
-                      className="w-20 rounded-lg border border-rose-100 bg-white px-2 py-1 text-sm text-stone-900 shadow-sm"
-                    />
-                  </label>
-
-                  <div id="tutorial-row-progress" className="flex flex-wrap gap-2 max-md:w-full">
-                    {/* Yarn drawer toggle: only shown below xl breakpoint */}
-                    <button
-                      type="button"
-                      onClick={() => setYarnOpen((p) => !p)}
-                      className="rounded-full border border-stone-200 bg-white px-3 py-1.5 text-sm font-medium text-stone-700 shadow-sm hover:bg-stone-50 xl:hidden max-md:px-2 max-md:py-1 max-md:text-xs"
-                    >
-                      {yarnOpen ? "Hide Yarn Estimate" : "Yarn Estimate"}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={!canUndo}
-                      onClick={() => undo()}
-                      className="rounded-full border border-stone-200 bg-white px-3 py-1.5 text-sm font-medium text-stone-700 shadow-sm hover:bg-stone-50 disabled:opacity-40 max-md:px-2 max-md:py-1 max-md:text-xs"
-                    >
-                      Undo
-                    </button>
-                    <button
-                      type="button"
-                      disabled={!canRedo}
-                      onClick={() => redo()}
-                      className="rounded-full border border-stone-200 bg-white px-3 py-1.5 text-sm font-medium text-stone-700 shadow-sm hover:bg-stone-50 disabled:opacity-40 max-md:px-2 max-md:py-1 max-md:text-xs"
-                    >
-                      Redo
-                    </button>
-                    <button
-                      type="button"
-                      disabled={progress.currentRow <= 0}
-                      onClick={() => handleStepCurrentRow(-1)}
-                      className="rounded-full border border-stone-200 bg-white px-3 py-1.5 text-sm font-medium text-stone-700 shadow-sm hover:bg-stone-50 disabled:opacity-40 max-md:px-2 max-md:py-1 max-md:text-xs"
-                    >
-                      Prev row
-                    </button>
-                    <button
-                      type="button"
-                      disabled={progress.currentRow >= gridH - 1}
-                      onClick={() => handleStepCurrentRow(1)}
-                      className="rounded-full border border-stone-200 bg-white px-3 py-1.5 text-sm font-medium text-stone-700 shadow-sm hover:bg-stone-50 disabled:opacity-40 max-md:px-2 max-md:py-1 max-md:text-xs"
-                    >
-                      Next row
-                    </button>
-                    {user && selectedPatternId && (
-                      <button
-                        type="button"
-                        disabled={saveIndicator === "saving"}
-                        onClick={() => void handleSave()}
-                        className={`rounded-full px-3 py-1.5 text-sm font-medium shadow-sm transition-colors disabled:opacity-50 max-md:px-2 max-md:py-1 max-md:text-xs ${
-                          saveIndicator === "saved"
-                            ? "border border-teal-200 bg-teal-50 text-teal-700"
-                            : "border border-brand/30 bg-brand/8 text-brand hover:bg-brand/15"
-                        }`}
-                      >
-                        {saveIndicator === "saving" ? "Saving…" : saveIndicator === "saved" ? "Saved ✓" : "Save"}
-                      </button>
-                    )}
-                    <button
-                      id="tutorial-print"
-                      type="button"
-                      disabled={!selectedPatternId}
-                      onClick={() => {
-                        if (!selectedPatternId) return;
-                        window.open(`/print/${selectedPatternId}`, "_blank", "noopener,noreferrer");
-                      }}
-                      className="rounded-full border border-stone-200 bg-white px-3 py-1.5 text-sm font-medium text-stone-700 shadow-sm hover:bg-stone-50 disabled:opacity-40 max-md:px-2 max-md:py-1 max-md:text-xs"
-                    >
-                      Print
-                    </button>
-                  </div>
-                </div>
-
                 <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 xl:flex-row xl:items-stretch max-md:flex-none">
-                  <div className={`relative flex min-h-0 min-w-0 flex-1 flex-col max-md:flex-none transition-all duration-200 ${gridFullscreen ? "z-30 pointer-events-none" : ""}`}>
+                  {/* ── Center: tool toggle + canvas + progress ── */}
+                  <div className={`relative flex min-h-0 min-w-0 flex-1 flex-col gap-2 max-md:flex-none transition-all duration-200 ${gridFullscreen ? "z-30 pointer-events-none" : ""}`}>
+
+                    {/* Block / Mesh / Preset — above grid */}
+                    <div id="tutorial-pencil" className="flex shrink-0 flex-wrap items-center gap-3">
+                      <div
+                        className="inline-flex items-center rounded-full p-1"
+                        style={{ background: "#1F1410" }}
+                      >
+                        {([
+                          { mode: "block" as const, label: "■ Block" },
+                          { mode: "mesh" as const, label: "□ Mesh" },
+                        ] as const).map(({ mode, label }) => (
+                          <button
+                            key={mode}
+                            type="button"
+                            onClick={() => setDrawMode(mode)}
+                            className={`rounded-full px-3 py-1 font-sans text-[13px] font-semibold transition-colors ${
+                              drawMode === mode
+                                ? "bg-white text-[#1F1410]"
+                                : "text-white/65 hover:text-white"
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      <span className="font-mono text-[11px] text-muted hidden sm:inline">
+                        ■ block &nbsp; □ mesh &nbsp; ▬ current row
+                      </span>
+                    </div>
+
                     <ImageTools
                       gridWidth={gridW}
                       gridHeight={gridH}
@@ -937,34 +973,64 @@ export default function EditorPage() {
                       savedImageSettings={imageSettings}
                       imageSettingsLoadKey={imageSettingsLoadKey}
                       onImageSettingsChange={handleImageSettingsChange}
+                      sidePanelTarget={editorMode === "import" ? importPanelEl : null}
+                      toolOverride={drawTool}
+                      onToolOverrideChange={(t) => setDrawMode(t === "pencil" ? "block" : "mesh")}
                       className="min-h-0 max-md:flex-none"
                     />
+
+                    {/* Progress bar + cell counts — below grid */}
+                    <div className="shrink-0">
+                      <div className="mb-1.5 flex items-center justify-between font-sans text-[12px] text-muted">
+                        <span>
+                          <span className="font-bold" style={{ color: "#A8466F" }}>{completedCount}</span>
+                          {" / "}{gridH} rows complete
+                        </span>
+                        <span className="font-mono text-[11px]">{completedPct}% · row {progress.currentRow + 1}</span>
+                      </div>
+                      <div className="overflow-hidden rounded-full" style={{ height: 4, background: "rgba(168,70,111,0.12)" }}>
+                        <div
+                          className="h-full rounded-full transition-all duration-300"
+                          style={{ width: `${completedPct}%`, background: "#A8466F" }}
+                        />
+                      </div>
+                      <div className="mt-2 flex items-center justify-between font-sans text-[12px] text-muted">
+                        <span>
+                          <span className="font-bold text-text-strong">{filledCellCount}</span> blocks ·{" "}
+                          <span className="font-bold text-text-strong">{emptyCellCount}</span> mesh squares
+                        </span>
+                        <span className="font-mono text-[11px]">100%</span>
+                      </div>
+                    </div>
                   </div>
 
-                  {/* Yarn estimator: always visible on xl+, drawer toggle on narrower; blurred when crop or grid is fullscreen */}
+                  {/* ── Right panel: import controls OR yarn estimator ── */}
                   <div
-                    className={`xl:flex xl:w-80 xl:shrink-0 xl:flex-col ${
-                      yarnOpen ? "flex flex-col" : "hidden xl:flex"
-                    } ${
-                      imageCropExpanded || gridFullscreen
-                        ? "pointer-events-none"
-                        : ""
-                    }`}
+                    className={`flex w-full flex-col gap-4 xl:w-80 xl:shrink-0 xl:overflow-y-auto xl:gap-0 xl:border-l xl:pl-5 ${imageCropExpanded || gridFullscreen ? "pointer-events-none" : ""}`}
+                    style={{ borderColor: "rgba(61,42,30,0.08)" }}
                   >
-                    <YarnEstimator
-                      gridWidth={gridW}
-                      gridHeight={gridH}
-                      filledCellCount={filledCellCount}
-                      emptyCellCount={emptyCellCount}
-                      value={yarnSettings}
-                      onChange={handleYarnSettingsChange}
-                      className="w-full xl:z-10"
+                    {/* Import panel portal target — always mounted so portal can target it */}
+                    <div
+                      ref={setImportPanelEl}
+                      className={editorMode === "import" ? "flex flex-1 flex-col" : "hidden"}
                     />
+                    {editorMode !== "import" && (
+                      <YarnEstimator
+                        gridWidth={gridW}
+                        gridHeight={gridH}
+                        filledCellCount={filledCellCount}
+                        emptyCellCount={emptyCellCount}
+                        value={yarnSettings}
+                        onChange={handleYarnSettingsChange}
+                        className="w-full"
+                      />
+                    )}
                   </div>
                 </div>
               </div>
             )}
           </main>
+        </div>
       </div>
 
       {supabase && user && (

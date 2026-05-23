@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <!-- row 0: two bumps at x=1 and x=3 -->
+  <rect x="6.9" y="0.5" width="5.4" height="5.4" rx="1.5" fill="#A8466F"/>
+  <rect x="19.7" y="0.5" width="5.4" height="5.4" rx="1.5" fill="#A8466F"/>
+  <!-- row 1: full width -->
+  <rect x="0.5" y="6.9" width="5.4" height="5.4" rx="1.5" fill="#A8466F"/>
+  <rect x="6.9" y="6.9" width="5.4" height="5.4" rx="1.5" fill="#A8466F"/>
+  <rect x="13.3" y="6.9" width="5.4" height="5.4" rx="1.5" fill="#A8466F"/>
+  <rect x="19.7" y="6.9" width="5.4" height="5.4" rx="1.5" fill="#A8466F"/>
+  <rect x="26.1" y="6.9" width="5.4" height="5.4" rx="1.5" fill="#A8466F"/>
+  <!-- row 2: full width -->
+  <rect x="0.5" y="13.3" width="5.4" height="5.4" rx="1.5" fill="#A8466F"/>
+  <rect x="6.9" y="13.3" width="5.4" height="5.4" rx="1.5" fill="#A8466F"/>
+  <rect x="13.3" y="13.3" width="5.4" height="5.4" rx="1.5" fill="#A8466F"/>
+  <rect x="19.7" y="13.3" width="5.4" height="5.4" rx="1.5" fill="#A8466F"/>
+  <rect x="26.1" y="13.3" width="5.4" height="5.4" rx="1.5" fill="#A8466F"/>
+  <!-- row 3: narrowing -->
+  <rect x="6.9" y="19.7" width="5.4" height="5.4" rx="1.5" fill="#A8466F"/>
+  <rect x="13.3" y="19.7" width="5.4" height="5.4" rx="1.5" fill="#A8466F"/>
+  <rect x="19.7" y="19.7" width="5.4" height="5.4" rx="1.5" fill="#A8466F"/>
+  <!-- row 4: tip -->
+  <rect x="13.3" y="26.1" width="5.4" height="5.4" rx="1.5" fill="#A8466F"/>
+</svg>

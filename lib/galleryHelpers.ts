@@ -129,6 +129,35 @@ export async function searchUsers(
   }));
 }
 
+export async function fetchUserLikedPatterns(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<{ data: GalleryPattern[]; error: Error | null }> {
+  const { data: likedRows, error: likedError } = await supabase
+    .from("pattern_likes")
+    .select("pattern_id")
+    .eq("user_id", userId);
+
+  if (likedError) return { data: [], error: likedError as Error | null };
+  if (!likedRows || likedRows.length === 0) return { data: [], error: null };
+
+  const ids = (likedRows as { pattern_id: string }[]).map((r) => r.pattern_id);
+
+  const { data, error } = await supabase
+    .from("patterns")
+    .select(
+      "id, user_id, name, grid_width, grid_height, thumbnail, likes_count, copies_count, updated_at",
+    )
+    .in("id", ids)
+    .eq("is_public", true)
+    .order("updated_at", { ascending: false });
+
+  return {
+    data: (data as GalleryPattern[] | null) ?? [],
+    error: error as Error | null,
+  };
+}
+
 export async function fetchPublicPatternsByUserId(
   supabase: SupabaseClient,
   userId: string,

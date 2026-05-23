@@ -1,6 +1,8 @@
 "use client";
 
 import { AuthModal } from "@/components/AuthModal";
+import { CrochetMark } from "@/components/CrochetMark";
+import { NavUserSection } from "@/components/NavUserSection";
 import { PatternGalleryCard } from "@/components/PatternGalleryCard";
 import {
   copyPublicPattern,
@@ -260,143 +262,60 @@ export default function GalleryPage() {
     await supabase.auth.signOut();
   }, [supabase]);
 
-  const [menuOpen, setMenuOpen] = useState(false);
-
   return (
-    <div className="min-h-screen text-stone-800">
-      <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center justify-between border-b border-white/40 bg-white/80 px-4 shadow-sm backdrop-blur-md">
-        <div className="flex items-center gap-5">
-          <Link
-            href="/"
-            className="font-serif text-xl font-bold text-brand hover:text-brand-dark"
-          >
+    <div className="min-h-screen">
+      {/* Transparent navbar */}
+      <header className="z-20 flex h-[68px] items-center justify-between px-8">
+        <div className="flex items-center gap-9">
+          <Link href="/" className="inline-flex items-center gap-[9px] font-serif text-2xl font-bold leading-none tracking-[-0.01em] text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">
+            <CrochetMark size={22} color="#fff" />
             Gridwork
           </Link>
-          {/* Desktop nav links */}
-          <Link
-            href="/learn"
-            className="hidden text-sm text-gray-700 transition-colors duration-150 hover:text-violet-700 md:inline"
-          >
-            Learn
-          </Link>
-          <span className="hidden text-sm font-medium text-stone-700 md:inline">Gallery</span>
+          <nav className="hidden items-center gap-7 md:flex">
+            <Link href="/" className="text-sm font-semibold text-white/85 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">Home</Link>
+            <Link href="/learn" className="text-sm font-semibold text-white/85 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">Learn</Link>
+            <span className="inline-flex items-center gap-[7px] text-sm font-bold text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">
+              <span className="inline-block size-[6px] rounded-full bg-white" />
+              Gallery
+            </span>
+            <Link href="/editor" className="text-sm font-semibold text-white/85 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">Editor</Link>
+          </nav>
         </div>
-
-        {/* Desktop right side */}
-        <div className="hidden items-center gap-2 md:flex">
-          <Link
-            href="/editor"
-            className="rounded-full border border-stone-200 bg-white px-3 py-1.5 text-sm font-medium text-stone-600 shadow-sm hover:bg-stone-50"
-          >
-            Editor
-          </Link>
-          {user && (
-            <Link
-              href="/profile"
-              className="text-sm text-gray-700 transition-colors duration-150 hover:text-violet-700"
-            >
-              Profile
-            </Link>
-          )}
-          {user ? (
-            <button
-              type="button"
-              onClick={() => void handleLogout()}
-              className="cursor-pointer rounded-full border border-stone-200 bg-white px-3 py-1.5 text-sm font-medium text-stone-600 shadow-sm hover:bg-stone-50"
-            >
-              Log out
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setAuthModalOpen(true)}
-              className="cursor-pointer rounded-full bg-brand px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-brand-dark"
-            >
-              Log in
-            </button>
-          )}
-        </div>
-
-        {/* Mobile hamburger */}
-        <div className="relative md:hidden">
-          <button
-            type="button"
-            onClick={() => setMenuOpen((p) => !p)}
-            className="rounded-md border border-stone-200 bg-white/80 px-2.5 py-1.5 text-xs font-medium text-stone-700 hover:bg-stone-50"
-            aria-label="Menu"
-          >
-            {menuOpen ? "✕" : "☰"}
-          </button>
-          {menuOpen && (
-            <div className="absolute right-0 top-full z-50 mt-1 w-48 overflow-hidden rounded-xl border border-stone-200 bg-white shadow-lg">
-              <Link
-                href="/learn"
-                onClick={() => setMenuOpen(false)}
-                className="block px-4 py-3 text-sm text-gray-700 hover:bg-stone-50"
-              >
-                Learn
-              </Link>
-              <Link
-                href="/editor"
-                onClick={() => setMenuOpen(false)}
-                className="block border-t border-stone-100 px-4 py-3 text-sm text-gray-700 hover:bg-stone-50"
-              >
-                Editor
-              </Link>
-              {user ? (
-                <>
-                  <Link
-                    href="/profile"
-                    onClick={() => setMenuOpen(false)}
-                    className="block border-t border-stone-100 px-4 py-3 text-sm text-gray-700 hover:bg-stone-50"
-                  >
-                    Profile
-                  </Link>
-                  <button
-                    type="button"
-                    onClick={() => { void handleLogout(); setMenuOpen(false); }}
-                    className="w-full border-t border-stone-100 px-4 py-3 text-left text-sm text-stone-700 hover:bg-stone-50"
-                  >
-                    Log out
-                  </button>
-                </>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => { setAuthModalOpen(true); setMenuOpen(false); }}
-                  className="w-full border-t border-stone-100 px-4 py-3 text-left text-sm font-medium text-brand hover:bg-pink-50"
-                >
-                  Log in
-                </button>
-              )}
-            </div>
-          )}
-        </div>
+        <NavUserSection activePage="gallery" />
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 py-8">
+      <main className="mx-auto max-w-7xl px-12 py-0 pb-16">
         {configError && (
           <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
             {configError}
           </div>
         )}
 
-        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        {/* Page header */}
+        <div className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-stone-900">Pattern Gallery</h1>
-            <p className="mt-0.5 text-sm text-stone-500">
-              Browse and copy public filet crochet patterns.
+            <div className="font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-white/85" style={{ textShadow: "0 1px 2px rgba(0,0,0,0.15)", marginBottom: 8 }}>
+              Community patterns
+            </div>
+            <h1 className="font-serif text-[48px] font-bold leading-none tracking-[-0.02em] text-white" style={{ textShadow: "0 2px 6px rgba(40,20,40,0.18)", margin: 0 }}>
+              Gallery
+            </h1>
+            <p className="font-serif italic text-[16px] text-white/92 mt-1" style={{ textShadow: "0 1px 2px rgba(40,20,40,0.18)" }}>
+              Browse, like, and copy patterns shared by the community.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* Sort toggle */}
-            <div className="flex rounded-full border border-stone-200 bg-white p-0.5 shadow-sm">
+            <div
+              className="inline-flex items-center rounded-full"
+              style={{ background: "#FBF7EF", padding: 4, boxShadow: "0 4px 14px rgba(40,20,30,0.10), 0 0 0 1px rgba(255,255,255,0.5)" }}
+            >
+              {/* Sort pills */}
               <button
                 type="button"
                 onClick={() => setSortBy("newest")}
-                className={`rounded-full px-3 py-1 text-sm font-medium transition-colors ${
-                  sortBy === "newest" ? "bg-brand text-white" : "text-stone-600 hover:bg-stone-50"
+                className={`rounded-full px-4 py-1.5 text-[13px] font-bold transition-colors ${
+                  sortBy === "newest" ? "bg-brand text-[#FBF7EF]" : "text-muted-strong hover:text-text-strong"
                 }`}
               >
                 Newest
@@ -404,60 +323,57 @@ export default function GalleryPage() {
               <button
                 type="button"
                 onClick={() => setSortBy("popular")}
-                className={`rounded-full px-3 py-1 text-sm font-medium transition-colors ${
-                  sortBy === "popular" ? "bg-brand text-white" : "text-stone-600 hover:bg-stone-50"
+                className={`rounded-full px-4 py-1.5 text-[13px] font-bold transition-colors ${
+                  sortBy === "popular" ? "bg-brand text-[#FBF7EF]" : "text-muted-strong hover:text-text-strong"
                 }`}
               >
                 Popular
               </button>
-            </div>
-
-            {/* Search */}
-            <form onSubmit={handleSearchSubmit} className="flex items-center gap-1.5">
-              <input
-                type="search"
-                placeholder="Search patterns…"
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                className="rounded-full border border-stone-200 bg-white px-3 py-1.5 text-sm text-stone-900 shadow-sm placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-brand/40"
-              />
-              <button
-                type="submit"
-                className="rounded-full bg-brand px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-brand-dark"
-              >
-                Search
-              </button>
-              {activeSearch && (
-                <button
-                  type="button"
-                  onClick={handleClearSearch}
-                  className="rounded-full border border-stone-200 bg-white px-3 py-1.5 text-sm font-medium text-stone-600 shadow-sm hover:bg-stone-50"
-                >
-                  Clear
+              <span className="mx-1 inline-block h-5 w-px" style={{ background: "rgba(61,42,30,0.12)" }} />
+              {/* Search */}
+              <form onSubmit={handleSearchSubmit} className="flex items-center gap-1">
+                <div className="inline-flex items-center gap-2 px-2 py-1.5">
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#7A6A5F" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <circle cx="11" cy="11" r="6"/><path d="m20 20-3.5-3.5"/>
+                  </svg>
+                  <input
+                    type="search"
+                    placeholder="Search patterns…"
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
+                    className="bg-transparent font-sans text-[13px] font-medium text-text-strong placeholder:text-muted focus:outline-none"
+                    style={{ minWidth: 160 }}
+                  />
+                </div>
+                <button type="submit" className="rounded-full bg-brand px-3 py-1.5 text-[13px] font-bold text-[#FBF7EF] hover:bg-brand-dark">
+                  Go
                 </button>
-              )}
-            </form>
+              </form>
+            </div>
+            {activeSearch && (
+              <button type="button" onClick={handleClearSearch} className="rounded-full border border-white/40 bg-white/20 px-3 py-1.5 text-[13px] font-semibold text-white backdrop-blur-sm hover:bg-white/30">
+                Clear
+              </button>
+            )}
           </div>
         </div>
 
         {activeSearch && userResults.length > 0 && (
           <div className="mb-6">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-stone-400">Users</p>
+            <p className="mb-2 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-white/70">Users</p>
             <div className="flex flex-col gap-1">
               {userResults.map((u) => (
                 <div
                   key={u.display_name}
-                  className="flex items-center justify-between rounded-xl border border-stone-100 bg-white/80 px-4 py-2.5 shadow-sm"
+                  className="flex items-center justify-between rounded-xl px-4 py-2.5"
+                  style={{ background: "#FBF7EF", boxShadow: "0 4px 14px rgba(40,20,30,0.08), 0 0 0 1px rgba(255,255,255,0.5)" }}
                 >
-                  <span className="text-sm font-medium text-stone-800">@{u.display_name}</span>
+                  <span className="font-sans text-sm font-semibold text-text-strong">@{u.display_name}</span>
                   <div className="flex items-center gap-3">
-                    <span className="text-xs text-stone-400">
+                    <span className="font-sans text-xs font-medium text-muted">
                       {u.public_pattern_count} pattern{u.public_pattern_count === 1 ? "" : "s"}
                     </span>
-                    <Link
-                      href={`/u/${u.display_name}`}
-                      className="text-xs font-medium text-accent hover:text-accent-dark hover:underline"
-                    >
+                    <Link href={`/u/${u.display_name}?ref=gallery`} className="font-sans text-xs font-bold text-brand hover:text-brand-dark hover:underline">
                       View profile →
                     </Link>
                   </div>
@@ -468,7 +384,7 @@ export default function GalleryPage() {
         )}
 
         {!loading && (
-          <p className="mb-4 text-sm text-stone-500">
+          <p className="mb-4 font-sans text-sm font-medium text-white/70">
             {total === 0
               ? activeSearch
                 ? `No patterns found for "${activeSearch}".`
@@ -479,11 +395,11 @@ export default function GalleryPage() {
 
         {loading ? (
           <div className="flex items-center justify-center py-24">
-            <p className="text-sm text-stone-500">Loading patterns…</p>
+            <p className="font-sans text-sm font-medium text-white/70">Loading patterns…</p>
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+            <div className="grid grid-cols-2 gap-[18px] sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
               {patterns.map((p) => (
                 <PatternGalleryCard
                   key={p.id}
@@ -496,6 +412,7 @@ export default function GalleryPage() {
                   copying={copying === p.id}
                   canInteract={Boolean(user)}
                   makerDisplayName={displayNames.get(p.user_id) ?? null}
+                  makerHref={displayNames.get(p.user_id) ? `/u/${displayNames.get(p.user_id)}?ref=gallery` : undefined}
                 />
               ))}
             </div>
@@ -506,7 +423,7 @@ export default function GalleryPage() {
                   type="button"
                   onClick={() => void handleLoadMore()}
                   disabled={loadingMore}
-                  className="rounded-full border border-stone-200 bg-white px-6 py-2.5 text-sm font-medium text-stone-700 shadow-sm hover:bg-stone-50 disabled:opacity-50"
+                  className="rounded-full border border-white/40 bg-white/20 px-6 py-2.5 font-sans text-sm font-semibold text-white backdrop-blur-sm hover:bg-white/30 disabled:opacity-50"
                 >
                   {loadingMore ? "Loading…" : "Load more"}
                 </button>
@@ -569,7 +486,9 @@ export default function GalleryPage() {
               <div className="min-w-0">
                 <p className="truncate text-base font-semibold text-stone-900">{previewPattern.name}</p>
                 <p className="mt-0.5 text-sm text-stone-400">
-                  Maker {previewPattern.user_id.slice(0, 6).toUpperCase()} · {previewPattern.grid_width}×{previewPattern.grid_height}
+                  {displayNames.get(previewPattern.user_id)
+                    ? `@${displayNames.get(previewPattern.user_id)}`
+                    : `@${previewPattern.user_id.slice(0, 6).toLowerCase()}`} · {previewPattern.grid_width}×{previewPattern.grid_height}
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">

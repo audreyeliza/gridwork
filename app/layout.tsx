@@ -1,25 +1,28 @@
 import type { Metadata } from "next";
-import { Playfair_Display, Lato, Geist_Mono } from "next/font/google";
+import { Lora, Nunito, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AppGradient } from "@/components/AppGradient";
 
-const playfairDisplay = Playfair_Display({
-  variable: "--font-playfair",
+const lora = Lora({
+  variable: "--font-lora",
   subsets: ["latin"],
-  weight: ["400", "600", "700", "900"],
+  weight: ["400", "500", "600", "700"],
+  style: ["normal", "italic"],
   display: "swap",
 });
 
-const lato = Lato({
-  variable: "--font-lato",
+const nunito = Nunito({
+  variable: "--font-nunito",
   subsets: ["latin"],
-  weight: ["300", "400", "700"],
+  weight: ["400", "500", "600", "700", "800"],
   display: "swap",
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const jetbrainsMono = JetBrains_Mono({
+  variable: "--font-jetbrains-mono",
   subsets: ["latin"],
+  weight: ["400", "500"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -35,7 +38,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${playfairDisplay.variable} ${lato.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${lora.variable} ${nunito.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
       <body className="h-full flex flex-col">
         <AppGradient className="fixed inset-0 -z-10" />
