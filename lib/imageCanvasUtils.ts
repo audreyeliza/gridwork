@@ -23,6 +23,59 @@ export function drawImageContain(
   drawImageWithTransform(ctx, img, dx, dy, dWidth, dHeight, null, 0, 0);
 }
 
+export type ImageTransformLayout = {
+  fitX: number;
+  fitY: number;
+  fitW: number;
+  fitH: number;
+};
+
+/**
+ * Layout for an image contain-fitted into a destination rect, with pan and zoom.
+ * `zoom` scales the fitted image about its center (1 = default).
+ */
+export function getImageTransformLayout(
+  imgW: number,
+  imgH: number,
+  dWidth: number,
+  dHeight: number,
+  crop: CropRect | null,
+  panX: number,
+  panY: number,
+  zoom = 1,
+): ImageTransformLayout {
+  const iw = Math.max(1, imgW);
+  const ih = Math.max(1, imgH);
+
+  const sx = crop ? crop.x * iw : 0;
+  const sy = crop ? crop.y * ih : 0;
+  const sw = crop ? Math.max(1, crop.w * iw) : iw;
+  const sh = crop ? Math.max(1, crop.h * ih) : ih;
+
+  const ir = sw / sh;
+  const dr = dWidth / dHeight;
+  let fitW: number;
+  let fitH: number;
+  if (ir > dr) {
+    fitW = dWidth;
+    fitH = dWidth / ir;
+  } else {
+    fitH = dHeight;
+    fitW = dHeight * ir;
+  }
+
+  const z = Math.max(0.25, zoom);
+  fitW *= z;
+  fitH *= z;
+
+  return {
+    fitX: (dWidth - fitW) / 2 + panX * dWidth,
+    fitY: (dHeight - fitH) / 2 + panY * dHeight,
+    fitW,
+    fitH,
+  };
+}
+
 /**
  * Draw an image with optional crop (image-relative 0–1) and pan offset (grid-relative, -0.5–0.5).
  * The cropped region is contain-fitted into the destination rect, then shifted by panX/panY.
@@ -37,33 +90,30 @@ export function drawImageWithTransform(
   crop: CropRect | null,
   panX: number,
   panY: number,
+  zoom = 1,
 ): void {
   const { w: iw, h: ih } = getCanvasImageSize(img);
   if (iw <= 0 || ih <= 0) return;
+
+  const { fitX, fitY, fitW, fitH } = getImageTransformLayout(
+    iw,
+    ih,
+    dWidth,
+    dHeight,
+    crop,
+    panX,
+    panY,
+    zoom,
+  );
 
   const sx = crop ? Math.round(crop.x * iw) : 0;
   const sy = crop ? Math.round(crop.y * ih) : 0;
   const sw = crop ? Math.max(1, Math.round(crop.w * iw)) : iw;
   const sh = crop ? Math.max(1, Math.round(crop.h * ih)) : ih;
 
-  const ir = sw / sh;
-  const dr = dWidth / dHeight;
-  let fitW: number;
-  let fitH: number;
-  if (ir > dr) {
-    fitW = dWidth;
-    fitH = dWidth / ir;
-  } else {
-    fitH = dHeight;
-    fitW = dHeight * ir;
-  }
-
-  const fitX = dx + (dWidth - fitW) / 2 + panX * dWidth;
-  const fitY = dy + (dHeight - fitH) / 2 + panY * dHeight;
-
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(img, sx, sy, sw, sh, fitX, fitY, fitW, fitH);
+  ctx.drawImage(img, sx, sy, sw, sh, dx + fitX, dy + fitY, fitW, fitH);
 }
 
 export function loadImageFromFile(file: File): Promise<HTMLImageElement> {
@@ -157,6 +207,7 @@ export function imageToThresholdGrid(
   crop: CropRect | null = null,
   panX = 0,
   panY = 0,
+  zoom = 1,
 ): boolean[][] {
   const canvas = document.createElement("canvas");
   canvas.width = gridWidth;
@@ -168,7 +219,7 @@ export function imageToThresholdGrid(
 
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, gridWidth, gridHeight);
-  drawImageWithTransform(ctx, img, 0, 0, gridWidth, gridHeight, crop, panX, panY);
+  drawImageWithTransform(ctx, img, 0, 0, gridWidth, gridHeight, crop, panX, panY, zoom);
 
   const { data } = ctx.getImageData(0, 0, gridWidth, gridHeight);
   const grid: boolean[][] = [];

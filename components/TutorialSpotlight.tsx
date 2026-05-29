@@ -168,20 +168,22 @@ export function TutorialSpotlight() {
             </p>
           )}
 
-          <div className="mt-4 flex items-center justify-between gap-3">
-            <button
-              type="button"
-              onClick={dismiss}
-              className="text-sm text-gray-400 hover:text-gray-600"
-            >
-              Skip tour
-            </button>
-            <div className="flex gap-2">
+          <div className={`mt-4 flex gap-2 ${isLastStep ? "justify-end" : "items-center justify-between"}`}>
+            {!isLastStep && (
+              <button
+                type="button"
+                onClick={dismiss}
+                className="shrink-0 text-xs text-gray-400 hover:text-gray-600"
+              >
+                Skip tour
+              </button>
+            )}
+            <div className="flex flex-wrap justify-end gap-1.5">
               {step > 0 && (
                 <button
                   type="button"
                   onClick={prev}
-                  className="rounded-full border border-brand px-4 py-1.5 text-sm font-medium text-brand hover:bg-pink-50"
+                  className="rounded-full border border-brand px-3 py-1 text-xs font-medium text-brand hover:bg-pink-50"
                 >
                   Back
                 </button>
@@ -190,7 +192,7 @@ export function TutorialSpotlight() {
                 <button
                   type="button"
                   onClick={restart}
-                  className="rounded-full border border-brand px-4 py-1.5 text-sm font-medium text-brand hover:bg-pink-50"
+                  className="rounded-full border border-brand px-3 py-1 text-xs font-medium text-brand hover:bg-pink-50"
                 >
                   Take the tour again
                 </button>
@@ -198,7 +200,7 @@ export function TutorialSpotlight() {
               <button
                 type="button"
                 onClick={next}
-                className="rounded-full bg-brand px-5 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-dark"
+                className="rounded-full bg-brand px-3.5 py-1 text-xs font-semibold text-white shadow-sm hover:bg-brand-dark"
               >
                 {step < STEPS.length - 1 ? "Next →" : "Get started"}
               </button>

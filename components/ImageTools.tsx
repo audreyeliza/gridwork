@@ -5,6 +5,7 @@ import type { GridTool } from "@/components/GridCanvas";
 import { createPortal } from "react-dom";
 import {
   drawImageWithTransform,
+  getImageTransformLayout,
   imageToThresholdGrid,
   loadImageFromFile,
   otsuThreshold,
@@ -267,6 +268,7 @@ function drawCropCanvas(
   isDragging: boolean,
   panX: number,
   panY: number,
+  imageZoom: number,
 ): void {
   canvas.width = canvasW;
   canvas.height = canvasH;
@@ -281,15 +283,20 @@ function drawCropCanvas(
   ctx.beginPath();
   ctx.rect(0, 0, canvasW, canvasH);
   ctx.clip();
-  drawImageWithTransform(ctx, img, 0, 0, canvasW, canvasH, null, panX / 100, panY / 100);
+  drawImageWithTransform(ctx, img, 0, 0, canvasW, canvasH, null, panX / 100, panY / 100, imageZoom);
   ctx.restore();
 
-  // Crop overlay positioned relative to panned image
-  const { fitX, fitY, fitW, fitH } = getContainLayout(img.naturalWidth, img.naturalHeight, canvasW, canvasH);
-  const panXPx = (panX / 100) * canvasW;
-  const panYPx = (panY / 100) * canvasH;
-  const effFitX = fitX + panXPx;
-  const effFitY = fitY + panYPx;
+  // Crop overlay positioned relative to panned/zoomed image
+  const { fitX: effFitX, fitY: effFitY, fitW, fitH } = getImageTransformLayout(
+    img.naturalWidth,
+    img.naturalHeight,
+    canvasW,
+    canvasH,
+    null,
+    panX / 100,
+    panY / 100,
+    imageZoom,
+  );
 
   const cr = cropRect;
   const cx = effFitX + cr.x * fitW;
@@ -400,7 +407,7 @@ export function ImageTools({
   const [expandedSize, setExpandedSize] = useState({ w: 700, h: 400 });
 
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
-  const [previewZoom, setPreviewZoom] = useState(1);
+  const [imageZoom, setImageZoom] = useState(1);
   const pinchRef = useRef<{ dist: number } | null>(null);
   /** When true, the image-change effect skips its state reset (used when loading from saved settings). */
   const skipImageResetRef = useRef(false);
@@ -431,7 +438,7 @@ export function ImageTools({
     setPanY(0);
     setPositionLocked(false);
     setCropExpanded(false);
-    setPreviewZoom(1);
+    setImageZoom(1);
   }, [image]);
 
   // Compute expanded canvas size from viewport when modal opens
@@ -454,14 +461,14 @@ export function ImageTools({
   // Draw normal crop preview canvas
   useEffect(() => {
     if (!cropCanvasRef.current || !workingImage || cropExpanded) return;
-    drawCropCanvas(cropCanvasRef.current, PREVIEW_W, PREVIEW_H, workingImage, cropRect, isDragging, panX, panY);
-  }, [workingImage, cropRect, isDragging, panX, panY, cropExpanded]);
+    drawCropCanvas(cropCanvasRef.current, PREVIEW_W, PREVIEW_H, workingImage, cropRect, isDragging, panX, panY, imageZoom);
+  }, [workingImage, cropRect, isDragging, panX, panY, imageZoom, cropExpanded]);
 
   // Draw expanded crop canvas
   useEffect(() => {
     if (!expandedCropCanvasRef.current || !workingImage || !cropExpanded) return;
-    drawCropCanvas(expandedCropCanvasRef.current, expandedSize.w, expandedSize.h, workingImage, cropRect, isDragging, panX, panY);
-  }, [workingImage, cropRect, isDragging, panX, panY, cropExpanded, expandedSize]);
+    drawCropCanvas(expandedCropCanvasRef.current, expandedSize.w, expandedSize.h, workingImage, cropRect, isDragging, panX, panY, imageZoom);
+  }, [workingImage, cropRect, isDragging, panX, panY, imageZoom, cropExpanded, expandedSize]);
 
   // Auto-apply conversion when pan changes in convert mode (reconnects pan → convert mapping)
   useEffect(() => {
@@ -469,10 +476,10 @@ export function ImageTools({
     const next = imageToThresholdGrid(
       workingImage, gridWidth, gridHeight,
       thresholdRef.current, darkIsFilledRef.current,
-      appliedCropRef.current, panX / 100, panY / 100,
+      appliedCropRef.current, panX / 100, panY / 100, imageZoom,
     );
     queueMicrotask(() => onApplyConvertedGrid(next));
-  }, [mode, workingImage, gridWidth, gridHeight, panX, panY, onApplyConvertedGrid]);
+  }, [mode, workingImage, gridWidth, gridHeight, panX, panY, imageZoom, onApplyConvertedGrid]);
 
   // Reinitialize all image state when the load key changes (new pattern loaded from DB).
   useEffect(() => {
@@ -486,6 +493,7 @@ export function ImageTools({
     setAppliedCrop(s?.appliedCrop ?? null);
     setPanX(s?.panX ?? 0);
     setPanY(s?.panY ?? 0);
+    setImageZoom(s?.imageZoom ?? 1);
     setPositionLocked(s?.positionLocked ?? false);
 
     if (s?.imageDataUrl) {
@@ -521,9 +529,10 @@ export function ImageTools({
       appliedCrop,
       panX,
       panY,
+      imageZoom,
       positionLocked,
     });
-  }, [mode, imageDataUrl, underlayOpacityPct, threshold, darkIsFilled, cropRect, appliedCrop, panX, panY, positionLocked, onImageSettingsChange]);
+  }, [mode, imageDataUrl, underlayOpacityPct, threshold, darkIsFilled, cropRect, appliedCrop, panX, panY, imageZoom, positionLocked, onImageSettingsChange]);
 
   const handleGridFullscreenChange = useCallback((fs: boolean) => {
     setGridFullscreen(fs);
@@ -580,11 +589,11 @@ export function ImageTools({
     }
     const next = imageToThresholdGrid(
       workingImage, gridWidth, gridHeight,
-      threshold, darkIsFilled, appliedCrop, panX / 100, panY / 100,
+      threshold, darkIsFilled, appliedCrop, panX / 100, panY / 100, imageZoom,
     );
     onApplyConvertedGrid(next);
     setStatus("Applied. You can edit or undo.");
-  }, [workingImage, gridWidth, gridHeight, threshold, darkIsFilled, appliedCrop, panX, panY, onApplyConvertedGrid]);
+  }, [workingImage, gridWidth, gridHeight, threshold, darkIsFilled, appliedCrop, panX, panY, imageZoom, onApplyConvertedGrid]);
 
   const applyCrop = useCallback(() => {
     setAppliedCrop({ ...cropRect });
@@ -592,12 +601,12 @@ export function ImageTools({
       const next = imageToThresholdGrid(
         workingImage, gridWidth, gridHeight,
         thresholdRef.current, darkIsFilledRef.current,
-        cropRect, panXRef.current / 100, panYRef.current / 100,
+        cropRect, panXRef.current / 100, panYRef.current / 100, imageZoom,
       );
       onApplyConvertedGrid(next);
       setStatus("Crop applied and grid updated.");
     }
-  }, [cropRect, mode, workingImage, gridWidth, gridHeight, onApplyConvertedGrid]);
+  }, [cropRect, mode, workingImage, gridWidth, gridHeight, imageZoom, onApplyConvertedGrid]);
 
   const resetCrop = useCallback(() => {
     setCropRect(FULL_CROP);
@@ -609,43 +618,46 @@ export function ImageTools({
     (e: React.PointerEvent<HTMLCanvasElement>) => {
       if (!workingImage || positionLocked) return;
       const rect = e.currentTarget.getBoundingClientRect();
-      const zoom = cropExpanded ? 1 : previewZoom;
-      const canvasW = rect.width / zoom;
-      const canvasH = rect.height / zoom;
-      const px = (e.clientX - rect.left) / zoom;
-      const py = (e.clientY - rect.top) / zoom;
-      const { fitX, fitY, fitW, fitH } = getContainLayout(
-        workingImage.naturalWidth, workingImage.naturalHeight, canvasW, canvasH,
+      const canvasW = rect.width;
+      const canvasH = rect.height;
+      const px = e.clientX - rect.left;
+      const py = e.clientY - rect.top;
+      const { fitX, fitY, fitW, fitH } = getImageTransformLayout(
+        workingImage.naturalWidth,
+        workingImage.naturalHeight,
+        canvasW,
+        canvasH,
+        null,
+        panX / 100,
+        panY / 100,
+        imageZoom,
       );
-      const panXPx = (panX / 100) * canvasW;
-      const panYPx = (panY / 100) * canvasH;
-      const handle = hitTestHandles(px, py, cropRect, fitX + panXPx, fitY + panYPx, fitW, fitH);
+      const handle = hitTestHandles(px, py, cropRect, fitX, fitY, fitW, fitH);
       if (!handle) return;
       cropDragRef.current = {
         handle,
         startCanvasX: px,
         startCanvasY: py,
         startCrop: { ...cropRect },
-        fitX: fitX + panXPx,
-        fitY: fitY + panYPx,
+        fitX,
+        fitY,
         fitW,
         fitH,
       };
       setIsDragging(true);
       e.currentTarget.setPointerCapture(e.pointerId);
     },
-    [workingImage, positionLocked, cropRect, panX, panY, cropExpanded, previewZoom],
+    [workingImage, positionLocked, cropRect, panX, panY, imageZoom],
   );
 
   const onCropPointerMove = useCallback(
     (e: React.PointerEvent<HTMLCanvasElement>) => {
       if (!workingImage) return;
       const rect = e.currentTarget.getBoundingClientRect();
-      const zoom = cropExpanded ? 1 : previewZoom;
-      const canvasW = rect.width / zoom;
-      const canvasH = rect.height / zoom;
-      const px = (e.clientX - rect.left) / zoom;
-      const py = (e.clientY - rect.top) / zoom;
+      const canvasW = rect.width;
+      const canvasH = rect.height;
+      const px = e.clientX - rect.left;
+      const py = e.clientY - rect.top;
 
       if (cropDragRef.current) {
         const { handle, startCanvasX, startCanvasY, startCrop, fitW, fitH } = cropDragRef.current;
@@ -653,14 +665,19 @@ export function ImageTools({
         return;
       }
 
-      const { fitX, fitY, fitW, fitH } = getContainLayout(
-        workingImage.naturalWidth, workingImage.naturalHeight, canvasW, canvasH,
+      const { fitX, fitY, fitW, fitH } = getImageTransformLayout(
+        workingImage.naturalWidth,
+        workingImage.naturalHeight,
+        canvasW,
+        canvasH,
+        null,
+        panX / 100,
+        panY / 100,
+        imageZoom,
       );
-      const panXPx = (panX / 100) * canvasW;
-      const panYPx = (panY / 100) * canvasH;
-      setHoverHandle(hitTestHandles(px, py, cropRect, fitX + panXPx, fitY + panYPx, fitW, fitH));
+      setHoverHandle(hitTestHandles(px, py, cropRect, fitX, fitY, fitW, fitH));
     },
-    [workingImage, cropRect, panX, panY, cropExpanded, previewZoom],
+    [workingImage, cropRect, panX, panY, imageZoom],
   );
 
   const onCropPointerUp = useCallback(() => {
@@ -675,7 +692,7 @@ export function ImageTools({
     const handler = (e: WheelEvent) => {
       e.preventDefault();
       const delta = e.deltaY > 0 ? -0.1 : 0.1;
-      setPreviewZoom((z) => Math.min(4, Math.max(0.5, Math.round((z + delta) * 10) / 10)));
+      setImageZoom((z) => Math.min(4, Math.max(0.5, Math.round((z + delta) * 10) / 10)));
     };
     el.addEventListener("wheel", handler, { passive: false });
     return () => el.removeEventListener("wheel", handler);
@@ -704,7 +721,7 @@ export function ImageTools({
       );
       const ratio = dist / pinchRef.current.dist;
       pinchRef.current = { dist };
-      setPreviewZoom((z) => Math.min(4, Math.max(0.5, Math.round(z * ratio * 10) / 10)));
+      setImageZoom((z) => Math.min(4, Math.max(0.5, Math.round(z * ratio * 10) / 10)));
     };
     const onTouchEnd = () => { pinchRef.current = null; };
     el.addEventListener("touchstart", onTouchStart, { passive: true });
@@ -721,7 +738,7 @@ export function ImageTools({
   const activeCrop = appliedCrop;
   const cropCursor = getCropCursor(isDragging ? (cropDragRef.current?.handle ?? null) : hoverHandle);
 
-  const cropCanvasJSX = (ref: React.RefObject<HTMLCanvasElement | null>, w: number, h: number, zoom = 1) => (
+  const cropCanvasJSX = (ref: React.RefObject<HTMLCanvasElement | null>, w: number, h: number) => (
     <div style={{ width: w, height: h, overflow: "hidden", borderRadius: 12, border: "1px solid rgba(61,42,30,0.12)", flexShrink: 0 }}>
       <canvas
         ref={ref}
@@ -736,8 +753,6 @@ export function ImageTools({
           height: h,
           display: "block",
           borderRadius: 12,
-          transformOrigin: "center center",
-          transform: zoom !== 1 ? `scale(${zoom})` : undefined,
         }}
       />
     </div>
@@ -841,32 +856,29 @@ export function ImageTools({
           {/* Normal crop canvas (hidden when expanded modal is open) */}
           {!cropExpanded && (
             <div className="flex flex-col gap-1.5">
-              {cropCanvasJSX(cropCanvasRef, PREVIEW_W, PREVIEW_H, previewZoom)}
-              <div className="flex items-center justify-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setPreviewZoom((z) => Math.max(0.5, Math.round((z - 0.25) * 10) / 10))}
-                  className="flex h-6 w-6 items-center justify-center rounded-full border border-gray-300 bg-white text-sm font-bold text-gray-700 hover:bg-pink-50"
-                >−</button>
-                <span className="w-10 text-center tabular-nums text-[11px] text-stone-500">{Math.round(previewZoom * 100)}%</span>
-                <button
-                  type="button"
-                  onClick={() => setPreviewZoom((z) => Math.min(4, Math.round((z + 0.25) * 10) / 10))}
-                  className="flex h-6 w-6 items-center justify-center rounded-full border border-gray-300 bg-white text-sm font-bold text-gray-700 hover:bg-pink-50"
-                >+</button>
-                {previewZoom !== 1 && (
-                  <button
-                    type="button"
-                    onClick={() => setPreviewZoom(1)}
-                    className="text-[10px] text-stone-400 hover:text-stone-600"
-                  >↩ reset</button>
-                )}
-              </div>
+              {cropCanvasJSX(cropCanvasRef, PREVIEW_W, PREVIEW_H)}
             </div>
           )}
 
-          {/* Pan controls */}
+          {/* Zoom + pan controls */}
           <div className="flex flex-col gap-1.5">
+            <div className="flex items-center gap-2">
+              <span className="w-16 text-[11px] text-stone-500">Zoom</span>
+              <input
+                type="range"
+                min={50}
+                max={400}
+                step={10}
+                value={Math.round(imageZoom * 100)}
+                disabled={positionLocked}
+                onChange={(e) => setImageZoom(Number(e.target.value) / 100)}
+                className="flex-1 disabled:opacity-40"
+              />
+              <span className="w-8 text-right tabular-nums text-[11px] text-stone-500">{Math.round(imageZoom * 100)}%</span>
+              {imageZoom !== 1 && !positionLocked && (
+                <button type="button" onClick={() => setImageZoom(1)} className="text-[10px] text-stone-400 hover:text-stone-600">↩</button>
+              )}
+            </div>
             <div className="flex items-center gap-2">
               <span className="w-16 text-[11px] text-stone-500">X offset</span>
               <input
@@ -1079,6 +1091,7 @@ export function ImageTools({
           underlayCrop={activeCrop}
           underlayPanX={panX / 100}
           underlayPanY={panY / 100}
+          underlayZoom={imageZoom}
           rowComplete={progress?.rowComplete}
           currentRow={progress?.currentRow}
           onToggleRowComplete={onToggleRowComplete}

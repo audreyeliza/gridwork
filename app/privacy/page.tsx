@@ -4,7 +4,7 @@ import { CrochetMark } from "@/components/CrochetMark";
 import { NavUserSection } from "@/components/NavUserSection";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy — Gridwork",
+  title: "Gridwork",
   description: "How Gridwork collects, uses, and stores your data.",
 };
 
@@ -76,18 +76,17 @@ export default function PrivacyPage() {
         <NavUserSection activePage={null} />
       </header>
 
-      <div className="mx-auto w-full px-12 pb-16 pt-8" style={{ maxWidth: 720 }}>
+      <div className="mx-auto w-full max-w-[720px] px-5 pb-16 pt-8 md:px-12">
         <article
-          className="rounded-[18px]"
+          className="rounded-[18px] px-5 py-8 md:px-12 md:py-10"
           style={{
             background: "#FBF7EF",
-            padding: "40px 48px 48px",
             boxShadow: "0 10px 40px rgba(40,20,30,0.12), 0 0 0 1px rgba(255,255,255,0.5)",
           }}
         >
           <h1
             className="font-serif font-bold tracking-[-0.02em] text-text-strong"
-            style={{ fontSize: 40, lineHeight: 1.1, margin: 0 }}
+            style={{ fontSize: "clamp(28px,7vw,40px)", lineHeight: 1.1, margin: 0 }}
           >
             Privacy Policy
           </h1>

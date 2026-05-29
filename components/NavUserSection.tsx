@@ -150,15 +150,33 @@ export function NavUserSection({ activePage, loginButtonId }: Props) {
         </button>
       )}
 
-      {/* Mobile: hamburger */}
-      <button
-        type="button"
-        onClick={() => setMenuOpen(true)}
-        className="rounded-md border border-white/40 bg-white/20 px-2.5 py-1.5 text-xs font-semibold text-white backdrop-blur-sm hover:bg-white/30 md:hidden"
-        aria-label="Menu"
-      >
-        ☰
-      </button>
+      {/* Mobile: avatar + menu */}
+      <div className="flex items-center gap-3.5 md:hidden">
+        {user ? (
+          <span
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full text-[13px] font-bold text-white"
+            style={{
+              background: avatarUrl ? undefined : "linear-gradient(135deg, #F9A87A 0%, #F0569A 50%, #9B6FD4 100%)",
+              border: "1.5px solid rgba(255,255,255,0.55)",
+            }}
+            aria-hidden="true"
+          >
+            {avatarUrl ? (
+              <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
+            ) : (
+              (displayName ?? user.email ?? "?").charAt(0).toUpperCase()
+            )}
+          </span>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => setMenuOpen(true)}
+          className="rounded-md border border-white/40 bg-white/20 px-2.5 py-1.5 text-xs font-semibold text-white backdrop-blur-sm hover:bg-white/30"
+          aria-label="Menu"
+        >
+          ☰
+        </button>
+      </div>
 
       <MobileMenuOverlay
         open={menuOpen}
@@ -166,6 +184,7 @@ export function NavUserSection({ activePage, loginButtonId }: Props) {
         activePage={activePage}
         user={user}
         userDisplayName={displayName}
+        userAvatarUrl={avatarUrl}
         onLogin={() => setAuthModalOpen(true)}
         onLogout={() => void handleLogout()}
         loginButtonId={loginButtonId}

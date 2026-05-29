@@ -10,8 +10,10 @@ function clamp(n: number, lo: number, hi: number): number {
 export type GridCanvasLayoutOptions = {
   /** Extra width (px) reserved left of the grid for row tracker (checkbox + label). */
   rowSidebarPx?: number;
-  /** Skip fit-to-container calculation and use this exact cell size. Offsets are flush to gutters (no centering). */
+  /** Skip fit-to-container calculation and use this exact cell size. */
   forcedCell?: number;
+  /** When true with `forcedCell`, center the grid in the usable area instead of flush to gutters. */
+  centerForcedCell?: boolean;
 };
 
 export type GridCanvasLayout = {
@@ -51,8 +53,9 @@ export function computeGridCanvasLayout(
       : clamp(Math.floor(Math.min(usableW / gridWidth, usableH / gridHeight)), MIN_CELL, MAX_CELL);
   const gridWpx = cell * gridWidth;
   const gridHpx = cell * gridHeight;
-  const offsetX = forcedCell != null ? leftGutter : leftGutter + Math.max(0, (usableW - gridWpx) / 2);
-  const offsetY = forcedCell != null ? topGutter : topGutter + Math.max(0, (usableH - gridHpx) / 2);
+  const flushForced = forcedCell != null && !options?.centerForcedCell;
+  const offsetX = flushForced ? leftGutter : leftGutter + Math.max(0, (usableW - gridWpx) / 2);
+  const offsetY = flushForced ? topGutter : topGutter + Math.max(0, (usableH - gridHpx) / 2);
   return {
     topGutter,
     leftGutter,

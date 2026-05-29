@@ -13,6 +13,8 @@ export type PatternImageSettings = {
   appliedCrop: StoredCropRect | null;
   panX: number;
   panY: number;
+  /** Scale of the image within the grid (0.5–4). 1 = default contain fit. */
+  imageZoom: number;
   positionLocked: boolean;
 };
 
@@ -26,6 +28,7 @@ export const DEFAULT_PATTERN_IMAGE_SETTINGS: PatternImageSettings = {
   appliedCrop: null,
   panX: 0,
   panY: 0,
+  imageZoom: 1,
   positionLocked: false,
 };
 
@@ -88,6 +91,10 @@ export function parseImageSettings(data: Json | undefined): PatternImageSettings
     appliedCrop: isCropRect(o.appliedCrop) ? o.appliedCrop : null,
     panX: typeof o.panX === "number" ? o.panX : 0,
     panY: typeof o.panY === "number" ? o.panY : 0,
+    imageZoom:
+      typeof o.imageZoom === "number" && o.imageZoom > 0
+        ? Math.min(4, Math.max(0.5, o.imageZoom))
+        : d.imageZoom,
     positionLocked: typeof o.positionLocked === "boolean" ? o.positionLocked : false,
   };
 }
@@ -103,6 +110,7 @@ export function serializeImageSettings(s: PatternImageSettings): Json {
     appliedCrop: s.appliedCrop,
     panX: s.panX,
     panY: s.panY,
+    imageZoom: s.imageZoom,
     positionLocked: s.positionLocked,
   } as Json;
 }

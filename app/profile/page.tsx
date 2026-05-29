@@ -601,14 +601,14 @@ export default function ProfilePage() {
         <NavUserSection activePage="profile" />
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 pb-16 pt-0">
+      <main className="mx-auto max-w-7xl px-5 pb-16 pt-0 md:px-4">
         {configError && (
           <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">{configError}</div>
         )}
 
         {/* Journal-style header card */}
         <div
-          className="mb-7 rounded-none px-5 py-8 md:rounded-[22px] md:px-12 md:py-10"
+          className="mb-7 rounded-[22px] px-5 py-8 md:px-12 md:py-10"
           style={{
             background: "#FBF7EF",
             boxShadow: "0 10px 36px rgba(40,20,30,0.12), 0 0 0 1px rgba(255,255,255,0.5)",
@@ -728,13 +728,16 @@ export default function ProfilePage() {
         </div>
 
         {/* Tabs + New pattern button */}
-        <div className="mb-4 flex flex-wrap items-center gap-2 sm:flex-nowrap sm:justify-between">
+        <div className="mb-4 flex flex-wrap items-center gap-2 sm:justify-between">
           <div
-            className="inline-flex items-center overflow-x-auto rounded-full p-[3px]"
+            className="inline-flex shrink-0 items-center rounded-full p-[3px]"
             style={{ background: "rgba(0,0,0,0.20)" }}
           >
             {(["patterns", "liked"] as const).map((tab) => {
-              const label = tab === "patterns"
+              const shortLabel = tab === "patterns"
+                ? `Patterns · ${patterns.length}`
+                : `Liked · ${likedPatterns.length}`;
+              const longLabel = tab === "patterns"
                 ? `My patterns · ${patterns.length}`
                 : `Liked · ${likedPatterns.length}`;
               const isActive = activeTab === tab;
@@ -743,18 +746,19 @@ export default function ProfilePage() {
                   key={tab}
                   type="button"
                   onClick={() => setActiveTab(tab)}
-                  className={`whitespace-nowrap rounded-full px-3 py-[5px] font-sans text-[12px] font-bold transition-all duration-150 md:px-4 md:py-[7px] md:text-[13px] ${
+                  className={`inline-flex items-center whitespace-nowrap rounded-full px-[18px] py-2.5 font-sans text-[13px] font-bold transition-all duration-150 ${
                     isActive ? "bg-white text-[#1F1410] shadow-sm" : "text-white/75 hover:text-white"
                   }`}
                 >
-                  {label}
+                  <span className="sm:hidden">{shortLabel}</span>
+                  <span className="hidden sm:inline">{longLabel}</span>
                 </button>
               );
             })}
           </div>
           <Link
             href="/editor"
-            className="inline-flex items-center gap-1.5 rounded-full bg-brand px-[18px] py-2.5 font-sans text-[13px] font-bold text-[#FBF7EF] hover:bg-brand-dark"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-brand px-[18px] py-2.5 font-sans text-[13px] font-bold text-[#FBF7EF] hover:bg-brand-dark"
             style={{ boxShadow: "0 4px 18px rgba(168,70,111,0.30)" }}
           >
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

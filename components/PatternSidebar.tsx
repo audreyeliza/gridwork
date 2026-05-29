@@ -132,7 +132,7 @@ export function PatternSidebar({
 
   return (
     <aside
-      className="flex h-full shrink-0 flex-col"
+      className="flex h-full shrink-0 flex-col bg-[#FBF7EF]"
       style={{ width: 244, borderRight: "1px solid rgba(61,42,30,0.10)" }}
     >
       {/* Header */}
@@ -170,12 +170,7 @@ export function PatternSidebar({
           placeholder="Search patterns…"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full bg-white font-sans text-[13px] text-text-strong placeholder:text-muted focus:outline-none"
-          style={{
-            border: "1px solid rgba(61,42,30,0.10)",
-            borderRadius: 999,
-            padding: "7px 14px",
-          }}
+          className="w-full rounded-full border border-[rgba(61,42,30,0.12)] bg-white px-3.5 py-2 font-sans text-[13px] font-medium text-text-strong shadow-[0_2px_8px_rgba(40,20,30,0.08)] placeholder:text-muted focus:border-brand/35 focus:outline-none focus:ring-2 focus:ring-brand/15"
         />
       </div>
 
