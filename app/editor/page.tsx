@@ -136,6 +136,7 @@ export default function EditorPage() {
   const [imageCropExpanded, setImageCropExpanded] = useState(false);
   const [gridFullscreen, setGridFullscreen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
   const [editorMode, setEditorMode] = useState<"draw" | "import">("draw");
   const [isRenamingTitle, setIsRenamingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
@@ -281,6 +282,7 @@ export default function EditorPage() {
     let cancelled = false;
     const id = window.setTimeout(() => {
       if (cancelled) return;
+      isLoadingRef.current = true;
       setGridW(10);
       setGridH(10);
       reset(createEmptyGrid(10, 10));
@@ -288,6 +290,7 @@ export default function EditorPage() {
       setProgress(defaultProgressState(10));
       setImageSettings(loadLocalImageSettings("gridwork:imgset:draft") ?? { ...DEFAULT_PATTERN_IMAGE_SETTINGS });
       setImageSettingsLoadKey("unsaved-" + Date.now());
+      window.setTimeout(() => { isLoadingRef.current = false; }, 0);
     }, 0);
     return () => {
       cancelled = true;
@@ -303,6 +306,7 @@ export default function EditorPage() {
       if (fromList) {
         const w = clampGridSize(fromList.grid_width);
         const h = clampGridSize(fromList.grid_height);
+        isLoadingRef.current = true;
         setGridW(w);
         setGridH(h);
         reset(parseGridData(fromList.grid_data, w, h));
@@ -311,6 +315,7 @@ export default function EditorPage() {
         const dbImgA = parseImageSettings(fromList.image_settings);
         setImageSettings(dbImgA.imageDataUrl ? dbImgA : (loadLocalImageSettings(`gridwork:imgset:${fromList.id}`) ?? dbImgA));
         setImageSettingsLoadKey(fromList.id + "-" + fromList.updated_at);
+        window.setTimeout(() => { isLoadingRef.current = false; }, 0);
         return;
       }
 
@@ -318,6 +323,7 @@ export default function EditorPage() {
         if (cancelled || !data) return;
         const w = clampGridSize(data.grid_width);
         const h = clampGridSize(data.grid_height);
+        isLoadingRef.current = true;
         setGridW(w);
         setGridH(h);
         reset(parseGridData(data.grid_data, w, h));
@@ -327,6 +333,7 @@ export default function EditorPage() {
         setImageSettings(dbImgB.imageDataUrl ? dbImgB : (loadLocalImageSettings(`gridwork:imgset:${data.id}`) ?? dbImgB));
         setImageSettingsLoadKey(data.id + "-" + data.updated_at);
         setPatterns((prev) => (prev.some((p) => p.id === data.id) ? prev : [data, ...prev]));
+        window.setTimeout(() => { isLoadingRef.current = false; }, 0);
       });
     }, 0);
     return () => {
@@ -598,6 +605,12 @@ export default function EditorPage() {
   const [saveIndicator, setSaveIndicator] = useState<"idle" | "pending" | "saving" | "saved">("idle");
   const savedTimerRef = useRef<number | undefined>(undefined);
   const dirtyKeyMountRef = useRef(false);
+  const isLoadingRef = useRef(false);
+
+  // Reset the mount guard on pattern switch so the load's dirtyKey change is skipped
+  useEffect(() => {
+    dirtyKeyMountRef.current = false;
+  }, [selectedPatternId]);
 
   // Mark pending whenever the user changes something (skip initial mount)
   useEffect(() => {
@@ -608,6 +621,7 @@ export default function EditorPage() {
   // Shared save handler — used by both autosave and the manual Save button
   const handleSave = useCallback(async () => {
     if (!supabase || !user || !selectedPatternId || !activePattern) return;
+    if (isLoadingRef.current) return;
     setSaveIndicator("saving");
     await persistPattern();
     setSaveIndicator("saved");
@@ -629,7 +643,7 @@ export default function EditorPage() {
     <div className="relative flex h-screen flex-col max-md:h-auto max-md:min-h-screen">
       {/* Transparent navbar — absolute over gradient */}
       <header className="absolute left-0 right-0 top-0 z-20 flex h-[68px] items-center justify-between px-8">
-        <div className="flex items-center gap-7">
+        <div className="flex items-center gap-9">
           <Link href="/" className="inline-flex items-center gap-[9px] font-serif text-2xl font-bold leading-none tracking-[-0.01em] text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">
             <CrochetMark size={22} color="#fff" />
             Gridwork
@@ -639,11 +653,11 @@ export default function EditorPage() {
             {sidebarOpen ? "✕" : "Patterns"}
           </button>
           <nav className="hidden items-center gap-7 md:flex">
-            <Link href="/" className="text-sm font-semibold text-white/85 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">Home</Link>
-            <Link href="/learn" className="text-sm font-semibold text-white/85 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">Learn</Link>
-            <Link href="/gallery" className="text-sm font-semibold text-white/85 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">Gallery</Link>
-            <span className="inline-flex items-center gap-[7px] text-sm font-bold text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">
-              <span className="inline-block size-[6px] rounded-full bg-white" />
+            <Link href="/" className="relative inline-flex items-center pl-[13px] text-sm font-bold text-white/70 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]"><span className="absolute left-0 top-1/2 -translate-y-1/2 size-[6px] rounded-full opacity-0" />Home</Link>
+            <Link href="/learn" className="relative inline-flex items-center pl-[13px] text-sm font-bold text-white/70 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]"><span className="absolute left-0 top-1/2 -translate-y-1/2 size-[6px] rounded-full opacity-0" />Learn</Link>
+            <Link href="/gallery" className="relative inline-flex items-center pl-[13px] text-sm font-bold text-white/70 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]"><span className="absolute left-0 top-1/2 -translate-y-1/2 size-[6px] rounded-full opacity-0" />Gallery</Link>
+            <span className="relative inline-flex items-center pl-[13px] text-sm font-bold text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">
+              <span className="absolute left-0 top-1/2 -translate-y-1/2 size-[6px] rounded-full bg-white" />
               Editor
             </span>
           </nav>
@@ -661,11 +675,11 @@ export default function EditorPage() {
       >
         {/* ── Toolbar ── */}
         <div
-          className="flex shrink-0 flex-wrap items-center justify-between gap-3 px-5 py-3.5"
+          className="flex shrink-0 flex-col gap-2 px-4 py-3 md:flex-row md:flex-wrap md:items-center md:justify-between md:gap-3 md:px-5 md:py-3.5"
           style={{ borderBottom: "1px solid rgba(61,42,30,0.10)" }}
         >
           {/* Left: pattern name + save indicator */}
-          <div className="min-w-0">
+          <div className="min-w-0 md:flex-1">
             <div className="font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-muted">Editing</div>
             <div className="flex flex-wrap items-center gap-2">
               {isRenamingTitle ? (
@@ -742,9 +756,9 @@ export default function EditorPage() {
 
           {/* Middle: grid size — tutorial-grid-size */}
           <div id="tutorial-grid-size" className="flex flex-wrap items-center gap-2">
-            {/* Preset selector */}
+            {/* Preset selector — hidden on mobile */}
             <div
-              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1"
+              className="hidden items-center gap-1.5 rounded-full px-3 py-1 md:inline-flex"
               style={{ background: "#fff", border: "1px solid rgba(61,42,30,0.10)" }}
             >
               <span className="font-sans text-[11px] font-semibold text-muted">Preset</span>
@@ -766,6 +780,7 @@ export default function EditorPage() {
                 ))}
               </select>
             </div>
+            {/* Preset — hidden on mobile */}
             {/* W / aspect-lock / H pill */}
             <div
               className="inline-flex items-center rounded-full"
@@ -826,15 +841,20 @@ export default function EditorPage() {
                 style={{ border: "1px solid rgba(61,42,30,0.10)" }}
               />
             </div>
+            {/* Undo/Redo — shown inline with W/H on mobile only */}
+            <div className="ml-2 flex items-center gap-1 md:hidden">
+              <button type="button" disabled={!canUndo} onClick={() => undo()} className="min-h-[36px] rounded-full border border-[rgba(61,42,30,0.10)] bg-white px-3 py-1.5 font-sans text-[12px] font-bold text-text-strong hover:bg-[rgba(61,42,30,0.05)] disabled:opacity-40">Undo</button>
+              <button type="button" disabled={!canRedo} onClick={() => redo()} className="min-h-[36px] rounded-full border border-[rgba(61,42,30,0.10)] bg-white px-3 py-1.5 font-sans text-[12px] font-bold text-muted hover:bg-[rgba(61,42,30,0.05)] disabled:opacity-40">Redo</button>
+            </div>
           </div>
 
           {/* Right: actions */}
           <div id="tutorial-row-progress" className="flex flex-wrap items-center gap-1.5">
-            <button type="button" disabled={!canUndo} onClick={() => undo()} className="rounded-full border border-[rgba(61,42,30,0.10)] bg-white px-3 py-1.5 font-sans text-[12px] font-bold text-text-strong hover:bg-[rgba(61,42,30,0.05)] disabled:opacity-40">Undo</button>
-            <button type="button" disabled={!canRedo} onClick={() => redo()} className="rounded-full border border-[rgba(61,42,30,0.10)] bg-white px-3 py-1.5 font-sans text-[12px] font-bold text-muted hover:bg-[rgba(61,42,30,0.05)] disabled:opacity-40">Redo</button>
-            <span className="mx-1 h-5 w-px" style={{ background: "rgba(61,42,30,0.10)" }}/>
-            <button type="button" disabled={progress.currentRow <= 0} onClick={() => handleStepCurrentRow(-1)} className="rounded-full border border-[rgba(61,42,30,0.10)] bg-white px-3 py-1.5 font-sans text-[12px] font-bold text-text-strong hover:bg-[rgba(61,42,30,0.05)] disabled:opacity-40">← Row</button>
-            <button type="button" disabled={progress.currentRow >= gridH - 1} onClick={() => handleStepCurrentRow(1)} className="rounded-full border border-[rgba(61,42,30,0.10)] bg-white px-3 py-1.5 font-sans text-[12px] font-bold text-text-strong hover:bg-[rgba(61,42,30,0.05)] disabled:opacity-40">Row →</button>
+            <button type="button" disabled={!canUndo} onClick={() => undo()} className="hidden min-h-[36px] rounded-full border border-[rgba(61,42,30,0.10)] bg-white px-3 py-1.5 font-sans text-[12px] font-bold text-text-strong hover:bg-[rgba(61,42,30,0.05)] disabled:opacity-40 md:inline-flex">Undo</button>
+            <button type="button" disabled={!canRedo} onClick={() => redo()} className="hidden min-h-[36px] rounded-full border border-[rgba(61,42,30,0.10)] bg-white px-3 py-1.5 font-sans text-[12px] font-bold text-muted hover:bg-[rgba(61,42,30,0.05)] disabled:opacity-40 md:inline-flex">Redo</button>
+            <span className="mx-1 hidden h-5 w-px md:inline-block" style={{ background: "rgba(61,42,30,0.10)" }}/>
+            <button type="button" disabled={progress.currentRow <= 0} onClick={() => handleStepCurrentRow(-1)} className="min-h-[36px] rounded-full border border-[rgba(61,42,30,0.10)] bg-white px-3 py-1.5 font-sans text-[12px] font-bold text-text-strong hover:bg-[rgba(61,42,30,0.05)] disabled:opacity-40">← Row</button>
+            <button type="button" disabled={progress.currentRow >= gridH - 1} onClick={() => handleStepCurrentRow(1)} className="min-h-[36px] rounded-full border border-[rgba(61,42,30,0.10)] bg-white px-3 py-1.5 font-sans text-[12px] font-bold text-text-strong hover:bg-[rgba(61,42,30,0.05)] disabled:opacity-40">Row →</button>
             <span className="mx-1 h-5 w-px" style={{ background: "rgba(61,42,30,0.10)" }}/>
             <button id="tutorial-print" type="button" disabled={!selectedPatternId} onClick={() => { if (!selectedPatternId) return; window.open(`/print/${selectedPatternId}`, "_blank", "noopener,noreferrer"); }} className="inline-flex items-center gap-1.5 rounded-full border border-[rgba(61,42,30,0.10)] bg-white px-3 py-1.5 font-sans text-[12px] font-bold text-text-strong hover:bg-[rgba(61,42,30,0.05)] disabled:opacity-40">
               <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="5" width="8" height="10" rx="1.5"/><path d="M3 11V3a1 1 0 011-1h8"/></svg>
@@ -855,6 +875,7 @@ export default function EditorPage() {
 
         {/* ── Mode bar ── */}
         <div
+          id="tutorial-image-tools"
           className="flex shrink-0 items-center justify-between gap-3 px-5 py-2"
           style={{ borderBottom: "1px solid rgba(61,42,30,0.10)", background: "rgba(168,70,111,0.04)" }}
         >
@@ -885,7 +906,7 @@ export default function EditorPage() {
               </button>
             ))}
           </div>
-          <span className="font-mono text-[11px] text-muted">
+          <span className="hidden font-mono text-[11px] text-muted sm:inline">
             Row <span className="font-bold text-brand">{progress.currentRow + 1}</span> of {gridH}
           </span>
         </div>
@@ -895,7 +916,7 @@ export default function EditorPage() {
           {sidebarOpen && (
             <div className="fixed inset-0 z-30 bg-black/30 md:hidden" onClick={() => setSidebarOpen(false)} />
           )}
-          <div className={`max-md:absolute max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:shadow-2xl max-md:transition-transform max-md:duration-200 md:flex md:shrink-0 ${sidebarOpen ? "max-md:translate-x-0" : "max-md:-translate-x-full"}`}>
+          <div className={`max-md:fixed max-md:top-0 max-md:bottom-0 max-md:left-0 max-md:z-40 max-md:shadow-2xl max-md:transition-transform max-md:duration-200 md:flex md:shrink-0 ${sidebarOpen ? "max-md:translate-x-0" : "max-md:-translate-x-full"}`}>
             <PatternSidebar
               user={user}
               supabase={supabase}
@@ -919,13 +940,13 @@ export default function EditorPage() {
                 {configError}
               </div>
             ) : (
-              <div className="flex min-h-0 flex-1 flex-col gap-4 max-md:flex-none">
-                <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 xl:flex-row xl:items-stretch max-md:flex-none">
+              <div className="flex flex-col gap-4 xl:flex-1 xl:min-h-0">
+                <div className="flex flex-col gap-4 xl:flex-row xl:flex-1 xl:min-h-0 xl:min-w-0 xl:items-stretch">
                   {/* ── Center: tool toggle + canvas + progress ── */}
-                  <div className={`relative flex min-h-0 min-w-0 flex-1 flex-col gap-2 max-md:flex-none transition-all duration-200 ${gridFullscreen ? "z-30 pointer-events-none" : ""}`}>
+                  <div className={`relative flex flex-col gap-2 xl:flex-1 xl:min-h-0 xl:min-w-0 transition-all duration-200 ${gridFullscreen ? "z-30 pointer-events-none" : ""}`}>
 
                     {/* Block / Mesh / Preset — above grid */}
-                    <div id="tutorial-pencil" className="flex shrink-0 flex-wrap items-center gap-3">
+                    <div id="tutorial-pencil" className="flex shrink-0 flex-wrap items-center justify-center gap-3 md:justify-start">
                       <div
                         className="inline-flex items-center rounded-full p-1"
                         style={{ background: "#1F1410" }}
@@ -976,7 +997,7 @@ export default function EditorPage() {
                       sidePanelTarget={editorMode === "import" ? importPanelEl : null}
                       toolOverride={drawTool}
                       onToolOverrideChange={(t) => setDrawMode(t === "pencil" ? "block" : "mesh")}
-                      className="min-h-0 max-md:flex-none"
+                      className="xl:flex-1 xl:min-h-0"
                     />
 
                     {/* Progress bar + cell counts — below grid */}
@@ -994,19 +1015,24 @@ export default function EditorPage() {
                           style={{ width: `${completedPct}%`, background: "#A8466F" }}
                         />
                       </div>
-                      <div className="mt-2 flex items-center justify-between font-sans text-[12px] text-muted">
-                        <span>
-                          <span className="font-bold text-text-strong">{filledCellCount}</span> blocks ·{" "}
-                          <span className="font-bold text-text-strong">{emptyCellCount}</span> mesh squares
-                        </span>
-                        <span className="font-mono text-[11px]">100%</span>
+                      <div className="mt-2 font-sans text-[12px] text-muted">
+                        <span className="font-bold text-text-strong">{filledCellCount}</span> blocks ·{" "}
+                        <span className="font-bold text-text-strong">{emptyCellCount}</span> mesh squares
                       </div>
                     </div>
                   </div>
 
                   {/* ── Right panel: import controls OR yarn estimator ── */}
+                  {/* Mobile toggle button */}
+                  <button
+                    type="button"
+                    onClick={() => setMobilePanelOpen((p) => !p)}
+                    className="xl:hidden flex items-center gap-1.5 self-start rounded-full border border-[rgba(61,42,30,0.10)] bg-white px-3 py-1.5 font-sans text-[12px] font-bold text-text-strong"
+                  >
+                    {editorMode === "import" ? "Import image" : "Yarn"} {mobilePanelOpen ? "▲" : "▾"}
+                  </button>
                   <div
-                    className={`flex w-full flex-col gap-4 xl:w-80 xl:shrink-0 xl:overflow-y-auto xl:gap-0 xl:border-l xl:pl-5 ${imageCropExpanded || gridFullscreen ? "pointer-events-none" : ""}`}
+                    className={`flex w-full flex-col gap-4 xl:flex xl:w-80 xl:shrink-0 xl:overflow-y-auto xl:gap-0 xl:border-l xl:pl-5 ${!mobilePanelOpen ? "hidden xl:flex" : "flex"} ${imageCropExpanded || gridFullscreen ? "pointer-events-none" : ""}`}
                     style={{ borderColor: "rgba(61,42,30,0.08)" }}
                   >
                     {/* Import panel portal target — always mounted so portal can target it */}

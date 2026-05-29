@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect } from "react";
 import type { User } from "@supabase/supabase-js";
 
 export type MobileMenuPage = "home" | "learn" | "gallery" | "editor" | "profile";
@@ -56,6 +57,15 @@ export function MobileMenuOverlay({
   onLogout,
   loginButtonId,
 }: Props) {
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = "hidden";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [open]);
+
   if (!open) return null;
 
   const visibleItems = NAV_ITEMS.filter(item => !item.requiresAuth || user);
@@ -117,7 +127,7 @@ export function MobileMenuOverlay({
                   gap: 14,
                   fontFamily: "var(--font-lora), Georgia, serif",
                   fontWeight: 700,
-                  fontSize: 34,
+                  fontSize: "clamp(26px,8vw,34px)",
                   letterSpacing: "-0.02em",
                   textShadow: "0 1px 2px rgba(0,0,0,0.18)",
                   lineHeight: 1,
@@ -133,10 +143,15 @@ export function MobileMenuOverlay({
               </Link>
               {isActive && (
                 <span
-                  className="shrink-0 font-mono text-[10px] font-bold text-white"
-                  style={{ letterSpacing: "0.10em", opacity: 0.85, textShadow: "0 1px 2px rgba(0,0,0,0.18)" }}
+                  className="inline-flex shrink-0 items-center gap-1.5"
                 >
-                  YOU ARE HERE
+                  <span className="inline-block size-2 rounded-full bg-white/80" />
+                  <span
+                    className="hidden font-mono text-[10px] font-bold text-white sm:inline"
+                    style={{ letterSpacing: "0.10em", opacity: 0.85, textShadow: "0 1px 2px rgba(0,0,0,0.18)" }}
+                  >
+                    HERE
+                  </span>
                 </span>
               )}
             </div>

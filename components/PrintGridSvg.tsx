@@ -31,7 +31,8 @@ export function PrintGridSvg({
       width={w}
       height={h}
       viewBox={`0 0 ${w} ${h}`}
-      className="max-w-full border border-zinc-400 bg-white text-black print:border-zinc-900"
+      className="max-w-full bg-white text-black"
+      style={{ height: "auto" }}
       role="img"
       aria-label="Pattern grid"
     >

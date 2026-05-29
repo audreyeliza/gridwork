@@ -2,12 +2,13 @@
 
 import {
   estimateYarnUsage,
+  parseHookMillimeters,
   type YarnEstimateResult,
   type YarnWeightCategory,
   YARN_WEIGHT_CATEGORIES,
 } from "@/lib/yarnEstimator";
 import type { PatternYarnSettings } from "@/lib/yarnSettings";
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 
 const WEIGHT_LABELS: Record<YarnWeightCategory, string> = {
   lace: "Lace",
@@ -19,8 +20,15 @@ const WEIGHT_LABELS: Record<YarnWeightCategory, string> = {
   super_bulky: "Super bulky",
 };
 
-const DEFAULT_SPI: Record<YarnWeightCategory, number> = {
-  lace: 8.5, fingering: 7.5, sport: 6.5, dk: 5.75, worsted: 5, bulky: 4, super_bulky: 3,
+type GaugeRange = { hookMinMm: number; hookMaxMm: number; minSq: number; maxSq: number; defaultSq: number };
+const FILET_GAUGE: Record<YarnWeightCategory, GaugeRange> = {
+  lace:        { hookMinMm: 1.5,  hookMaxMm: 2.25, minSq: 12, maxSq: 16, defaultSq: 14 },
+  fingering:   { hookMinMm: 2.25, hookMaxMm: 3.5,  minSq: 9,  maxSq: 12, defaultSq: 10 },
+  sport:       { hookMinMm: 3.5,  hookMaxMm: 4.5,  minSq: 7,  maxSq: 9,  defaultSq: 8  },
+  dk:          { hookMinMm: 4.0,  hookMaxMm: 5.0,  minSq: 5,  maxSq: 7,  defaultSq: 6  },
+  worsted:     { hookMinMm: 4.5,  hookMaxMm: 5.5,  minSq: 4,  maxSq: 6,  defaultSq: 5  },
+  bulky:       { hookMinMm: 6.5,  hookMaxMm: 9.0,  minSq: 2,  maxSq: 4,  defaultSq: 3  },
+  super_bulky: { hookMinMm: 9.0,  hookMaxMm: 15.0, minSq: 1,  maxSq: 3,  defaultSq: 2  },
 };
 
 const HOOK_DEFAULTS: Record<YarnWeightCategory, string> = {
@@ -38,6 +46,16 @@ export type YarnEstimatorProps = {
   className?: string;
 };
 
+function toFractionalInch(cm: number): string {
+  const totalIn = cm * 0.3937;
+  const whole = Math.floor(totalIn);
+  const eighths = Math.round((totalIn - whole) * 8);
+  if (eighths === 0) return String(whole);
+  if (eighths === 8) return String(whole + 1);
+  const FRAC: Record<number, string> = { 1: "⅛", 2: "¼", 3: "⅜", 4: "½", 5: "⅝", 6: "¾", 7: "⅞" };
+  return `${whole}${FRAC[eighths] ?? ""}`;
+}
+
 export function YarnEstimator({
   gridWidth,
   gridHeight,
@@ -49,6 +67,17 @@ export function YarnEstimator({
 }: YarnEstimatorProps) {
   const idPrefix = useId();
   const [units, setUnits] = useState<"imperial" | "metric">("metric");
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("gridwork:yarnUnit");
+      if (saved === "imperial" || saved === "metric") setUnits(saved);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    try { localStorage.setItem("gridwork:yarnUnit", units); } catch {}
+  }, [units]);
 
   const result: YarnEstimateResult = useMemo(
     () =>
@@ -64,19 +93,32 @@ export function YarnEstimator({
     [value.weight, value.hookSize, value.customGaugeStitchesPerInch, gridWidth, gridHeight, filledCellCount, emptyCellCount],
   );
 
+  const isCustomGauge = (value.customGaugeStitchesPerInch ?? 0) > 0;
   const { gaugeSquaresPer10cm, widthCm, heightCm, widthIn, heightIn } = useMemo(() => {
-    const spi = value.customGaugeStitchesPerInch ?? DEFAULT_SPI[value.weight] ?? 5;
-    const gaugePer10cm = parseFloat((spi * 10 / 7.62).toFixed(1));
-    const wCm = parseFloat(((gridWidth * 10) / gaugePer10cm).toFixed(1));
-    const hCm = parseFloat(((gridHeight * 10) / gaugePer10cm).toFixed(1));
+    const custom = value.customGaugeStitchesPerInch ?? 0;
+    let sq: number;
+    if (custom > 0) {
+      sq = custom;
+    } else {
+      const range = FILET_GAUGE[value.weight];
+      const mm = parseHookMillimeters(value.hookSize);
+      if (mm != null && mm >= range.hookMinMm && mm <= range.hookMaxMm) {
+        const t = (mm - range.hookMinMm) / (range.hookMaxMm - range.hookMinMm);
+        sq = parseFloat((range.maxSq + t * (range.minSq - range.maxSq)).toFixed(1));
+      } else {
+        sq = range.defaultSq;
+      }
+    }
+    const wCm = parseFloat((gridWidth * 10 / sq).toFixed(1));
+    const hCm = parseFloat((gridHeight * 10 / sq).toFixed(1));
     return {
-      gaugeSquaresPer10cm: gaugePer10cm,
+      gaugeSquaresPer10cm: sq,
       widthCm: wCm,
       heightCm: hCm,
-      widthIn: parseFloat((wCm / 2.54).toFixed(1)),
-      heightIn: parseFloat((hCm / 2.54).toFixed(1)),
+      widthIn: parseFloat((wCm * 0.3937).toFixed(1)),
+      heightIn: parseFloat((hCm * 0.3937).toFixed(1)),
     };
-  }, [value.customGaugeStitchesPerInch, value.weight, gridWidth, gridHeight]);
+  }, [value.customGaugeStitchesPerInch, value.weight, value.hookSize, gridWidth, gridHeight]);
 
   const skeinGrams = value.weight === "lace" ? 50 : value.weight === "fingering" ? 100 : value.weight === "super_bulky" ? 200 : 100;
   const skeins = Math.ceil(result.grams / skeinGrams);
@@ -194,20 +236,32 @@ export function YarnEstimator({
             <input
               id={`${idPrefix}-gauge`}
               type="number"
-              min={2}
-              max={14}
-              step={0.25}
-              value={value.customGaugeStitchesPerInch ?? ""}
-              placeholder={String(DEFAULT_SPI[value.weight])}
+              min={units === "imperial" ? 0.5 : 1}
+              max={units === "imperial" ? 4.5 : 16}
+              step={units === "imperial" ? 0.1 : 0.5}
+              value={
+                units === "imperial" && (value.customGaugeStitchesPerInch ?? 0) > 0
+                  ? parseFloat(((value.customGaugeStitchesPerInch ?? 0) / 3.937).toFixed(1))
+                  : (value.customGaugeStitchesPerInch || "")
+              }
+              placeholder={
+                units === "imperial"
+                  ? String(parseFloat((FILET_GAUGE[value.weight].defaultSq / 3.937).toFixed(1)))
+                  : String(FILET_GAUGE[value.weight].defaultSq)
+              }
               onChange={(e) => {
                 const raw = e.target.value;
-                if (raw === "") { onChange({ ...value, customGaugeStitchesPerInch: null }); return; }
+                if (raw === "") { onChange({ ...value, customGaugeStitchesPerInch: 0 }); return; }
                 const n = Number(raw);
-                onChange({ ...value, customGaugeStitchesPerInch: Number.isFinite(n) ? n : null });
+                if (!Number.isFinite(n) || n <= 0) return;
+                const stored = units === "imperial" ? parseFloat((n * 3.937).toFixed(2)) : n;
+                onChange({ ...value, customGaugeStitchesPerInch: stored });
               }}
               className="w-16 bg-transparent text-right font-sans text-[13px] font-bold text-text-strong focus:outline-none"
             />
-            <span className="font-sans text-[11px] text-muted">sts/in</span>
+            <span className="font-sans text-[11px] text-muted">
+              {units === "imperial" ? "sq / inch" : "sq / 10 cm"}
+            </span>
           </div>
         </div>
       </div>
@@ -217,33 +271,70 @@ export function YarnEstimator({
         <div className="font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-muted" style={{ marginBottom: 8 }}>
           Finished size
         </div>
-        <div className="font-serif font-bold tracking-[-0.01em] text-text-strong" style={{ fontSize: 26, lineHeight: 1 }}>
-          {widthCm} × {heightCm}
-          <span className="font-sans font-semibold text-muted" style={{ fontSize: 16, marginLeft: 6 }}>cm</span>
-        </div>
-        <div className="mt-1 font-sans text-[12px] font-semibold text-muted">
-          ≈ {widthIn} × {heightIn} in
-        </div>
+        {units === "metric" ? (
+          <>
+            <div className="font-serif font-bold tracking-[-0.01em] text-text-strong" style={{ fontSize: 26, lineHeight: 1 }}>
+              {widthCm} × {heightCm}
+              <span className="font-sans font-semibold text-muted" style={{ fontSize: 16, marginLeft: 6 }}>cm</span>
+            </div>
+            <div className="mt-1 font-sans text-[12px] font-semibold text-muted">
+              ≈ {widthIn} × {heightIn} in · {isCustomGauge ? "your gauge" : "estimated gauge"}
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="font-serif font-bold tracking-[-0.01em] text-text-strong" style={{ fontSize: 26, lineHeight: 1 }}>
+              {toFractionalInch(widthCm)} × {toFractionalInch(heightCm)}
+              <span className="font-sans font-semibold text-muted" style={{ fontSize: 16, marginLeft: 6 }}>in</span>
+            </div>
+            <div className="mt-1 font-sans text-[12px] font-semibold text-muted">
+              ≈ {widthCm} × {heightCm} cm · {isCustomGauge ? "your gauge" : "estimated gauge"}
+            </div>
+          </>
+        )}
         <div
           className="mt-2 rounded-[10px] font-mono text-[11px] font-medium leading-[1.55]"
           style={{ padding: "10px 12px", background: "#FFF8E8", border: "1px solid rgba(61,42,30,0.10)", color: "#7A6A5F" }}
         >
-          <div>
-            <span style={{ color: "#7A6A5F", fontSize: 10 }}>W: </span>
-            <span style={{ color: "#A8466F", fontWeight: 700 }}>{gridWidth}</span>
-            <span> × 10 ÷ </span>
-            <span style={{ color: "#A8466F", fontWeight: 700 }}>{gaugeSquaresPer10cm}</span>
-            <span> = </span>
-            <span style={{ color: "#1F1410", fontWeight: 700 }}>{widthCm} cm</span>
-          </div>
-          <div style={{ marginTop: 4 }}>
-            <span style={{ color: "#7A6A5F", fontSize: 10 }}>H: </span>
-            <span style={{ color: "#A8466F", fontWeight: 700 }}>{gridHeight}</span>
-            <span> × 10 ÷ </span>
-            <span style={{ color: "#A8466F", fontWeight: 700 }}>{gaugeSquaresPer10cm}</span>
-            <span> = </span>
-            <span style={{ color: "#1F1410", fontWeight: 700 }}>{heightCm} cm</span>
-          </div>
+          {units === "metric" ? (
+            <>
+              <div>
+                <span style={{ color: "#7A6A5F", fontSize: 10 }}>W: </span>
+                <span style={{ color: "#A8466F", fontWeight: 700 }}>{gridWidth}</span>
+                <span> ÷ (</span>
+                <span style={{ color: "#A8466F", fontWeight: 700 }}>{gaugeSquaresPer10cm}</span>
+                <span> ÷ 10) = </span>
+                <span style={{ color: "#1F1410", fontWeight: 700 }}>{widthCm} cm</span>
+              </div>
+              <div style={{ marginTop: 4 }}>
+                <span style={{ color: "#7A6A5F", fontSize: 10 }}>H: </span>
+                <span style={{ color: "#A8466F", fontWeight: 700 }}>{gridHeight}</span>
+                <span> ÷ (</span>
+                <span style={{ color: "#A8466F", fontWeight: 700 }}>{gaugeSquaresPer10cm}</span>
+                <span> ÷ 10) = </span>
+                <span style={{ color: "#1F1410", fontWeight: 700 }}>{heightCm} cm</span>
+              </div>
+            </>
+          ) : (
+            <>
+              <div>
+                <span style={{ color: "#7A6A5F", fontSize: 10 }}>W: </span>
+                <span style={{ color: "#A8466F", fontWeight: 700 }}>{gridWidth}</span>
+                <span> ÷ </span>
+                <span style={{ color: "#A8466F", fontWeight: 700 }}>{parseFloat((gaugeSquaresPer10cm / 3.937).toFixed(1))} sq/in</span>
+                <span> = </span>
+                <span style={{ color: "#1F1410", fontWeight: 700 }}>{widthIn} in</span>
+              </div>
+              <div style={{ marginTop: 4 }}>
+                <span style={{ color: "#7A6A5F", fontSize: 10 }}>H: </span>
+                <span style={{ color: "#A8466F", fontWeight: 700 }}>{gridHeight}</span>
+                <span> ÷ </span>
+                <span style={{ color: "#A8466F", fontWeight: 700 }}>{parseFloat((gaugeSquaresPer10cm / 3.937).toFixed(1))} sq/in</span>
+                <span> = </span>
+                <span style={{ color: "#1F1410", fontWeight: 700 }}>{heightIn} in</span>
+              </div>
+            </>
+          )}
         </div>
       </div>
 

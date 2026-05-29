@@ -70,6 +70,17 @@ export default function UserProfilePage() {
   const [pageState, setPageState] = useState<PageState>({ status: "loading" });
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [fromGallery, setFromGallery] = useState(false);
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  const previewPattern = previewId && pageState.status === "loaded"
+    ? pageState.patterns.find((p) => p.id === previewId) ?? null
+    : null;
+
+  useEffect(() => {
+    if (!previewId) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setPreviewId(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [previewId]);
 
   useEffect(() => {
     if (!supabase) return;
@@ -114,10 +125,10 @@ export default function UserProfilePage() {
             Gridwork
           </Link>
           <nav className="hidden items-center gap-7 md:flex">
-            <Link href="/" className="text-sm font-semibold text-white/85 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">Home</Link>
-            <Link href="/learn" className="text-sm font-semibold text-white/85 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">Learn</Link>
-            <Link href="/gallery" className="text-sm font-semibold text-white/85 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">Gallery</Link>
-            <Link href="/editor" className="text-sm font-semibold text-white/85 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">Editor</Link>
+            <Link href="/" className="relative inline-flex items-center pl-[13px] text-sm font-bold text-white/70 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]"><span className="absolute left-0 top-1/2 -translate-y-1/2 size-[6px] rounded-full opacity-0" />Home</Link>
+            <Link href="/learn" className="relative inline-flex items-center pl-[13px] text-sm font-bold text-white/70 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]"><span className="absolute left-0 top-1/2 -translate-y-1/2 size-[6px] rounded-full opacity-0" />Learn</Link>
+            <Link href="/gallery" className="relative inline-flex items-center pl-[13px] text-sm font-bold text-white/70 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]"><span className="absolute left-0 top-1/2 -translate-y-1/2 size-[6px] rounded-full opacity-0" />Gallery</Link>
+            <Link href="/editor" className="relative inline-flex items-center pl-[13px] text-sm font-bold text-white/70 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]"><span className="absolute left-0 top-1/2 -translate-y-1/2 size-[6px] rounded-full opacity-0" />Editor</Link>
           </nav>
         </div>
         <NavUserSection activePage={null} />
@@ -206,7 +217,7 @@ export default function UserProfilePage() {
                     isOwn={false}
                     onLike={() => {}}
                     onCopy={() => {}}
-                    onPreview={() => {}}
+                    onPreview={() => setPreviewId(p.id)}
                     copying={false}
                     canInteract={false}
                     makerDisplayName={pageState.displayName}
@@ -217,6 +228,59 @@ export default function UserProfilePage() {
           </>
         )}
       </main>
+
+      {previewPattern && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+          onClick={() => setPreviewId(null)}
+        >
+          <div
+            className="relative flex w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setPreviewId(null)}
+              className="absolute right-3 top-3 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-black/30 text-white backdrop-blur-sm hover:bg-black/50"
+              aria-label="Close preview"
+            >
+              <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <path d="M3 3l10 10M13 3L3 13" />
+              </svg>
+            </button>
+            <div className="flex max-h-[55vh] items-center justify-center overflow-hidden bg-stone-50">
+              {previewPattern.thumbnail ? (
+                <img
+                  src={previewPattern.thumbnail}
+                  alt={`${previewPattern.name} preview`}
+                  className="max-h-[55vh] max-w-full object-contain"
+                  style={{ imageRendering: "pixelated" }}
+                />
+              ) : (
+                <div className="flex h-48 w-full items-center justify-center text-stone-300">
+                  <svg viewBox="0 0 40 40" width="48" height="48" fill="currentColor">
+                    <rect x="0" y="0" width="12" height="12" rx="1" />
+                    <rect x="14" y="0" width="12" height="12" rx="1" opacity="0.3" />
+                    <rect x="28" y="0" width="12" height="12" rx="1" />
+                    <rect x="0" y="14" width="12" height="12" rx="1" opacity="0.3" />
+                    <rect x="14" y="14" width="12" height="12" rx="1" />
+                    <rect x="28" y="14" width="12" height="12" rx="1" opacity="0.3" />
+                    <rect x="0" y="28" width="12" height="12" rx="1" />
+                    <rect x="14" y="28" width="12" height="12" rx="1" opacity="0.3" />
+                    <rect x="28" y="28" width="12" height="12" rx="1" />
+                  </svg>
+                </div>
+              )}
+            </div>
+            <div className="p-4">
+              <p className="truncate text-base font-semibold text-stone-900">{previewPattern.name}</p>
+              <p className="mt-0.5 text-sm text-stone-400">
+                {pageState.status === "loaded" ? `@${pageState.displayName}` : ""} · {previewPattern.grid_width}×{previewPattern.grid_height}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

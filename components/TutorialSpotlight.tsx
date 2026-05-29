@@ -12,8 +12,8 @@ const STEPS = [
   },
   {
     targetId: "tutorial-pencil",
-    title: "Draw with the pencil",
-    body: "Click or drag on the grid to fill squares. Switch to Eraser to clear them. Undo / Redo step through your changes.",
+    title: "Choose your draw mode",
+    body: "Block fills a square solid; Mesh leaves it open. Click or drag to draw. Double-click any cell to switch between block and mesh without leaving the toolbar. Undo / Redo step through changes.",
   },
   {
     targetId: "tutorial-image-tools",
@@ -87,6 +87,11 @@ export function TutorialSpotlight() {
     setVisible(false);
   }, []);
 
+  const restart = useCallback(() => {
+    setStep(0);
+    setVisible(true);
+  }, []);
+
   const next = useCallback(() => {
     if (step < STEPS.length - 1) {
       setStep((s) => s + 1);
@@ -99,7 +104,20 @@ export function TutorialSpotlight() {
     setStep((s) => Math.max(0, s - 1));
   }, []);
 
-  if (!visible) return null;
+  const isLastStep = step === STEPS.length - 1;
+
+  if (!visible) {
+    return (
+      <button
+        type="button"
+        onClick={restart}
+        title="Restart tutorial"
+        className="fixed bottom-6 right-6 z-[199] flex h-9 w-9 items-center justify-center rounded-full border border-rose-100 bg-white text-sm font-bold text-brand shadow-md transition-colors hover:bg-pink-50"
+      >
+        ?
+      </button>
+    );
+  }
 
   const current = STEPS[step]!;
 
@@ -144,6 +162,12 @@ export function TutorialSpotlight() {
           <h2 className="mt-0.5 text-base font-semibold text-stone-800">{current.title}</h2>
           <p className="mt-2 text-sm leading-relaxed text-stone-600">{current.body}</p>
 
+          {isLastStep && (
+            <p className="mt-3 text-xs leading-relaxed text-stone-400">
+              You can restart this tutorial anytime using the ? button in the bottom corner.
+            </p>
+          )}
+
           <div className="mt-4 flex items-center justify-between gap-3">
             <button
               type="button"
@@ -162,12 +186,21 @@ export function TutorialSpotlight() {
                   Back
                 </button>
               )}
+              {isLastStep && (
+                <button
+                  type="button"
+                  onClick={restart}
+                  className="rounded-full border border-brand px-4 py-1.5 text-sm font-medium text-brand hover:bg-pink-50"
+                >
+                  Take the tour again
+                </button>
+              )}
               <button
                 type="button"
                 onClick={next}
                 className="rounded-full bg-brand px-5 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-dark"
               >
-                {step < STEPS.length - 1 ? "Next" : "Get started"}
+                {step < STEPS.length - 1 ? "Next →" : "Get started"}
               </button>
             </div>
           </div>

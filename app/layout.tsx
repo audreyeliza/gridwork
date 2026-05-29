@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Lora, Nunito, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AppGradient } from "@/components/AppGradient";
+import { SiteFooter } from "@/components/SiteFooter";
 
 const lora = Lora({
   variable: "--font-lora",
@@ -40,9 +41,10 @@ export default function RootLayout({
       lang="en"
       className={`${lora.variable} ${nunito.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
-      <body className="h-full flex flex-col">
+      <body className="flex min-h-screen flex-col overflow-x-hidden">
         <AppGradient className="fixed inset-0 -z-10" />
         {children}
+        <SiteFooter />
       </body>
     </html>
   );

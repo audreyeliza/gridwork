@@ -11,13 +11,6 @@ import { drawImageWithTransform, type CropRect } from "@/lib/imageCanvasUtils";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export type GridTool = "pencil" | "eraser";
-export type ZoomLevel = "fit" | "100" | "150";
-
-const ZOOM_CELL_SIZE: Record<ZoomLevel, number | null> = {
-  fit: null,
-  "100": 20,
-  "150": 30,
-};
 
 export type GridCanvasProps = {
   gridWidth: number;
@@ -158,7 +151,7 @@ export function GridCanvas({
     if (onToolOverrideChange) onToolOverrideChange(t);
     else setToolInternal(t);
   };
-  const [zoom, setZoom] = useState<ZoomLevel>("fit");
+  const [zoom, setZoom] = useState<number | "fit">("fit");
   const [fullscreen, setFullscreen] = useState(false);
   /** Container size — used at fit zoom only. */
   const [containerSize, setContainerSize] = useState({ cssW: 400, cssH: 400 });
@@ -168,6 +161,7 @@ export function GridCanvas({
   const lastCellRef = useRef<{ r: number; c: number } | null>(null);
   const drawingRef = useRef(false);
   const rafRef = useRef(0);
+  const dblClickDataRef = useRef<{ r: number; c: number; originalValue: boolean; timerId: number } | null>(null);
 
   const opacity = clamp(underlayOpacity, 0, 1);
   const showUnderlay = Boolean(underlayImage) && opacity > 0;
@@ -184,7 +178,8 @@ export function GridCanvas({
 
   const leftGutter = LABEL_SIZE + (showRowTracker ? ROW_TRACKER_SIDEBAR_PX : 0);
 
-  const zoomCellSize = ZOOM_CELL_SIZE[zoom];
+  // 100% → 20px/cell, 200% → 40px/cell, 25% → 5px/cell
+  const zoomCellSize = zoom === "fit" ? null : Math.round(zoom / 5);
 
   /**
    * At "fit" zoom, cells are sized so columns exactly fill the container width.
@@ -422,6 +417,12 @@ export function GridCanvas({
   const onPointerDown = (e: React.PointerEvent) => {
     const hit = clientToCell(e.clientX, e.clientY);
     if (!hit) return;
+    // Suppress the second pointer-down of a double-click on the same cell
+    const dbl = dblClickDataRef.current;
+    if (dbl && dbl.r === hit.r && dbl.c === hit.c) return;
+    if (dbl?.timerId) window.clearTimeout(dbl.timerId);
+    const timerId = window.setTimeout(() => { dblClickDataRef.current = null; }, 400) as unknown as number;
+    dblClickDataRef.current = { r: hit.r, c: hit.c, originalValue: cells[hit.r]?.[hit.c] ?? false, timerId };
     e.currentTarget.setPointerCapture(e.pointerId);
     drawingRef.current = true;
     draftRef.current = cloneGrid(cells);
@@ -431,6 +432,21 @@ export function GridCanvas({
       draftRef.current[hit.r][hit.c] = brush;
     }
     scheduleDraw();
+  };
+
+  const onCanvasDoubleClick = (e: React.MouseEvent) => {
+    const hit = clientToCell(e.clientX, e.clientY);
+    if (!hit) return;
+    const dbl = dblClickDataRef.current;
+    if (dbl?.timerId) window.clearTimeout(dbl.timerId);
+    // Use the pre-first-click value so the toggle is always relative to the original state
+    const originalValue = dbl && dbl.r === hit.r && dbl.c === hit.c
+      ? dbl.originalValue
+      : cells[hit.r]?.[hit.c] ?? false;
+    dblClickDataRef.current = null;
+    const next = cloneGrid(cells);
+    next[hit.r][hit.c] = !originalValue;
+    onCommit(next);
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
@@ -624,27 +640,44 @@ export function GridCanvas({
             className="touch-none"
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
+            onDoubleClick={onCanvasDoubleClick}
           />
         </div>
 
         {/* Zoom HUD — positioned relative to outer wrapper, not affected by scroll */}
         {!fullscreen && (
-          <div className="absolute bottom-2 right-2 z-10 pointer-events-auto">
-            <div className="inline-flex rounded-full border border-stone-200 bg-white/95 p-0.5 shadow-sm">
-              {(["fit", "100", "150"] as ZoomLevel[]).map((z) => (
-                <button
-                  key={z}
-                  type="button"
-                  onClick={() => setZoom(z)}
-                  className={`rounded-full px-3 py-1 text-xs font-medium transition-colors duration-150 ${
-                    zoom === z
-                      ? "bg-brand text-white shadow-sm"
-                      : "text-gray-700 hover:bg-pink-50 hover:text-gray-900"
-                  }`}
-                >
-                  {z === "fit" ? "Fit" : `${z}%`}
-                </button>
-              ))}
+          <div className="absolute bottom-2 right-2 z-10 pointer-events-auto flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setZoom("fit")}
+              className={`rounded-full border px-2.5 py-1 text-xs font-medium shadow-sm transition-colors duration-150 ${
+                zoom === "fit"
+                  ? "border-brand/40 bg-brand text-white"
+                  : "border-stone-200 bg-white/95 text-gray-700 hover:bg-pink-50"
+              }`}
+            >
+              Fit
+            </button>
+            <div className="inline-flex items-center rounded-full border border-stone-200 bg-white/95 shadow-sm">
+              <button
+                type="button"
+                onClick={() => setZoom((z) => Math.max(25, (z === "fit" ? 100 : z) - 10))}
+                disabled={typeof zoom === "number" && zoom <= 25}
+                className="rounded-l-full px-2.5 py-1 text-sm font-bold text-gray-700 transition-colors hover:bg-pink-50 disabled:opacity-40"
+              >
+                −
+              </button>
+              <span className="min-w-[3rem] border-x border-stone-200 px-1 py-1 text-center text-xs font-medium tabular-nums text-gray-700">
+                {zoom === "fit" ? "Fit" : `${zoom}%`}
+              </span>
+              <button
+                type="button"
+                onClick={() => setZoom((z) => Math.min(200, (z === "fit" ? 100 : z) + 10))}
+                disabled={typeof zoom === "number" && zoom >= 200}
+                className="rounded-r-full px-2.5 py-1 text-sm font-bold text-gray-700 transition-colors hover:bg-pink-50 disabled:opacity-40"
+              >
+                +
+              </button>
             </div>
           </div>
         )}

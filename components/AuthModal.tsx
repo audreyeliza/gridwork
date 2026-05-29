@@ -1,6 +1,7 @@
 "use client";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import Link from "next/link";
 import { useCallback, useEffect, useId, useState } from "react";
 
 type AuthMode = "signin" | "signup";
@@ -148,6 +149,15 @@ export function AuthModal({
           >
             {loading ? "Please wait…" : mode === "signin" ? "Log in" : "Sign up"}
           </button>
+
+          {mode === "signup" && (
+            <p className="text-center text-xs text-stone-400">
+              By signing up you agree to our{" "}
+              <Link href="/terms" className="underline hover:text-stone-600">Terms</Link>
+              {" "}and{" "}
+              <Link href="/privacy" className="underline hover:text-stone-600">Privacy Policy</Link>
+            </p>
+          )}
         </form>
 
         <p className="mt-4 text-center text-sm text-stone-600">

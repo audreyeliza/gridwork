@@ -3,11 +3,12 @@
 import {
   checkDisplayNameAvailable,
   fetchProfile,
+  fetchProfilesByUserIds,
   upsertProfile,
   upsertProfileAvatar,
 } from "@/lib/profileHelpers";
 import { fetchPatternsForUser, type Pattern } from "@/lib/patternHelpers";
-import { fetchUserLikedPatterns, type GalleryPattern } from "@/lib/galleryHelpers";
+import { copyPublicPattern, fetchUserLikedPatterns, type GalleryPattern } from "@/lib/galleryHelpers";
 import { CrochetMark } from "@/components/CrochetMark";
 import { NavUserSection } from "@/components/NavUserSection";
 import { PatternGalleryCard } from "@/components/PatternGalleryCard";
@@ -466,19 +467,49 @@ export default function ProfilePage() {
   const [activeTab, setActiveTab] = useState<"patterns" | "liked">("patterns");
   const [likedPatterns, setLikedPatterns] = useState<GalleryPattern[]>([]);
   const [likedLoading, setLikedLoading] = useState(false);
+  const [copying, setCopying] = useState<string | null>(null);
+  const [likedDisplayNames, setLikedDisplayNames] = useState<Map<string, string>>(new Map());
+  const [likedPreviewId, setLikedPreviewId] = useState<string | null>(null);
+  const likedPreviewPattern = likedPreviewId ? (likedPatterns.find((p) => p.id === likedPreviewId) ?? null) : null;
+
+  useEffect(() => {
+    if (!likedPreviewId) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setLikedPreviewId(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [likedPreviewId]);
 
   useEffect(() => {
     if (!supabase || !user || activeTab !== "liked") return;
     let cancelled = false;
     setLikedLoading(true);
-    void fetchUserLikedPatterns(supabase, user.id).then(({ data }) => {
-      if (!cancelled) {
-        setLikedPatterns(data ?? []);
-        setLikedLoading(false);
-      }
-    });
+    void (async () => {
+      const { data } = await fetchUserLikedPatterns(supabase, user.id);
+      if (cancelled) return;
+      const patterns = data ?? [];
+      setLikedPatterns(patterns);
+      setLikedLoading(false);
+      const uniqueIds = [...new Set(patterns.map((p) => p.user_id))];
+      const names = await fetchProfilesByUserIds(supabase, uniqueIds);
+      if (!cancelled) setLikedDisplayNames(names);
+    })();
     return () => { cancelled = true; };
   }, [supabase, user, activeTab]);
+
+  const handleCopy = useCallback(
+    async (patternId: string) => {
+      if (!user || !supabase) return;
+      setCopying(patternId);
+      const { newPatternId, error } = await copyPublicPattern(supabase, patternId);
+      setCopying(null);
+      if (error || !newPatternId) { console.error(error ?? "No pattern ID returned"); return; }
+      setLikedPatterns((prev) =>
+        prev.map((p) => p.id === patternId ? { ...p, copies_count: p.copies_count + 1 } : p),
+      );
+      router.push("/editor");
+    },
+    [user, supabase, router],
+  );
 
   // ── Inline display name edit ───────────────────────────────────────────────
 
@@ -561,26 +592,25 @@ export default function ProfilePage() {
             Gridwork
           </Link>
           <nav className="hidden items-center gap-7 md:flex">
-            <Link href="/" className="text-sm font-semibold text-white/85 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">Home</Link>
-            <Link href="/learn" className="text-sm font-semibold text-white/85 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">Learn</Link>
-            <Link href="/gallery" className="text-sm font-semibold text-white/85 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">Gallery</Link>
-            <Link href="/editor" className="text-sm font-semibold text-white/85 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">Editor</Link>
+            <Link href="/" className="relative inline-flex items-center pl-[13px] text-sm font-bold text-white/70 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]"><span className="absolute left-0 top-1/2 -translate-y-1/2 size-[6px] rounded-full opacity-0" />Home</Link>
+            <Link href="/learn" className="relative inline-flex items-center pl-[13px] text-sm font-bold text-white/70 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]"><span className="absolute left-0 top-1/2 -translate-y-1/2 size-[6px] rounded-full opacity-0" />Learn</Link>
+            <Link href="/gallery" className="relative inline-flex items-center pl-[13px] text-sm font-bold text-white/70 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]"><span className="absolute left-0 top-1/2 -translate-y-1/2 size-[6px] rounded-full opacity-0" />Gallery</Link>
+            <Link href="/editor" className="relative inline-flex items-center pl-[13px] text-sm font-bold text-white/70 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]"><span className="absolute left-0 top-1/2 -translate-y-1/2 size-[6px] rounded-full opacity-0" />Editor</Link>
           </nav>
         </div>
         <NavUserSection activePage="profile" />
       </header>
 
-      <main className="mx-auto max-w-7xl px-8 pb-16 pt-0">
+      <main className="mx-auto max-w-7xl px-4 pb-16 pt-0">
         {configError && (
           <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">{configError}</div>
         )}
 
         {/* Journal-style header card */}
         <div
-          className="mb-7 rounded-[22px]"
+          className="mb-7 rounded-none px-5 py-8 md:rounded-[22px] md:px-12 md:py-10"
           style={{
             background: "#FBF7EF",
-            padding: "40px 48px",
             boxShadow: "0 10px 36px rgba(40,20,30,0.12), 0 0 0 1px rgba(255,255,255,0.5)",
           }}
         >
@@ -652,7 +682,7 @@ export default function ProfilePage() {
                   </div>
                 </div>
               ) : (
-                <div className="group/dnname inline-flex items-center gap-2 font-serif text-[40px] font-bold leading-none tracking-[-0.02em] text-text-strong">
+                <div className="group/dnname inline-flex max-w-full items-center gap-2 font-serif text-[28px] font-bold leading-none tracking-[-0.02em] text-text-strong md:text-[40px]">
                   {displayName ? `@${displayName}` : "Set a display name"}
                   <button
                     type="button"
@@ -665,21 +695,22 @@ export default function ProfilePage() {
                 </div>
               )}
               <p className="mt-1 font-sans text-sm font-medium text-muted">{user.email}</p>
+              {!editingDn && displayName && (
+                <Link href={`/u/${displayName}`} className="mt-1.5 inline-flex items-center gap-1 font-sans text-[13px] font-bold text-brand hover:text-brand-dark">
+                  View public profile
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M5 12h14M13 6l6 6-6 6"/>
+                  </svg>
+                </Link>
+              )}
             </div>
 
-            {!editingDn && displayName && (
-              <Link href={`/u/${displayName}`} className="inline-flex shrink-0 items-center gap-1 font-sans text-[13px] font-bold text-brand hover:text-brand-dark">
-                View public profile
-                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M5 12h14M13 6l6 6-6 6"/>
-                </svg>
-              </Link>
-            )}
+
           </div>
 
           {/* Stats strip */}
           <div
-            className="mt-1 grid grid-cols-4 gap-0 border-t pt-5"
+            className="mt-1 grid grid-cols-2 gap-4 border-t pt-5 md:grid-cols-4 md:gap-0"
             style={{ borderColor: "rgba(61,42,30,0.10)" }}
           >
             {[
@@ -688,8 +719,8 @@ export default function ProfilePage() {
               { v: String(patterns.reduce((acc, p) => acc + (p.likes_count ?? 0), 0)), l: "likes received" },
               { v: String(patterns.reduce((acc, p) => acc + (p.copies_count ?? 0), 0)), l: "copies" },
             ].map((s, i) => (
-              <div key={s.l} className={`${i > 0 ? "border-l pl-6" : ""}`} style={{ borderColor: "rgba(61,42,30,0.10)" }}>
-                <div className="font-serif text-[32px] font-bold leading-none tracking-[-0.015em] text-text-strong">{s.v}</div>
+              <div key={s.l} className={`${i > 0 && i % 2 !== 0 ? "border-l pl-4 md:pl-6" : ""} ${i >= 2 ? "border-t md:border-t-0 pt-2 md:pt-0" : ""} ${i > 0 && i % 2 === 0 ? "md:border-l md:pl-6" : ""}`} style={{ borderColor: "rgba(61,42,30,0.10)" }}>
+                <div className="font-serif text-[24px] font-bold leading-none tracking-[-0.015em] text-text-strong md:text-[32px]">{s.v}</div>
                 <div className="mt-1 font-sans text-[12px] font-semibold tracking-[0.02em] text-muted">{s.l}</div>
               </div>
             ))}
@@ -697,9 +728,9 @@ export default function ProfilePage() {
         </div>
 
         {/* Tabs + New pattern button */}
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-4 flex flex-wrap items-center gap-2 sm:flex-nowrap sm:justify-between">
           <div
-            className="inline-flex items-center rounded-full p-[3px]"
+            className="inline-flex items-center overflow-x-auto rounded-full p-[3px]"
             style={{ background: "rgba(0,0,0,0.20)" }}
           >
             {(["patterns", "liked"] as const).map((tab) => {
@@ -712,7 +743,7 @@ export default function ProfilePage() {
                   key={tab}
                   type="button"
                   onClick={() => setActiveTab(tab)}
-                  className={`rounded-full px-4 py-[7px] font-sans text-[13px] font-bold transition-all duration-150 ${
+                  className={`whitespace-nowrap rounded-full px-3 py-[5px] font-sans text-[12px] font-bold transition-all duration-150 md:px-4 md:py-[7px] md:text-[13px] ${
                     isActive ? "bg-white text-[#1F1410] shadow-sm" : "text-white/75 hover:text-white"
                   }`}
                 >
@@ -780,10 +811,11 @@ export default function ProfilePage() {
                   isLiked={true}
                   isOwn={p.user_id === user.id}
                   onLike={() => {}}
-                  onCopy={() => {}}
-                  onPreview={() => {}}
-                  copying={false}
-                  canInteract={false}
+                  onCopy={() => void handleCopy(p.id)}
+                  onPreview={() => setLikedPreviewId(p.id)}
+                  copying={copying === p.id}
+                  canInteract={Boolean(user)}
+                  makerDisplayName={likedDisplayNames.get(p.user_id) ?? null}
                 />
               ))}
             </div>
@@ -796,6 +828,61 @@ export default function ProfilePage() {
         onClose={() => setAvatarModalOpen(false)}
         onSave={(dataUrl) => void handleSaveAvatar(dataUrl)}
       />
+
+      {likedPreviewPattern && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+          onClick={() => setLikedPreviewId(null)}
+        >
+          <div
+            className="relative flex w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setLikedPreviewId(null)}
+              className="absolute right-3 top-3 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-black/30 text-white backdrop-blur-sm hover:bg-black/50"
+              aria-label="Close preview"
+            >
+              <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <path d="M3 3l10 10M13 3L3 13" />
+              </svg>
+            </button>
+            <div className="flex max-h-[55vh] items-center justify-center overflow-hidden bg-stone-50">
+              {likedPreviewPattern.thumbnail ? (
+                <img
+                  src={likedPreviewPattern.thumbnail}
+                  alt={`${likedPreviewPattern.name} preview`}
+                  className="max-h-[55vh] max-w-full object-contain"
+                  style={{ imageRendering: "pixelated" }}
+                />
+              ) : (
+                <div className="flex h-48 w-full items-center justify-center text-stone-300">
+                  <svg viewBox="0 0 40 40" width="48" height="48" fill="currentColor">
+                    <rect x="0" y="0" width="12" height="12" rx="1" />
+                    <rect x="14" y="0" width="12" height="12" rx="1" opacity="0.3" />
+                    <rect x="28" y="0" width="12" height="12" rx="1" />
+                    <rect x="0" y="14" width="12" height="12" rx="1" opacity="0.3" />
+                    <rect x="14" y="14" width="12" height="12" rx="1" />
+                    <rect x="28" y="14" width="12" height="12" rx="1" opacity="0.3" />
+                    <rect x="0" y="28" width="12" height="12" rx="1" />
+                    <rect x="14" y="28" width="12" height="12" rx="1" opacity="0.3" />
+                    <rect x="28" y="28" width="12" height="12" rx="1" />
+                  </svg>
+                </div>
+              )}
+            </div>
+            <div className="p-4">
+              <p className="truncate text-base font-semibold text-stone-900">{likedPreviewPattern.name}</p>
+              <p className="mt-0.5 text-sm text-stone-400">
+                {likedDisplayNames.get(likedPreviewPattern.user_id)
+                  ? `@${likedDisplayNames.get(likedPreviewPattern.user_id)}`
+                  : `@${likedPreviewPattern.user_id.slice(0, 6).toLowerCase()}`} · {likedPreviewPattern.grid_width}×{likedPreviewPattern.grid_height}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
