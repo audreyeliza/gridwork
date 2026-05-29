@@ -272,19 +272,19 @@ export default function GalleryPage() {
             Gridwork
           </Link>
           <nav className="hidden items-center gap-7 md:flex">
-            <Link href="/" className="text-sm font-semibold text-white/85 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">Home</Link>
-            <Link href="/learn" className="text-sm font-semibold text-white/85 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">Learn</Link>
-            <span className="inline-flex items-center gap-[7px] text-sm font-bold text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">
-              <span className="inline-block size-[6px] rounded-full bg-white" />
+            <Link href="/" className="relative inline-flex items-center pl-[13px] text-sm font-bold text-white/70 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]"><span className="absolute left-0 top-1/2 -translate-y-1/2 size-[6px] rounded-full opacity-0" />Home</Link>
+            <Link href="/learn" className="relative inline-flex items-center pl-[13px] text-sm font-bold text-white/70 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]"><span className="absolute left-0 top-1/2 -translate-y-1/2 size-[6px] rounded-full opacity-0" />Learn</Link>
+            <span className="relative inline-flex items-center pl-[13px] text-sm font-bold text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">
+              <span className="absolute left-0 top-1/2 -translate-y-1/2 size-[6px] rounded-full bg-white" />
               Gallery
             </span>
-            <Link href="/editor" className="text-sm font-semibold text-white/85 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">Editor</Link>
+            <Link href="/editor" className="relative inline-flex items-center pl-[13px] text-sm font-bold text-white/70 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]"><span className="absolute left-0 top-1/2 -translate-y-1/2 size-[6px] rounded-full opacity-0" />Editor</Link>
           </nav>
         </div>
         <NavUserSection activePage="gallery" />
       </header>
 
-      <main className="mx-auto max-w-7xl px-12 py-0 pb-16">
+      <main className="mx-auto max-w-7xl px-4 py-0 pb-16">
         {configError && (
           <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
             {configError}
@@ -297,7 +297,7 @@ export default function GalleryPage() {
             <div className="font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-white/85" style={{ textShadow: "0 1px 2px rgba(0,0,0,0.15)", marginBottom: 8 }}>
               Community patterns
             </div>
-            <h1 className="font-serif text-[48px] font-bold leading-none tracking-[-0.02em] text-white" style={{ textShadow: "0 2px 6px rgba(40,20,40,0.18)", margin: 0 }}>
+            <h1 className="font-serif text-3xl font-bold leading-none tracking-[-0.02em] text-white md:text-[48px]" style={{ textShadow: "0 2px 6px rgba(40,20,40,0.18)", margin: 0 }}>
               Gallery
             </h1>
             <p className="font-serif italic text-[16px] text-white/92 mt-1" style={{ textShadow: "0 1px 2px rgba(40,20,40,0.18)" }}>
@@ -305,16 +305,16 @@ export default function GalleryPage() {
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+            {/* Sort pills */}
             <div
-              className="inline-flex items-center rounded-full"
+              className="inline-flex items-center self-start rounded-full"
               style={{ background: "#FBF7EF", padding: 4, boxShadow: "0 4px 14px rgba(40,20,30,0.10), 0 0 0 1px rgba(255,255,255,0.5)" }}
             >
-              {/* Sort pills */}
               <button
                 type="button"
                 onClick={() => setSortBy("newest")}
-                className={`rounded-full px-4 py-1.5 text-[13px] font-bold transition-colors ${
+                className={`min-h-[36px] rounded-full px-4 py-1.5 text-[13px] font-bold transition-colors ${
                   sortBy === "newest" ? "bg-brand text-[#FBF7EF]" : "text-muted-strong hover:text-text-strong"
                 }`}
               >
@@ -323,35 +323,37 @@ export default function GalleryPage() {
               <button
                 type="button"
                 onClick={() => setSortBy("popular")}
-                className={`rounded-full px-4 py-1.5 text-[13px] font-bold transition-colors ${
+                className={`min-h-[36px] rounded-full px-4 py-1.5 text-[13px] font-bold transition-colors ${
                   sortBy === "popular" ? "bg-brand text-[#FBF7EF]" : "text-muted-strong hover:text-text-strong"
                 }`}
               >
                 Popular
               </button>
-              <span className="mx-1 inline-block h-5 w-px" style={{ background: "rgba(61,42,30,0.12)" }} />
-              {/* Search */}
-              <form onSubmit={handleSearchSubmit} className="flex items-center gap-1">
-                <div className="inline-flex items-center gap-2 px-2 py-1.5">
-                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#7A6A5F" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <circle cx="11" cy="11" r="6"/><path d="m20 20-3.5-3.5"/>
-                  </svg>
-                  <input
-                    type="search"
-                    placeholder="Search patterns…"
-                    value={searchInput}
-                    onChange={(e) => setSearchInput(e.target.value)}
-                    className="bg-transparent font-sans text-[13px] font-medium text-text-strong placeholder:text-muted focus:outline-none"
-                    style={{ minWidth: 160 }}
-                  />
-                </div>
-                <button type="submit" className="rounded-full bg-brand px-3 py-1.5 text-[13px] font-bold text-[#FBF7EF] hover:bg-brand-dark">
-                  Go
-                </button>
-              </form>
             </div>
+            {/* Search — full width on mobile */}
+            <form
+              onSubmit={handleSearchSubmit}
+              className="flex items-center gap-1 rounded-full"
+              style={{ background: "#FBF7EF", padding: 4, boxShadow: "0 4px 14px rgba(40,20,30,0.10), 0 0 0 1px rgba(255,255,255,0.5)" }}
+            >
+              <div className="inline-flex flex-1 items-center gap-2 px-2 py-1.5">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#7A6A5F" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <circle cx="11" cy="11" r="6"/><path d="m20 20-3.5-3.5"/>
+                </svg>
+                <input
+                  type="search"
+                  placeholder="Search patterns…"
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  className="min-w-0 flex-1 bg-transparent font-sans text-[13px] font-medium text-text-strong placeholder:text-muted focus:outline-none"
+                />
+              </div>
+              <button type="submit" className="min-h-[36px] rounded-full bg-brand px-3 py-1.5 text-[13px] font-bold text-[#FBF7EF] hover:bg-brand-dark">
+                Go
+              </button>
+            </form>
             {activeSearch && (
-              <button type="button" onClick={handleClearSearch} className="rounded-full border border-white/40 bg-white/20 px-3 py-1.5 text-[13px] font-semibold text-white backdrop-blur-sm hover:bg-white/30">
+              <button type="button" onClick={handleClearSearch} className="self-start rounded-full border border-white/40 bg-white/20 px-3 py-1.5 text-[13px] font-semibold text-white backdrop-blur-sm hover:bg-white/30">
                 Clear
               </button>
             )}

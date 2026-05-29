@@ -1,0 +1,120 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { CrochetMark } from "@/components/CrochetMark";
+import { NavUserSection } from "@/components/NavUserSection";
+
+export const metadata: Metadata = {
+  title: "Terms of Service — Gridwork",
+  description: "The terms governing your use of Gridwork.",
+};
+
+const SECTIONS = [
+  {
+    id: "account",
+    title: "Your account",
+    body: "You are responsible for keeping your account credentials secure. You must be 13 or older to create an account.",
+  },
+  {
+    id: "content",
+    title: "Your content",
+    body: "You own the patterns you create. By marking a pattern public, you give other users permission to view and copy it. You can make a pattern private again at any time.",
+  },
+  {
+    id: "use",
+    title: "Acceptable use",
+    body: "Don't use Gridwork to store or share content that is illegal, harmful, or infringes someone else's copyright. We reserve the right to remove content or suspend accounts that violate this.",
+  },
+  {
+    id: "availability",
+    title: "Service availability",
+    body: "Gridwork is provided as-is. We don't guarantee uptime or that your data will never be lost — back up patterns you care about by printing or exporting them.",
+  },
+  {
+    id: "changes",
+    title: "Changes",
+    body: "We may update these terms. Continued use of Gridwork after changes means you accept the new terms.",
+  },
+  {
+    id: "contact",
+    title: "Contact",
+    body: "gridworkapp@gmail.com",
+  },
+];
+
+export default function TermsPage() {
+  return (
+    <div className="min-h-screen">
+      <header className="z-20 flex h-[68px] items-center justify-between px-8">
+        <div className="flex items-center gap-9">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-[9px] font-serif text-2xl font-bold leading-none tracking-[-0.01em] text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]"
+          >
+            <CrochetMark size={22} color="#fff" />
+            Gridwork
+          </Link>
+          <nav className="hidden items-center gap-7 md:flex">
+            <Link href="/" className="relative inline-flex items-center pl-[13px] text-sm font-bold text-white/70 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">
+              <span className="absolute left-0 top-1/2 -translate-y-1/2 size-[6px] rounded-full opacity-0" />Home
+            </Link>
+            <Link href="/learn" className="relative inline-flex items-center pl-[13px] text-sm font-bold text-white/70 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">
+              <span className="absolute left-0 top-1/2 -translate-y-1/2 size-[6px] rounded-full opacity-0" />Learn
+            </Link>
+            <Link href="/gallery" className="relative inline-flex items-center pl-[13px] text-sm font-bold text-white/70 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">
+              <span className="absolute left-0 top-1/2 -translate-y-1/2 size-[6px] rounded-full opacity-0" />Gallery
+            </Link>
+            <Link href="/editor" className="relative inline-flex items-center pl-[13px] text-sm font-bold text-white/70 transition-colors hover:text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">
+              <span className="absolute left-0 top-1/2 -translate-y-1/2 size-[6px] rounded-full opacity-0" />Editor
+            </Link>
+          </nav>
+        </div>
+        <NavUserSection activePage="" />
+      </header>
+
+      <div className="mx-auto w-full px-12 pb-16 pt-8" style={{ maxWidth: 720 }}>
+        <article
+          className="rounded-[18px]"
+          style={{
+            background: "#FBF7EF",
+            padding: "40px 48px 48px",
+            boxShadow: "0 10px 40px rgba(40,20,30,0.12), 0 0 0 1px rgba(255,255,255,0.5)",
+          }}
+        >
+          <h1
+            className="font-serif font-bold tracking-[-0.02em] text-text-strong"
+            style={{ fontSize: 40, lineHeight: 1.1, margin: 0 }}
+          >
+            Terms of Service
+          </h1>
+          <p
+            className="font-sans font-medium text-muted"
+            style={{ fontSize: 14, margin: "8px 0 32px" }}
+          >
+            Last updated: May 29, 2026
+          </p>
+
+          <div className="flex flex-col gap-8">
+            {SECTIONS.map((s, i) => (
+              <section key={s.id} id={s.id}>
+                <div className="mb-2 flex items-baseline gap-3">
+                  <span className="font-mono text-[11px] font-semibold tracking-[0.10em] text-muted">
+                    {String(i + 1).padStart(2, "0")}
+                  </span>
+                  <h2
+                    className="font-serif font-bold tracking-[-0.01em] text-text-strong"
+                    style={{ fontSize: 22, lineHeight: 1.2, margin: 0 }}
+                  >
+                    {s.title}
+                  </h2>
+                </div>
+                <p className="font-sans font-medium text-foreground" style={{ fontSize: 15.5, lineHeight: 1.65, margin: 0 }}>
+                  {s.body}
+                </p>
+              </section>
+            ))}
+          </div>
+        </article>
+      </div>
+    </div>
+  );
+}

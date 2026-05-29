@@ -26,6 +26,14 @@ export default function PrintPatternPage() {
   const params = useParams();
   const patternId = typeof params.patternId === "string" ? params.patternId : params.patternId?.[0] ?? "";
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [units, setUnits] = useState<"imperial" | "metric">("metric");
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("gridwork:yarnUnit");
+      if (saved === "imperial" || saved === "metric") setUnits(saved);
+    } catch {}
+  }, []);
   const [message, setMessage] = useState<string | null>(null);
   const [pattern, setPattern] = useState<Pattern | null>(null);
 
@@ -115,14 +123,16 @@ export default function PrintPatternPage() {
             <h1 className="text-xl font-semibold tracking-tight text-zinc-900 print:text-black">{view.name}</h1>
             <p className="mt-1 text-sm text-zinc-600 print:text-zinc-700">
               Grid {view.w}×{view.h} · Yarn: {view.yarn.weight.replaceAll("_", " ")} · Hook: {view.yarn.hookSize}
-              {view.yarn.customGaugeStitchesPerInch != null
-                ? ` · Gauge ${view.yarn.customGaugeStitchesPerInch} sts/in`
-                : ""}
+              {" · "}
+              {(view.yarn.customGaugeStitchesPerInch ?? 0) > 0
+                ? units === "metric"
+                  ? `Gauge: ${view.yarn.customGaugeStitchesPerInch ?? 0} sq / 10 cm`
+                  : `Gauge: ${parseFloat(((view.yarn.customGaugeStitchesPerInch ?? 0) / 3.937).toFixed(1))} sq / in`
+                : "Gauge: not set"}
             </p>
           </header>
 
           <section className="break-inside-avoid" style={{ pageBreakInside: "avoid" }}>
-            <h2 className="mb-2 text-sm font-semibold text-zinc-800 print:text-black">Pattern</h2>
             <div style={{ maxWidth: "100%", overflowX: "auto" }}>
               <PrintGridSvg
                 gridWidth={view.w}
@@ -135,16 +145,14 @@ export default function PrintPatternPage() {
             </div>
           </section>
 
-          <section className="rounded-lg border border-zinc-200 bg-zinc-50 p-4 text-sm print:border-zinc-800 print:bg-white">
-            <h2 className="mb-2 font-semibold text-zinc-900 print:text-black">Yarn estimate (approximate)</h2>
-            <ul className="grid gap-1 text-zinc-700 sm:grid-cols-2 print:text-black">
-              <li>Yards: {view.est.yards}</li>
-              <li>Meters: {view.est.meters}</li>
-              <li>Grams: {view.est.grams}</li>
-              <li>Ounces: {view.est.oz}</li>
-            </ul>
-            <p className="mt-2 text-xs text-zinc-500 print:text-zinc-600">
-              Estimates only — swatch and measure your gauge for best accuracy.
+          <section className="mt-1">
+            <p className="text-[11px] text-zinc-500 print:text-zinc-600">
+              <span className="font-medium">Yarn estimate</span>
+              {" — "}
+              {units === "metric"
+                ? `${view.est.meters} m · ${view.est.grams} g`
+                : `${view.est.yards} yd · ${view.est.oz} oz`}
+              {" · "}estimates only, swatch for accuracy.
             </p>
           </section>
         </div>

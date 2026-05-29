@@ -5,14 +5,14 @@ import { YARN_WEIGHT_CATEGORIES } from "@/lib/yarnEstimator";
 export type PatternYarnSettings = {
   weight: YarnWeightCategory;
   hookSize: string;
-  /** Stitches per inch; null = derive from hook / category default. */
+  /** Squares per 10 cm; 0 or null = derive from hook / category default. */
   customGaugeStitchesPerInch: number | null;
 };
 
 export const DEFAULT_PATTERN_YARN_SETTINGS: PatternYarnSettings = {
   weight: "worsted",
   hookSize: "5.5 mm",
-  customGaugeStitchesPerInch: null,
+  customGaugeStitchesPerInch: 0,
 };
 
 function isYarnWeight(v: unknown): v is YarnWeightCategory {
@@ -29,11 +29,9 @@ export function parsePatternYarnSettings(data: Json | undefined): PatternYarnSet
     typeof o.hookSize === "string" && o.hookSize.trim().length > 0
       ? o.hookSize
       : DEFAULT_PATTERN_YARN_SETTINGS.hookSize;
-  let custom: number | null = null;
-  if (typeof o.customGaugeStitchesPerInch === "number" && Number.isFinite(o.customGaugeStitchesPerInch)) {
+  let custom: number | null = 0;
+  if (typeof o.customGaugeStitchesPerInch === "number" && Number.isFinite(o.customGaugeStitchesPerInch) && o.customGaugeStitchesPerInch > 0) {
     custom = o.customGaugeStitchesPerInch;
-  } else if (o.customGaugeStitchesPerInch === null) {
-    custom = null;
   }
   return { weight, hookSize, customGaugeStitchesPerInch: custom };
 }
