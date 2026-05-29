@@ -73,7 +73,7 @@ export default function PrivacyPage() {
             </Link>
           </nav>
         </div>
-        <NavUserSection activePage="" />
+        <NavUserSection activePage={null} />
       </header>
 
       <div className="mx-auto w-full px-12 pb-16 pt-8" style={{ maxWidth: 720 }}>
