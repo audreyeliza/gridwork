@@ -305,10 +305,32 @@ export default function GalleryPage() {
             </p>
           </div>
 
-          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+          <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+            {/* Search — full width on mobile, below title; sort pills underneath on mobile */}
+            <form
+              onSubmit={handleSearchSubmit}
+              className="order-1 flex w-full min-w-0 items-center gap-1 rounded-full sm:order-2 sm:w-auto sm:flex-1"
+              style={{ background: "#FBF7EF", padding: 4, boxShadow: "0 4px 14px rgba(40,20,30,0.10), 0 0 0 1px rgba(255,255,255,0.5)" }}
+            >
+              <div className="inline-flex flex-1 items-center gap-2 px-2 py-1.5">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#7A6A5F" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <circle cx="11" cy="11" r="6"/><path d="m20 20-3.5-3.5"/>
+                </svg>
+                <input
+                  type="search"
+                  placeholder="Search patterns…"
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  className="min-w-0 flex-1 bg-transparent font-sans text-[13px] font-medium text-text-strong placeholder:text-muted focus:outline-none"
+                />
+              </div>
+              <button type="submit" className="min-h-[36px] rounded-full bg-brand px-3 py-1.5 text-[13px] font-bold text-[#FBF7EF] hover:bg-brand-dark">
+                Go
+              </button>
+            </form>
             {/* Sort pills */}
             <div
-              className="inline-flex items-center self-start rounded-full"
+              className="order-2 inline-flex items-center self-start rounded-full sm:order-1"
               style={{ background: "#FBF7EF", padding: 4, boxShadow: "0 4px 14px rgba(40,20,30,0.10), 0 0 0 1px rgba(255,255,255,0.5)" }}
             >
               <button
@@ -330,30 +352,8 @@ export default function GalleryPage() {
                 Popular
               </button>
             </div>
-            {/* Search — full width on mobile */}
-            <form
-              onSubmit={handleSearchSubmit}
-              className="flex items-center gap-1 rounded-full"
-              style={{ background: "#FBF7EF", padding: 4, boxShadow: "0 4px 14px rgba(40,20,30,0.10), 0 0 0 1px rgba(255,255,255,0.5)" }}
-            >
-              <div className="inline-flex flex-1 items-center gap-2 px-2 py-1.5">
-                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#7A6A5F" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <circle cx="11" cy="11" r="6"/><path d="m20 20-3.5-3.5"/>
-                </svg>
-                <input
-                  type="search"
-                  placeholder="Search patterns…"
-                  value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
-                  className="min-w-0 flex-1 bg-transparent font-sans text-[13px] font-medium text-text-strong placeholder:text-muted focus:outline-none"
-                />
-              </div>
-              <button type="submit" className="min-h-[36px] rounded-full bg-brand px-3 py-1.5 text-[13px] font-bold text-[#FBF7EF] hover:bg-brand-dark">
-                Go
-              </button>
-            </form>
             {activeSearch && (
-              <button type="button" onClick={handleClearSearch} className="self-start rounded-full border border-white/40 bg-white/20 px-3 py-1.5 text-[13px] font-semibold text-white backdrop-blur-sm hover:bg-white/30">
+              <button type="button" onClick={handleClearSearch} className="order-3 self-start rounded-full border border-white/40 bg-white/20 px-3 py-1.5 text-[13px] font-semibold text-white backdrop-blur-sm hover:bg-white/30">
                 Clear
               </button>
             )}

@@ -28,6 +28,8 @@ export type GridCanvasProps = {
   underlayPanX?: number;
   /** Vertical pan offset, grid-relative (−0.5–0.5). */
   underlayPanY?: number;
+  /** Image scale within the grid (0.5–4). */
+  underlayZoom?: number;
   /** Row completion + current row highlight; length must match `gridHeight` when provided. */
   rowComplete?: boolean[];
   currentRow?: number;
@@ -131,6 +133,7 @@ export function GridCanvas({
   underlayCrop = null,
   underlayPanX = 0,
   underlayPanY = 0,
+  underlayZoom = 1,
   rowComplete,
   currentRow = 0,
   onToggleRowComplete,
@@ -178,26 +181,31 @@ export function GridCanvas({
 
   const leftGutter = LABEL_SIZE + (showRowTracker ? ROW_TRACKER_SIDEBAR_PX : 0);
 
-  // 100% → 20px/cell, 200% → 40px/cell, 25% → 5px/cell
-  const zoomCellSize = zoom === "fit" ? null : Math.round(zoom / 5);
-
   /**
-   * At "fit" zoom, cells are sized so columns exactly fill the container width.
-   * No upper cap — this makes the canvas taller than the container for most grids,
-   * enabling vertical scroll. A floor of 4px keeps the grid renderable.
-   * At explicit zoom levels the canvas uses fixed cell sizes in both axes.
+   * Fit: columns fill container width; canvas may scroll vertically.
+   * 100% / 200%: scale relative to width-fit cell; above 100% the canvas grows so you can scroll/zoom in.
    */
-  const fitCell = Math.max(4, Math.floor((containerSize.cssW - leftGutter) / Math.max(1, gridWidth)));
+  const zoomMetrics = useMemo(() => {
+    const widthFitCell = Math.max(
+      4,
+      Math.floor((containerSize.cssW - leftGutter) / Math.max(1, gridWidth)),
+    );
+    if (zoom === "fit") {
+      return {
+        cell: widthFitCell,
+        canvasCssW: containerSize.cssW,
+        canvasCssH: LABEL_SIZE + widthFitCell * gridHeight,
+      };
+    }
+    const cell = Math.max(4, Math.round(widthFitCell * (zoom / 100)));
+    return {
+      cell,
+      canvasCssW: leftGutter + gridWidth * cell,
+      canvasCssH: LABEL_SIZE + gridHeight * cell,
+    };
+  }, [containerSize, zoom, gridWidth, gridHeight, leftGutter]);
 
-  /** Canvas display size in CSS pixels. */
-  const canvasCssW =
-    zoomCellSize != null
-      ? leftGutter + gridWidth * zoomCellSize
-      : containerSize.cssW;
-  const canvasCssH =
-    zoomCellSize != null
-      ? LABEL_SIZE + gridHeight * zoomCellSize
-      : LABEL_SIZE + fitCell * gridHeight;
+  const { cell: effectiveCell, canvasCssW, canvasCssH } = zoomMetrics;
 
   const scheduleDraw = useCallback(() => {
     if (rafRef.current) {
@@ -218,7 +226,6 @@ export function GridCanvas({
       canvas.style.height = `${cssH}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      const effectiveCell = zoomCellSize ?? fitCell;
       const opts = { ...(layoutOpts ?? {}), forcedCell: effectiveCell };
       const layout = computeGridCanvasLayout(cssW, cssH, gridWidth, gridHeight, opts);
       queueMicrotask(() => setLayoutState(layout));
@@ -239,7 +246,18 @@ export function GridCanvas({
         ctx.rect(offsetX, offsetY, gridWpx, gridHpx);
         ctx.clip();
         ctx.globalAlpha = opacity;
-        drawImageWithTransform(ctx, underlayImage!, offsetX, offsetY, gridWpx, gridHpx, underlayCrop, underlayPanX, underlayPanY);
+        drawImageWithTransform(
+          ctx,
+          underlayImage!,
+          offsetX,
+          offsetY,
+          gridWpx,
+          gridHpx,
+          underlayCrop,
+          underlayPanX,
+          underlayPanY,
+          underlayZoom,
+        );
         ctx.globalAlpha = 1;
         ctx.restore();
       } else {
@@ -305,13 +323,13 @@ export function GridCanvas({
     gridHeight,
     canvasCssW,
     canvasCssH,
-    zoomCellSize,
-    fitCell,
+    effectiveCell,
     showUnderlay,
     underlayImage,
     underlayCrop,
     underlayPanX,
     underlayPanY,
+    underlayZoom,
     opacity,
     showRowTracker,
     rowComplete,
@@ -379,7 +397,7 @@ export function GridCanvas({
       const rect = canvas.getBoundingClientRect();
       const x = clientX - rect.left;
       const y = clientY - rect.top;
-      const opts = { ...(layoutOpts ?? {}), forcedCell: zoomCellSize ?? fitCell };
+      const opts = { ...(layoutOpts ?? {}), forcedCell: effectiveCell };
       const layout = computeGridCanvasLayout(canvasCssW, canvasCssH, gridWidth, gridHeight, opts);
       const { cell: cellSize, offsetX, offsetY, gridWpx, gridHpx } = layout;
       const px = x - offsetX;
@@ -391,7 +409,7 @@ export function GridCanvas({
       if (px >= gridWpx || py >= gridHpx) return null;
       return { r: row, c: col };
     },
-    [gridWidth, gridHeight, canvasCssW, canvasCssH, zoomCellSize, fitCell, layoutOpts],
+    [gridWidth, gridHeight, canvasCssW, canvasCssH, effectiveCell, layoutOpts],
   );
 
   const endStroke = useCallback(() => {

@@ -4,7 +4,7 @@ import { CrochetMark } from "@/components/CrochetMark";
 import { NavUserSection } from "@/components/NavUserSection";
 
 export const metadata: Metadata = {
-  title: "How to filet crochet — Gridwork",
+  title: "Gridwork",
   description: "A beginner-friendly guide to filet crochet: slip knot, foundation chain, double crochet, mesh squares, block squares, and reading a grid pattern.",
 };
 
@@ -115,7 +115,7 @@ export default function LearnPage() {
 
         {/* Article card */}
         <article
-          className="rounded-none px-5 py-8 md:rounded-[18px] md:px-12 md:py-10"
+          className="rounded-[18px] px-5 py-8 md:px-12 md:py-10"
           style={{
             background: "#FBF7EF",
             boxShadow: "0 10px 40px rgba(40,20,30,0.12), 0 0 0 1px rgba(255,255,255,0.5)",

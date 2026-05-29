@@ -22,6 +22,7 @@ type Props = {
   activePage: MobileMenuPage | null;
   user: User | null;
   userDisplayName?: string | null;
+  userAvatarUrl?: string | null;
   onLogin: () => void;
   onLogout: () => void;
   loginButtonId?: string;
@@ -53,6 +54,7 @@ export function MobileMenuOverlay({
   activePage,
   user,
   userDisplayName,
+  userAvatarUrl,
   onLogin,
   onLogout,
   loginButtonId,
@@ -175,16 +177,20 @@ export function MobileMenuOverlay({
               }}
             >
               <span
-                className="inline-flex shrink-0 items-center justify-center rounded-full text-white"
+                className="inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full text-white"
                 style={{
                   width: 38, height: 38,
-                  background: "linear-gradient(135deg, #F9A87A 0%, #F0569A 50%, #9B6FD4 100%)",
+                  background: userAvatarUrl ? undefined : "linear-gradient(135deg, #F9A87A 0%, #F0569A 50%, #9B6FD4 100%)",
                   fontFamily: "var(--font-lora), Georgia, serif",
                   fontWeight: 700, fontSize: 17, lineHeight: 1,
                   border: "2px solid rgba(255,255,255,0.7)",
                 }}
               >
-                {avatarLetter}
+                {userAvatarUrl ? (
+                  <img src={userAvatarUrl} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  avatarLetter
+                )}
               </span>
               <div className="min-w-0 flex-1">
                 <div

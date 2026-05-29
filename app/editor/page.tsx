@@ -550,6 +550,7 @@ export default function EditorPage() {
       imageAppliedCrop: imageSettings.appliedCrop,
       imagePanX: imageSettings.panX,
       imagePanY: imageSettings.panY,
+      imageZoom: imageSettings.imageZoom,
       imageThreshold: imageSettings.threshold,
       imageDarkIsFilled: imageSettings.darkIsFilled,
       imagePositionLocked: imageSettings.positionLocked,
@@ -642,14 +643,14 @@ export default function EditorPage() {
   return (
     <div className="relative flex h-screen flex-col max-md:h-auto max-md:min-h-screen">
       {/* Transparent navbar — absolute over gradient */}
-      <header className="absolute left-0 right-0 top-0 z-20 flex h-[68px] items-center justify-between px-8">
-        <div className="flex items-center gap-9">
-          <Link href="/" className="inline-flex items-center gap-[9px] font-serif text-2xl font-bold leading-none tracking-[-0.01em] text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">
+      <header className="absolute left-0 right-0 top-0 z-20 flex h-[68px] items-center justify-between gap-4 px-5 max-md:px-4 md:gap-6 md:px-8">
+        <div className="flex min-w-0 items-center gap-4 md:gap-9">
+          <Link href="/" className="inline-flex shrink-0 items-center gap-[9px] font-serif text-2xl font-bold leading-none tracking-[-0.01em] text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.15)]">
             <CrochetMark size={22} color="#fff" />
             Gridwork
           </Link>
           {/* Patterns drawer toggle — narrow only */}
-          <button type="button" onClick={() => setSidebarOpen((p) => !p)} className="rounded-md border border-white/40 bg-white/20 px-2.5 py-1.5 text-xs font-semibold text-white backdrop-blur-sm hover:bg-white/30 md:hidden">
+          <button type="button" onClick={() => setSidebarOpen((p) => !p)} className="shrink-0 rounded-md border border-white/40 bg-white/20 px-2.5 py-1.5 text-xs font-semibold text-white backdrop-blur-sm hover:bg-white/30 md:hidden">
             {sidebarOpen ? "✕" : "Patterns"}
           </button>
           <nav className="hidden items-center gap-7 md:flex">
@@ -662,7 +663,9 @@ export default function EditorPage() {
             </span>
           </nav>
         </div>
-        <NavUserSection activePage="editor" loginButtonId="tutorial-login" />
+        <div className="max-md:ml-3 shrink-0 md:ml-0">
+          <NavUserSection activePage="editor" loginButtonId="tutorial-login" />
+        </div>
       </header>
 
       {/* Floating cream app panel — inset from viewport edges, sits on gradient */}
@@ -675,7 +678,7 @@ export default function EditorPage() {
       >
         {/* ── Toolbar ── */}
         <div
-          className="flex shrink-0 flex-col gap-2 px-4 py-3 md:flex-row md:flex-wrap md:items-center md:justify-between md:gap-3 md:px-5 md:py-3.5"
+          className="flex shrink-0 flex-col gap-2 px-4 py-2 md:flex-row md:flex-wrap md:items-center md:justify-between md:gap-2.5 md:px-5 md:py-2.5"
           style={{ borderBottom: "1px solid rgba(61,42,30,0.10)" }}
         >
           {/* Left: pattern name + save indicator */}
@@ -843,18 +846,18 @@ export default function EditorPage() {
             </div>
             {/* Undo/Redo — shown inline with W/H on mobile only */}
             <div className="ml-2 flex items-center gap-1 md:hidden">
-              <button type="button" disabled={!canUndo} onClick={() => undo()} className="min-h-[36px] rounded-full border border-[rgba(61,42,30,0.10)] bg-white px-3 py-1.5 font-sans text-[12px] font-bold text-text-strong hover:bg-[rgba(61,42,30,0.05)] disabled:opacity-40">Undo</button>
-              <button type="button" disabled={!canRedo} onClick={() => redo()} className="min-h-[36px] rounded-full border border-[rgba(61,42,30,0.10)] bg-white px-3 py-1.5 font-sans text-[12px] font-bold text-muted hover:bg-[rgba(61,42,30,0.05)] disabled:opacity-40">Redo</button>
+              <button type="button" disabled={!canUndo} onClick={() => undo()} className="inline-flex items-center rounded-full border border-[rgba(61,42,30,0.10)] bg-white px-3 py-1.5 font-sans text-[12px] font-bold text-text-strong hover:bg-[rgba(61,42,30,0.05)] disabled:opacity-40">Undo</button>
+              <button type="button" disabled={!canRedo} onClick={() => redo()} className="inline-flex items-center rounded-full border border-[rgba(61,42,30,0.10)] bg-white px-3 py-1.5 font-sans text-[12px] font-bold text-muted hover:bg-[rgba(61,42,30,0.05)] disabled:opacity-40">Redo</button>
             </div>
           </div>
 
           {/* Right: actions */}
           <div id="tutorial-row-progress" className="flex flex-wrap items-center gap-1.5">
-            <button type="button" disabled={!canUndo} onClick={() => undo()} className="hidden min-h-[36px] rounded-full border border-[rgba(61,42,30,0.10)] bg-white px-3 py-1.5 font-sans text-[12px] font-bold text-text-strong hover:bg-[rgba(61,42,30,0.05)] disabled:opacity-40 md:inline-flex">Undo</button>
-            <button type="button" disabled={!canRedo} onClick={() => redo()} className="hidden min-h-[36px] rounded-full border border-[rgba(61,42,30,0.10)] bg-white px-3 py-1.5 font-sans text-[12px] font-bold text-muted hover:bg-[rgba(61,42,30,0.05)] disabled:opacity-40 md:inline-flex">Redo</button>
+            <button type="button" disabled={!canUndo} onClick={() => undo()} className="hidden items-center rounded-full border border-[rgba(61,42,30,0.10)] bg-white px-3 py-1.5 font-sans text-[12px] font-bold text-text-strong hover:bg-[rgba(61,42,30,0.05)] disabled:opacity-40 md:inline-flex">Undo</button>
+            <button type="button" disabled={!canRedo} onClick={() => redo()} className="hidden items-center rounded-full border border-[rgba(61,42,30,0.10)] bg-white px-3 py-1.5 font-sans text-[12px] font-bold text-muted hover:bg-[rgba(61,42,30,0.05)] disabled:opacity-40 md:inline-flex">Redo</button>
             <span className="mx-1 hidden h-5 w-px md:inline-block" style={{ background: "rgba(61,42,30,0.10)" }}/>
-            <button type="button" disabled={progress.currentRow <= 0} onClick={() => handleStepCurrentRow(-1)} className="min-h-[36px] rounded-full border border-[rgba(61,42,30,0.10)] bg-white px-3 py-1.5 font-sans text-[12px] font-bold text-text-strong hover:bg-[rgba(61,42,30,0.05)] disabled:opacity-40">← Row</button>
-            <button type="button" disabled={progress.currentRow >= gridH - 1} onClick={() => handleStepCurrentRow(1)} className="min-h-[36px] rounded-full border border-[rgba(61,42,30,0.10)] bg-white px-3 py-1.5 font-sans text-[12px] font-bold text-text-strong hover:bg-[rgba(61,42,30,0.05)] disabled:opacity-40">Row →</button>
+            <button type="button" disabled={progress.currentRow <= 0} onClick={() => handleStepCurrentRow(-1)} className="inline-flex items-center rounded-full border border-[rgba(61,42,30,0.10)] bg-white px-3 py-1.5 font-sans text-[12px] font-bold text-text-strong hover:bg-[rgba(61,42,30,0.05)] disabled:opacity-40">← Row</button>
+            <button type="button" disabled={progress.currentRow >= gridH - 1} onClick={() => handleStepCurrentRow(1)} className="inline-flex items-center rounded-full border border-[rgba(61,42,30,0.10)] bg-white px-3 py-1.5 font-sans text-[12px] font-bold text-text-strong hover:bg-[rgba(61,42,30,0.05)] disabled:opacity-40">Row →</button>
             <span className="mx-1 h-5 w-px" style={{ background: "rgba(61,42,30,0.10)" }}/>
             <button id="tutorial-print" type="button" disabled={!selectedPatternId} onClick={() => { if (!selectedPatternId) return; window.open(`/print/${selectedPatternId}`, "_blank", "noopener,noreferrer"); }} className="inline-flex items-center gap-1.5 rounded-full border border-[rgba(61,42,30,0.10)] bg-white px-3 py-1.5 font-sans text-[12px] font-bold text-text-strong hover:bg-[rgba(61,42,30,0.05)] disabled:opacity-40">
               <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="5" width="8" height="10" rx="1.5"/><path d="M3 11V3a1 1 0 011-1h8"/></svg>
@@ -876,7 +879,7 @@ export default function EditorPage() {
         {/* ── Mode bar ── */}
         <div
           id="tutorial-image-tools"
-          className="flex shrink-0 items-center justify-between gap-3 px-5 py-2"
+          className="flex shrink-0 items-center justify-between gap-3 px-4 py-1.5 md:px-5"
           style={{ borderBottom: "1px solid rgba(61,42,30,0.10)", background: "rgba(168,70,111,0.04)" }}
         >
           <div

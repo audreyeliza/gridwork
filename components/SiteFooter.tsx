@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 
 export function SiteFooter() {
   const pathname = usePathname();
-  if (pathname === "/editor") return null;
+  if (pathname === "/editor" || pathname.startsWith("/print")) return null;
 
   return (
     <footer className="flex items-center justify-between py-4 px-8">
