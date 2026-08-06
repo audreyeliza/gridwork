@@ -17,6 +17,7 @@ import {
 } from "@/lib/galleryHelpers";
 import { manilaHex } from "@/lib/manilaStock";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -27,6 +28,14 @@ type PreviewState = {
   makerLabel: string;
   isOwn: boolean;
 };
+
+/** Profile href when makerLabel is a real @displayname (not a truncated user id). */
+function makerProfileHref(makerLabel: string): string | null {
+  if (!makerLabel.startsWith("@")) return null;
+  const name = makerLabel.slice(1);
+  if (!name || /^[0-9a-f]{6}$/i.test(name)) return null;
+  return `/u/${encodeURIComponent(name)}?ref=gallery`;
+}
 
 type SyncTick = {
   seq: number;
@@ -225,6 +234,7 @@ export function MachineShell() {
     () => manilaHex(preview?.pattern.manila_stock ?? "manila"),
     [preview],
   );
+  const previewMakerHref = preview ? makerProfileHref(preview.makerLabel) : null;
 
   return (
     <div className="flex h-[100dvh] flex-col overflow-hidden bg-paper">
@@ -259,7 +269,7 @@ export function MachineShell() {
                   zone === "primer"
                     ? "#EDE8D5"
                     : "linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 30%, rgba(0,0,0,0.16) 100%), #5C6168",
-                flex: showReaderAside ? "1 1 62%" : "1 1 100%",
+                flex: showReaderAside ? "1 1 56%" : "1 1 100%",
               }}
             >
               {zone !== "primer" && (
@@ -296,34 +306,13 @@ export function MachineShell() {
             </section>
 
             {showReaderAside && (
-              <aside className="flex w-full shrink-0 flex-col border-t-2 border-chassis-dark md:w-[min(400px,38%)] md:border-l-2 md:border-t-0">
+              <aside className="flex w-full shrink-0 flex-col border-t-2 border-chassis-dark md:w-[min(480px,44%)] md:border-l-2 md:border-t-0">
                 <div className="steel-tray flex h-full min-h-[260px] flex-col !rounded-none !border-0" style={{ minHeight: "100%" }}>
                   <div className="relative z-[2] mb-2 flex items-center justify-between gap-2">
                     <p className="font-mono text-[9px] font-bold tracking-[0.16em] text-recess uppercase">
                       Card reader · {preview ? "Preview" : "Idle"}
                     </p>
-                    {zone === "hopper" ? (
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => void handleCopyPreview()}
-                          disabled={!preview || copying}
-                          className="punch-lamp punch-lamp-green !min-h-[32px] !px-3 text-[9px]"
-                        >
-                          {copying ? "…" : "Copy"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void handleLikePreview()}
-                          disabled={!preview || preview.isOwn}
-                          className={`punch-lamp punch-lamp-red !min-h-[32px] !px-3 text-[9px] ${
-                            previewLiked ? "is-lit" : "is-dim"
-                          }`}
-                        >
-                          Like
-                        </button>
-                      </div>
-                    ) : (
+                    {zone === "maker" && (
                       <button
                         type="button"
                         onClick={() => void handleProgramFromPreview()}
@@ -336,36 +325,80 @@ export function MachineShell() {
                   </div>
                   <div className="relative z-[2] flex min-h-0 flex-1 flex-col">
                     {preview ? (
-                      <div
-                        className="punch-card flex h-full flex-col overflow-hidden"
-                        style={{ ["--manila-stock" as string]: previewPaper, background: previewPaper }}
-                      >
-                        <div className="relative min-h-0 flex-1" style={{ background: previewPaper }}>
-                          {preview.pattern.thumbnail ? (
-                            <ManilaThumbnail
-                              src={preview.pattern.thumbnail}
-                              alt={preview.pattern.name}
-                              stockId={preview.pattern.manila_stock}
-                              className="h-full w-full object-contain p-3"
-                            />
-                          ) : (
-                            <div className="flex h-full items-center justify-center font-mono text-xs punch-print-faint">
-                              No preview
+                      <>
+                        <div
+                          className="punch-card flex min-h-0 flex-1 flex-col overflow-hidden"
+                          style={{ ["--manila-stock" as string]: previewPaper, background: previewPaper }}
+                        >
+                          <div className="relative min-h-0 flex-1" style={{ background: previewPaper }}>
+                            {preview.pattern.thumbnail ? (
+                              <ManilaThumbnail
+                                src={preview.pattern.thumbnail}
+                                alt={preview.pattern.name}
+                                stockId={preview.pattern.manila_stock}
+                                className="h-full w-full object-contain p-3"
+                              />
+                            ) : (
+                              <div className="flex h-full items-center justify-center font-mono text-xs punch-print-faint">
+                                No preview
+                              </div>
+                            )}
+                          </div>
+                          <div className="shrink-0 px-3 py-2.5" style={{ background: previewPaper }}>
+                            <p className="truncate font-mono text-[13px] font-bold uppercase punch-print-ink">
+                              {preview.pattern.name}
+                            </p>
+                            <p className="mt-0.5 font-mono text-[10px] font-bold tracking-[0.06em] uppercase punch-print-faint">
+                              {preview.pattern.grid_width}×{preview.pattern.grid_height}
+                            </p>
+                            <div className="mt-1">
+                              {previewMakerHref ? (
+                                <Link
+                                  href={previewMakerHref}
+                                  className="punch-print truncate text-[10px]"
+                                >
+                                  {preview.makerLabel}
+                                </Link>
+                              ) : (
+                                <p className="truncate font-mono text-[10px] uppercase punch-print-faint">
+                                  {preview.makerLabel}
+                                </p>
+                              )}
                             </div>
-                          )}
+                          </div>
                         </div>
-                        <div className="shrink-0 px-3 py-2.5" style={{ background: previewPaper }}>
-                          <p className="truncate font-mono text-[13px] font-bold uppercase punch-print-ink">
-                            {preview.pattern.name}
-                          </p>
-                          <p className="mt-0.5 font-mono text-[10px] uppercase punch-print-faint">
-                            {preview.makerLabel} · {preview.pattern.grid_width}×{preview.pattern.grid_height}
-                          </p>
-                          <p className="mt-2 font-mono text-[9px] font-bold tracking-[0.1em] uppercase punch-print-faint">
-                            Like {preview.pattern.likes_count} · Copy {preview.pattern.copies_count}
-                          </p>
-                        </div>
-                      </div>
+                        {zone === "hopper" ? (
+                          <div className="relative z-[2] mt-2 flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => void handleLikePreview()}
+                              disabled={preview.isOwn}
+                              className={`punch-lamp punch-lamp-red !min-h-[32px] !px-2.5 text-[9px] ${
+                                previewLiked ? "is-lit" : "is-dim"
+                              }`}
+                            >
+                              Like {preview.pattern.likes_count}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleCopyPreview()}
+                              disabled={copying}
+                              className="punch-lamp punch-lamp-green !min-h-[32px] !px-2.5 text-[9px]"
+                            >
+                              {copying ? "…" : `Copy ${preview.pattern.copies_count}`}
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="relative z-[2] mt-2 flex items-center justify-end gap-2">
+                            <span className="font-mono text-[10px] font-bold uppercase text-recess">
+                              Like {preview.pattern.likes_count}
+                            </span>
+                            <span className="font-mono text-[10px] font-bold uppercase text-recess">
+                              Copy {preview.pattern.copies_count}
+                            </span>
+                          </div>
+                        )}
+                      </>
                     ) : (
                       <div className="punch-card flex flex-1 flex-col items-center justify-center gap-2 p-6" style={{ background: "var(--manila-stock)" }}>
                         <p className="font-mono text-[11px] font-bold uppercase punch-print-ink">Select a card</p>

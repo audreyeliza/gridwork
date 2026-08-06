@@ -1,15 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
-  <path d="M8.5 4 H28 V28 H4 V8.5 Z" fill="#F2EDD3" stroke="#D6CCA8" stroke-width="1"/>
-  <path d="M4 8.5 L8.5 4 L8.5 8.5 Z" fill="#62676E"/>
-  <!-- Compact G — solid holes only, clear of cut -->
-  <rect x="14.2" y="8.5" width="3" height="2.4" rx="0.4" fill="#2C2C2C"/>
-  <rect x="18" y="8.5" width="3" height="2.4" rx="0.4" fill="#2C2C2C"/>
-  <rect x="10.4" y="12.2" width="3" height="2.4" rx="0.4" fill="#2C2C2C"/>
-  <rect x="10.4" y="15.9" width="3" height="2.4" rx="0.4" fill="#2C2C2C"/>
-  <rect x="18" y="15.9" width="3" height="2.4" rx="0.4" fill="#2C2C2C"/>
-  <rect x="21.8" y="15.9" width="3" height="2.4" rx="0.4" fill="#2C2C2C"/>
-  <rect x="10.4" y="19.6" width="3" height="2.4" rx="0.4" fill="#2C2C2C"/>
-  <rect x="21.8" y="19.6" width="3" height="2.4" rx="0.4" fill="#2C2C2C"/>
-  <rect x="14.2" y="23.3" width="3" height="2.4" rx="0.4" fill="#2C2C2C"/>
-  <rect x="18" y="23.3" width="3" height="2.4" rx="0.4" fill="#2C2C2C"/>
+  <!-- Square card; cut corner is silhouette only — no gray fill triangle -->
+  <path d="M7.6 1 H31 V31 H1 V7.6 Z" fill="#F2EDD3" stroke="#D6CCA8" stroke-width="1"/>
+  <!-- Sparse G — square holes -->
+  <rect x="11.73" y="4.48" width="3.71" height="3.71" rx="0.58" fill="#2C2C2C"/>
+  <rect x="16.56" y="4.48" width="3.71" height="3.71" rx="0.58" fill="#2C2C2C"/>
+  <rect x="6.90" y="9.31" width="3.71" height="3.71" rx="0.58" fill="#2C2C2C"/>
+  <rect x="6.90" y="14.14" width="3.71" height="3.71" rx="0.58" fill="#2C2C2C"/>
+  <rect x="16.56" y="14.14" width="3.71" height="3.71" rx="0.58" fill="#2C2C2C"/>
+  <rect x="21.39" y="14.14" width="3.71" height="3.71" rx="0.58" fill="#2C2C2C"/>
+  <rect x="6.90" y="18.98" width="3.71" height="3.71" rx="0.58" fill="#2C2C2C"/>
+  <rect x="21.39" y="18.98" width="3.71" height="3.71" rx="0.58" fill="#2C2C2C"/>
+  <rect x="11.73" y="23.81" width="3.71" height="3.71" rx="0.58" fill="#2C2C2C"/>
+  <rect x="16.56" y="23.81" width="3.71" height="3.71" rx="0.58" fill="#2C2C2C"/>
 </svg>

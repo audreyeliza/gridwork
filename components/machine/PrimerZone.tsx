@@ -48,9 +48,12 @@ export function PrimerZone() {
           aria-hidden={!open}
         >
           <div className="book-spread-shade" aria-hidden />
-          <div className="flex items-center border-b border-[#D6DCE4] bg-[#2F5F9E] px-5 py-3 md:px-6">
+          <div className="flex items-center justify-between border-b border-[#D6DCE4] bg-[#2F5F9E] px-5 py-3">
             <span className="font-mono text-[10px] font-bold tracking-[0.14em] text-white uppercase">
-              Manual · Instructions
+              Operator menu
+            </span>
+            <span className="font-mono text-[9px] font-bold tracking-[0.1em] text-white/70 uppercase">
+              Gridwork
             </span>
           </div>
           <div className="grid min-h-0 flex-1 md:grid-cols-2">
@@ -87,7 +90,7 @@ export function PrimerZone() {
             </div>
           </div>
 
-          <div className="flex items-center justify-start border-t border-[#D6DCE4] bg-white px-5 py-4 md:px-6">
+          <div className="book-footer flex items-center justify-start border-t border-[#D6DCE4] bg-white px-5 md:px-6">
             <button
               type="button"
               onClick={() => startFlip(false)}
@@ -127,7 +130,7 @@ export function PrimerZone() {
                 <CrochetMark size={40} variant="onChassis" />
               </div>
             </div>
-            <div className="flex items-center justify-end border-t border-white/20 bg-white px-8 py-4 md:px-12">
+            <div className="flex items-center justify-end border-t border-white/20 bg-white book-footer px-8 md:px-12">
               <button
                 type="button"
                 onClick={() => startFlip(true)}
@@ -152,8 +155,8 @@ export function PrimerZone() {
                 hopper.
               </p>
             </div>
-            <div className="border-t border-[#D6DCE4]/80 px-8 py-4 md:px-12">
-              <span className="font-mono text-[10px] font-bold tracking-[0.14em] text-[#2F5F9E]/70 uppercase">
+            <div className="book-footer flex items-center border-t border-[#D6DCE4]/80 px-8 md:px-12">
+              <span className="font-mono text-[12px] font-bold tracking-[0.14em] text-[#2F5F9E]/70 uppercase">
                 Form GW-01
               </span>
             </div>

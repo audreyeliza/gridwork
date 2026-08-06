@@ -151,7 +151,7 @@ export default function UserProfilePage() {
             style={{
               background:
                 "linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 30%, rgba(0,0,0,0.16) 100%), #5C6168",
-              flex: "1 1 62%",
+              flex: "1 1 56%",
             }}
           >
             <div className="punch-console-rail !rounded-none !border-x-0 !py-2">
@@ -215,7 +215,7 @@ export default function UserProfilePage() {
             </div>
           </section>
 
-          <aside className="flex w-full shrink-0 flex-col border-t-2 border-chassis-dark md:w-[min(400px,38%)] md:border-l-2 md:border-t-0">
+          <aside className="flex w-full shrink-0 flex-col border-t-2 border-chassis-dark md:w-[min(480px,44%)] md:border-l-2 md:border-t-0">
             <div className="steel-tray flex h-full min-h-[260px] flex-col !rounded-none !border-0" style={{ minHeight: "100%" }}>
               <div className="relative z-[2] mb-2 flex items-center gap-2">
                 <p className="font-mono text-[9px] font-bold tracking-[0.16em] text-recess uppercase">
@@ -224,44 +224,54 @@ export default function UserProfilePage() {
               </div>
               <div className="relative z-[2] flex min-h-0 flex-1 flex-col">
                 {previewPattern && pageState.status === "loaded" ? (
-                  <div
-                    className="punch-card flex h-full flex-col overflow-hidden"
-                    style={{ ["--manila-stock" as string]: previewPaper, background: previewPaper }}
-                  >
-                    <div className="relative min-h-0 flex-1" style={{ background: previewPaper }}>
-                      {previewPattern.thumbnail ? (
-                        <ManilaThumbnail
-                          src={previewPattern.thumbnail}
-                          alt={previewPattern.name}
-                          stockId={previewPattern.manila_stock}
-                          className="h-full w-full object-contain p-3"
-                        />
-                      ) : (
-                        <div className="flex h-full items-center justify-center font-mono text-xs punch-print-faint">
-                          No preview
-                        </div>
-                      )}
-                    </div>
-                    <div className="shrink-0 px-3 py-2.5" style={{ background: previewPaper }}>
-                      <p className="truncate font-mono text-[13px] font-bold uppercase punch-print-ink">
-                        {previewPattern.name}
-                      </p>
-                      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                        <Link
-                          href="/?zone=hopper"
-                          className="font-mono text-[10px] font-bold tracking-[0.08em] uppercase punch-print-ink no-underline hover:opacity-70"
-                        >
-                          ← Hopper
-                        </Link>
-                        <p className="min-w-0 truncate font-mono text-[10px] uppercase punch-print-faint">
-                          @{pageState.displayName} · {previewPattern.grid_width}×{previewPattern.grid_height}
-                        </p>
+                  <>
+                    <div
+                      className="punch-card flex min-h-0 flex-1 flex-col overflow-hidden"
+                      style={{ ["--manila-stock" as string]: previewPaper, background: previewPaper }}
+                    >
+                      <div className="relative min-h-0 flex-1" style={{ background: previewPaper }}>
+                        {previewPattern.thumbnail ? (
+                          <ManilaThumbnail
+                            src={previewPattern.thumbnail}
+                            alt={previewPattern.name}
+                            stockId={previewPattern.manila_stock}
+                            className="h-full w-full object-contain p-3"
+                          />
+                        ) : (
+                          <div className="flex h-full items-center justify-center font-mono text-xs punch-print-faint">
+                            No preview
+                          </div>
+                        )}
                       </div>
-                      <p className="mt-2 font-mono text-[9px] font-bold tracking-[0.1em] uppercase punch-print-faint">
-                        Like {previewPattern.likes_count} · Copy {previewPattern.copies_count}
-                      </p>
+                      <div className="shrink-0 px-3 py-2.5" style={{ background: previewPaper }}>
+                        <p className="truncate font-mono text-[13px] font-bold uppercase punch-print-ink">
+                          {previewPattern.name}
+                        </p>
+                        <p className="mt-0.5 font-mono text-[10px] font-bold tracking-[0.06em] uppercase punch-print-faint">
+                          {previewPattern.grid_width}×{previewPattern.grid_height}
+                        </p>
+                        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+                          <Link
+                            href="/?zone=hopper"
+                            className="font-mono text-[10px] font-bold tracking-[0.08em] uppercase punch-print-ink no-underline hover:opacity-70"
+                          >
+                            ← Hopper
+                          </Link>
+                          <span className="truncate font-mono text-[10px] uppercase punch-print-faint">
+                            @{pageState.displayName}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                    <div className="relative z-[2] mt-2 flex items-center justify-end gap-2">
+                      <span className="font-mono text-[10px] font-bold uppercase text-recess">
+                        Like {previewPattern.likes_count}
+                      </span>
+                      <span className="font-mono text-[10px] font-bold uppercase text-recess">
+                        Copy {previewPattern.copies_count}
+                      </span>
+                    </div>
+                  </>
                 ) : (
                   <div
                     className="punch-card flex flex-1 flex-col items-center justify-center gap-2 p-6"

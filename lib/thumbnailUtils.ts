@@ -3,7 +3,7 @@
  * PNG is lossless so sharp black/white grids render without JPEG artifacts.
  */
 
-import { DEFAULT_MANILA_STOCK, MANILA_STOCKS, manilaHex, type ManilaStockId } from "@/lib/manilaStock";
+import { DEFAULT_MANILA_STOCK, manilaHex, type ManilaStockId } from "@/lib/manilaStock";
 
 export const MANILA_STOCK = "#E8E2D0";
 export const MANILA_EDGE = "#E8E2D0";
@@ -12,32 +12,6 @@ export const HOLE_INK = "#2C2C2C";
 /** Keep thumbnail edge the same sheet color as the paper fill. */
 function edgeFromPaper(paper: string): string {
   return paper;
-}
-
-function parseHexRgb(hex: string): [number, number, number] | null {
-  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
-  if (!m) return null;
-  const n = parseInt(m[1], 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
-/** Known paper fills from current + legacy thumbnails (for remapping empty cells). */
-const PAPER_RGBS: [number, number, number][] = [
-  ...MANILA_STOCKS.map((s) => parseHexRgb(s.hex)!).filter(Boolean),
-  [0xf2, 0xed, 0xd3], // legacy remanila cream
-  [0xed, 0xe8, 0xd5], // --paper
-];
-
-function isPaperPixel(r: number, g: number, b: number, a: number): boolean {
-  if (a === 0) return false;
-  // Pure / near-white legacy empty cells
-  if (r >= 245 && g >= 245 && b >= 245) return true;
-  for (const [pr, pg, pb] of PAPER_RGBS) {
-    if (Math.abs(r - pr) <= 18 && Math.abs(g - pg) <= 18 && Math.abs(b - pb) <= 18) {
-      return true;
-    }
-  }
-  return false;
 }
 
 export type ThumbnailOptions = {
@@ -91,22 +65,23 @@ export function generateGridThumbnail(
 const remanilaCache = new Map<string, string>();
 
 /**
- * Remap empty-cell / paper pixels in a thumbnail to the card's current stock hex
- * so the grid matches the frame for every manila color.
+ * Punch empty cells to transparent so the card’s CSS paper shows through.
+ * Keeps dark hole-ink pixels; clears everything else (any stock / legacy cream).
+ * This is more reliable than remapping known paper hexes.
  */
-export function remanilaThumbnail(src: string, targetHex?: string): Promise<string> {
+export function remanilaThumbnail(src: string, _targetHex?: string): Promise<string> {
   if (typeof document === "undefined") return Promise.resolve(src);
-  const paper = targetHex ?? manilaHex(DEFAULT_MANILA_STOCK);
-  const rgb = parseHexRgb(paper);
-  if (!rgb) return Promise.resolve(src);
-  const cacheKey = `${src}::${paper.toLowerCase()}`;
+  // Cache by src only — output is stock-agnostic (transparent empties).
+  const cacheKey = `${src}::punch-alpha`;
   const cached = remanilaCache.get(cacheKey);
   if (cached) return Promise.resolve(cached);
 
-  const [tr, tg, tb] = rgb;
-
   return new Promise((resolve) => {
     const img = new Image();
+    // Allow canvas readback for remote storage URLs
+    if (/^https?:\/\//i.test(src)) {
+      img.crossOrigin = "anonymous";
+    }
     img.onload = () => {
       try {
         const canvas = document.createElement("canvas");
@@ -125,10 +100,20 @@ export function remanilaThumbnail(src: string, targetHex?: string): Promise<stri
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const d = imageData.data;
         for (let i = 0; i < d.length; i += 4) {
-          if (isPaperPixel(d[i], d[i + 1], d[i + 2], d[i + 3])) {
-            d[i] = tr;
-            d[i + 1] = tg;
-            d[i + 2] = tb;
+          const a = d[i + 3];
+          if (a === 0) continue;
+          const r = d[i];
+          const g = d[i + 1];
+          const b = d[i + 2];
+          // Hole ink is near-black; keep those, clear paper / cream / tinted empty cells
+          const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+          if (luminance > 70) {
+            d[i + 3] = 0;
+          } else {
+            // Normalize holes to solid ink for consistency
+            d[i] = 0x2c;
+            d[i + 1] = 0x2c;
+            d[i + 2] = 0x2c;
             d[i + 3] = 255;
           }
         }

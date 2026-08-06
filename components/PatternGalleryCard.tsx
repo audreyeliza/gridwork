@@ -63,128 +63,126 @@ export function PatternGalleryCard({
 
   return (
     <div
-      className={`punch-card relative flex flex-col ${hopper ? "hopper-card" : ""}`}
+      className={`flex flex-col gap-1.5 ${hopper ? "hopper-card" : ""}`}
       data-active={active ? "true" : undefined}
-      tabIndex={0}
-      style={{
-        ["--manila-stock" as string]: paper,
-        background: paper,
-        clipPath: "polygon(12px 0, 100% 0, 100% 100%, 0 100%, 0 12px)",
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onPreview();
-        }
-      }}
     >
-      <button
-        type="button"
-        onClick={onPreview}
-        aria-label={`Preview ${pattern.name}`}
-        className="relative aspect-square w-full overflow-hidden focus:outline-none"
-        style={{ background: paper }}
-      >
-        {pattern.thumbnail ? (
-          <ManilaThumbnail
-            src={pattern.thumbnail}
-            alt={`${pattern.name} preview`}
-            stockId={stock}
-            className="h-full w-full object-contain p-2"
-            style={{ display: "block" }}
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center" style={{ background: paper }}>
-            <div
-              className="grid gap-px opacity-40"
-              style={{ gridTemplateColumns: "repeat(6, 1fr)", width: 42, height: 42 }}
-            >
-              {Array.from({ length: 36 }, (_, i) => (
-                <div
-                  key={i}
-                  className="aspect-square"
-                  style={{
-                    background: (Math.floor(i / 6) + (i % 6)) % 3 === 0 ? "#2C2C2C" : "color-mix(in srgb, var(--manila-stock) 80%, #8B3A2A 20%)",
-                    borderRadius: 1,
-                  }}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-        <span className="absolute bottom-2 right-2 font-mono text-[9px] font-bold tracking-[0.08em] punch-print-ink">
-          {pattern.grid_width}×{pattern.grid_height}
-        </span>
-      </button>
-
       <div
-        className="px-2.5 py-2"
+        className="punch-card relative flex flex-col"
+        tabIndex={0}
         style={{
+          ["--manila-stock" as string]: paper,
           background: paper,
+          clipPath: "polygon(12px 0, 100% 0, 100% 100%, 0 100%, 0 12px)",
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onPreview();
+          }
         }}
       >
-        <p className="truncate font-mono text-[12px] font-bold tracking-[0.06em] uppercase punch-print-ink">
-          {pattern.name}
-        </p>
-        <div className="mt-1.5 flex items-center justify-between gap-2">
-          {statusLabel ? (
-            <span className="truncate font-mono text-[10px] font-bold tracking-[0.08em] uppercase punch-print-faint">
-              {statusLabel}
-            </span>
-          ) : makerDisplayName ? (
-            <Link
-              href={makerHref ?? `/u/${makerDisplayName}`}
-              className="punch-print truncate"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {makerTag}
-            </Link>
+        <button
+          type="button"
+          onClick={onPreview}
+          aria-label={`Preview ${pattern.name}`}
+          className="relative aspect-square w-full overflow-hidden focus:outline-none"
+          style={{ background: paper }}
+        >
+          {pattern.thumbnail ? (
+            <ManilaThumbnail
+              src={pattern.thumbnail}
+              alt={`${pattern.name} preview`}
+              stockId={stock}
+              className="h-full w-full object-contain p-2"
+              style={{ display: "block" }}
+            />
           ) : (
-            <span className="truncate font-mono text-[10px] font-bold tracking-[0.06em] uppercase punch-print-faint">
-              {makerTag}
-            </span>
+            <div className="flex h-full w-full items-center justify-center" style={{ background: paper }}>
+              <div
+                className="grid gap-px opacity-40"
+                style={{ gridTemplateColumns: "repeat(6, 1fr)", width: 42, height: 42 }}
+              >
+                {Array.from({ length: 36 }, (_, i) => (
+                  <div
+                    key={i}
+                    className="aspect-square"
+                    style={{
+                      background: (Math.floor(i / 6) + (i % 6)) % 3 === 0 ? "#2C2C2C" : "color-mix(in srgb, var(--manila-stock) 80%, #8B3A2A 20%)",
+                      borderRadius: 1,
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
           )}
+        </button>
 
-          {!statusLabel && (
-            <div className="flex shrink-0 items-center gap-2">
-              <button
-                type="button"
-                onClick={onLike}
-                disabled={!canInteract || isOwn}
-                title={!canInteract ? "Log in to like" : isOwn ? "Can't like your own" : isLiked ? "Unlike" : "Like"}
-                className="punch-print"
-                aria-label={isLiked ? "Unlike" : "Like"}
-              >
-                <HeartGlyph filled={isLiked} />
-                <span>{pattern.likes_count}</span>
-              </button>
-              <button
-                type="button"
-                onClick={onCopy}
-                disabled={!canInteract || copying}
-                title={!canInteract ? "Log in to copy" : copying ? "Copying…" : "Copy"}
-                className="punch-print"
-                aria-label="Copy"
-              >
-                <CopyGlyph />
-                <span>{copying ? "…" : pattern.copies_count}</span>
-              </button>
-            </div>
-          )}
-          {statusLabel && typeof pattern.likes_count === "number" && (
-            <div className="flex shrink-0 items-center gap-2 punch-print-faint">
-              <span className="inline-flex items-center gap-0.5 font-mono text-[10px] font-bold">
-                <HeartGlyph filled={false} />
-                {pattern.likes_count}
+        <div className="px-2.5 py-2" style={{ background: paper }}>
+          <p className="truncate font-mono text-[12px] font-bold tracking-[0.06em] uppercase punch-print-ink">
+            {pattern.name}
+          </p>
+          <p className="mt-0.5 font-mono text-[10px] font-bold tracking-[0.06em] uppercase punch-print-faint">
+            {pattern.grid_width}×{pattern.grid_height}
+          </p>
+          <div className="mt-1">
+            {statusLabel ? (
+              <span className="truncate font-mono text-[10px] font-bold tracking-[0.08em] uppercase punch-print-faint">
+                {statusLabel}
               </span>
-              <span className="inline-flex items-center gap-0.5 font-mono text-[10px] font-bold">
-                <CopyGlyph />
-                {pattern.copies_count ?? 0}
+            ) : makerDisplayName ? (
+              <Link
+                href={makerHref ?? `/u/${makerDisplayName}`}
+                className="punch-print truncate"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {makerTag}
+              </Link>
+            ) : (
+              <span className="truncate font-mono text-[10px] font-bold tracking-[0.06em] uppercase punch-print-faint">
+                {makerTag}
               </span>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
+
+      {!statusLabel ? (
+        <div className="flex items-center justify-end gap-2 px-0.5">
+          <button
+            type="button"
+            onClick={onLike}
+            disabled={!canInteract || isOwn}
+            title={!canInteract ? "Log in to like" : isOwn ? "Can't like your own" : isLiked ? "Unlike" : "Like"}
+            className="inline-flex items-center gap-0.5 border-0 bg-transparent p-0 font-mono text-[10px] font-bold tracking-[0.06em] text-chassis-light uppercase transition-colors hover:text-card disabled:cursor-not-allowed disabled:opacity-35"
+            aria-label={isLiked ? "Unlike" : "Like"}
+          >
+            <HeartGlyph filled={isLiked} />
+            <span>{pattern.likes_count}</span>
+          </button>
+          <button
+            type="button"
+            onClick={onCopy}
+            disabled={!canInteract || copying}
+            title={!canInteract ? "Log in to copy" : copying ? "Copying…" : "Copy"}
+            className="inline-flex items-center gap-0.5 border-0 bg-transparent p-0 font-mono text-[10px] font-bold tracking-[0.06em] text-chassis-light uppercase transition-colors hover:text-card disabled:cursor-not-allowed disabled:opacity-35"
+            aria-label="Copy"
+          >
+            <CopyGlyph />
+            <span>{copying ? "…" : pattern.copies_count}</span>
+          </button>
+        </div>
+      ) : typeof pattern.likes_count === "number" ? (
+        <div className="flex items-center justify-end gap-2 px-0.5 text-chassis-light">
+          <span className="inline-flex items-center gap-0.5 font-mono text-[10px] font-bold">
+            <HeartGlyph filled={false} />
+            {pattern.likes_count}
+          </span>
+          <span className="inline-flex items-center gap-0.5 font-mono text-[10px] font-bold">
+            <CopyGlyph />
+            {pattern.copies_count ?? 0}
+          </span>
+        </div>
+      ) : null}
     </div>
   );
 }

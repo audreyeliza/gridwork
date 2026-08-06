@@ -22,7 +22,7 @@ export function LegalManualPage({ title, updated, sections, otherHref, otherLabe
         >
           <div className="flex items-center justify-between border-b border-[#D6DCE4] bg-[#2F5F9E] px-5 py-3">
             <span className="font-mono text-[10px] font-bold tracking-[0.14em] text-white uppercase">
-              Legal · {title}
+              {title}
             </span>
             <span className="font-mono text-[9px] font-bold tracking-[0.1em] text-white/70 uppercase">
               Gridwork

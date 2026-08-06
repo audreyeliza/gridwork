@@ -715,12 +715,18 @@ button.punch-lamp:disabled,
   will-change: transform;
 }
 .book-stage.is-open .book-leaf {
-  /* Slight foreshortening + nest behind spread so the gutter reads as a fold */
-  transform: rotateY(-150deg) translateZ(-2px);
+  /* Foreshorten the open flap; keep hinge in-plane so footers meet */
+  transform: rotateY(-150deg);
   z-index: 2;
 }
 .book-stage.is-flipping .book-leaf {
   pointer-events: none;
+}
+.book-footer {
+  box-sizing: border-box;
+  height: 52px;
+  min-height: 52px;
+  flex-shrink: 0;
 }
 .book-leaf-front,
 .book-leaf-back {
@@ -1074,11 +1080,15 @@ input[type="search"]::-webkit-search-decoration {
 .hopper-card:focus-within,
 .hopper-card[data-active="true"] {
   transform: translateY(-8px) rotate(0deg) !important;
-  box-shadow: 4px 12px 0 rgba(40, 44, 50, 0.35);
   z-index: 5;
 }
+.hopper-card:hover .punch-card,
+.hopper-card:focus-within .punch-card,
+.hopper-card[data-active="true"] .punch-card {
+  box-shadow: 4px 12px 0 rgba(40, 44, 50, 0.35);
+}
 /* Selected card — darker manila wash, not blue chrome */
-.hopper-card[data-active="true"] {
+.hopper-card[data-active="true"] .punch-card {
   filter: brightness(0.92) saturate(1.08);
   outline: 2px solid color-mix(in srgb, var(--manila-stock, #E8E2D0) 88%, #3A3E44 12%);
   outline-offset: 2px;
