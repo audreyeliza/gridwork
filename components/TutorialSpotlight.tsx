@@ -8,32 +8,32 @@ const STEPS = [
   {
     targetId: "tutorial-grid-size",
     title: "Set your grid size",
-    body: "Choose a preset or type custom Width and Height values. The lock icon between them keeps the aspect ratio proportional.",
+    body: "Pick a preset or enter Width and Height. The lock keeps the aspect ratio.",
   },
   {
     targetId: "tutorial-pencil",
     title: "Choose your draw mode",
-    body: "Block fills a square solid; Mesh leaves it open. Click or drag to draw. Double-click any cell to switch between block and mesh without leaving the toolbar. Undo / Redo step through changes.",
+    body: "Block fills a square; Mesh leaves it open. Click or drag to draw. Double-click a cell to flip modes.",
   },
   {
     targetId: "tutorial-image-tools",
-    title: "Use an image reference",
-    body: "Upload a photo as a reference. Underlay traces it transparently, Auto-convert maps it straight to the grid.",
+    title: "Yarn or import",
+    body: "Estimate yarn for your grid, or upload an image to trace or auto-convert.",
   },
   {
     targetId: "tutorial-row-progress",
     title: "Track your rows",
-    body: "Check off rows as you complete them. Use Prev row / Next row to move the yellow highlight to your current position.",
+    body: "Step through rows with ← Row / Row →. Check them off below the grid as you stitch.",
   },
   {
     targetId: "tutorial-print",
     title: "Print your pattern",
-    body: "Save your pattern first (requires login), then Print opens a print-ready view you can save as a PDF.",
+    body: "Save first, then Print opens a print-ready view.",
   },
   {
     targetId: "tutorial-login",
     title: "Log in to save",
-    body: "Guest patterns disappear when you close the tab. Log in to save automatically every few seconds.",
+    body: "Guests lose work when the tab closes. Log in for autosave.",
   },
 ];
 
@@ -112,7 +112,7 @@ export function TutorialSpotlight() {
         type="button"
         onClick={restart}
         title="Restart tutorial"
-        className="fixed bottom-6 right-6 z-[199] flex h-9 w-9 items-center justify-center rounded-full border border-rose-100 bg-white text-sm font-bold text-brand shadow-md transition-colors hover:bg-pink-50"
+        className="fixed bottom-6 right-6 z-[199] flex h-9 w-9 items-center justify-center rounded-full border border-brand/15 bg-white text-sm font-bold text-brand shadow-md transition-colors hover:bg-brand/10"
       >
         ?
       </button>
@@ -142,7 +142,7 @@ export function TutorialSpotlight() {
       </svg>
 
       <div
-        className="pointer-events-auto absolute bottom-8 left-8 w-80 rounded-2xl border border-rose-100 bg-white shadow-2xl"
+        className="pointer-events-auto absolute bottom-8 left-8 w-80 rounded-2xl border border-brand/15 bg-white shadow-2xl"
       >
         <div className="flex gap-1 p-4 pb-0">
           {STEPS.map((_, i) => (
@@ -183,7 +183,7 @@ export function TutorialSpotlight() {
                 <button
                   type="button"
                   onClick={prev}
-                  className="rounded-full border border-brand px-3 py-1 text-xs font-medium text-brand hover:bg-pink-50"
+                  className="rounded-full border border-brand px-3 py-1 text-xs font-medium text-brand hover:bg-brand/10"
                 >
                   Back
                 </button>
@@ -192,7 +192,7 @@ export function TutorialSpotlight() {
                 <button
                   type="button"
                   onClick={restart}
-                  className="rounded-full border border-brand px-3 py-1 text-xs font-medium text-brand hover:bg-pink-50"
+                  className="rounded-full border border-brand px-3 py-1 text-xs font-medium text-brand hover:bg-brand/10"
                 >
                   Take the tour again
                 </button>

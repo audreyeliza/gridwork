@@ -8,7 +8,7 @@ import {
   type GridCanvasLayout,
 } from "@/lib/gridCanvasLayout";
 import { drawImageWithTransform, type CropRect } from "@/lib/imageCanvasUtils";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 
 export type GridTool = "pencil" | "eraser";
 
@@ -34,6 +34,8 @@ export type GridCanvasProps = {
   rowComplete?: boolean[];
   currentRow?: number;
   onToggleRowComplete?: (row: number) => void;
+  /** Manila card stock fill for empty cells / paper. */
+  paperColor?: string;
   /** Optional undo/redo wired into the fullscreen toolbar. */
   onUndo?: () => void;
   onRedo?: () => void;
@@ -43,6 +45,10 @@ export type GridCanvasProps = {
   onStepRow?: (delta: number) => void;
   /** Called when fullscreen state toggles. */
   onFullscreenChange?: (fullscreen: boolean) => void;
+  /** Hide the in-toolbar Fullscreen entry (controls bar owns it). */
+  hideFullscreenEntry?: boolean;
+  /** Parent can call this to enter fullscreen. */
+  enterFullscreenRef?: MutableRefObject<(() => void) | null>;
   /** External tool control — when provided, overrides internal pencil/eraser state. */
   toolOverride?: GridTool;
   onToolOverrideChange?: (tool: GridTool) => void;
@@ -143,8 +149,11 @@ export function GridCanvas({
   canRedo,
   onStepRow,
   onFullscreenChange,
+  hideFullscreenEntry = false,
+  enterFullscreenRef,
   toolOverride,
   onToolOverrideChange,
+  paperColor = "#E8E2D0",
 }: GridCanvasProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -233,10 +242,10 @@ export function GridCanvas({
 
       const data = draftRef.current ?? cells;
 
-      const bg = "#fffbf5";
-      const line = "#e7e5e4";
-      const fillOn = "#1F1410";
-      const labelColor = "#78716c";
+      const bg = paperColor;
+      const line = "#D6CCA8";
+      const fillOn = "#2C2C2C";
+      const labelColor = "#62676E";
 
       if (showUnderlay) {
         ctx.clearRect(0, 0, cssW, cssH);
@@ -292,6 +301,9 @@ export function GridCanvas({
           if (data[r]?.[c]) {
             ctx.fillStyle = fillOn;
             ctx.fillRect(x + 0.5, y + 0.5, cell - 1, cell - 1);
+          } else if (!showUnderlay) {
+            ctx.fillStyle = bg;
+            ctx.fillRect(x + 0.5, y + 0.5, cell - 1, cell - 1);
           }
           ctx.strokeStyle = line;
           ctx.strokeRect(x + 0.5, y + 0.5, cell - 1, cell - 1);
@@ -300,19 +312,19 @@ export function GridCanvas({
 
       const cr = showRowTracker && rowComplete ? currentRow : -1;
       if (cr >= 0 && cr < gridHeight) {
-        ctx.fillStyle = "rgba(168,70,111,0.10)";
+        ctx.fillStyle = "rgba(180,210,230,0.45)";
         ctx.fillRect(offsetX, offsetY + cr * cell, gridWpx, cell);
         ctx.save();
-        ctx.strokeStyle = "#A8466F";
-        ctx.lineWidth = 1;
-        ctx.setLineDash([3, 2]);
+        ctx.strokeStyle = "#5B7EC9";
+        ctx.lineWidth = 2.5;
+        ctx.setLineDash([]);
         ctx.beginPath();
-        ctx.moveTo(offsetX, offsetY + cr * cell + 0.5);
-        ctx.lineTo(offsetX + gridWpx, offsetY + cr * cell + 0.5);
+        ctx.moveTo(offsetX, offsetY + cr * cell + 1);
+        ctx.lineTo(offsetX + gridWpx, offsetY + cr * cell + 1);
         ctx.stroke();
         ctx.beginPath();
-        ctx.moveTo(offsetX, offsetY + (cr + 1) * cell - 0.5);
-        ctx.lineTo(offsetX + gridWpx, offsetY + (cr + 1) * cell - 0.5);
+        ctx.moveTo(offsetX, offsetY + (cr + 1) * cell - 1);
+        ctx.lineTo(offsetX + gridWpx, offsetY + (cr + 1) * cell - 1);
         ctx.stroke();
         ctx.restore();
       }
@@ -335,6 +347,7 @@ export function GridCanvas({
     rowComplete,
     currentRow,
     layoutOpts,
+    paperColor,
   ]);
 
   useEffect(() => {
@@ -366,6 +379,14 @@ export function GridCanvas({
       document.body.style.overflow = "";
     };
   }, [fullscreen, onFullscreenChange]);
+
+  useEffect(() => {
+    if (!enterFullscreenRef) return;
+    enterFullscreenRef.current = () => setFullscreen(true);
+    return () => {
+      enterFullscreenRef.current = null;
+    };
+  }, [enterFullscreenRef]);
 
   useEffect(() => {
     if (!fullscreen) return;
@@ -498,7 +519,7 @@ export function GridCanvas({
               position: "fixed",
               inset: 0,
               zIndex: 200,
-              backgroundColor: "#ffffff",
+              backgroundColor: paperColor || "#E8E2D0",
               isolation: "isolate",
               display: "flex",
               flexDirection: "column",
@@ -516,14 +537,14 @@ export function GridCanvas({
             {toolOverride === undefined && (
               <div className="flex items-center gap-2">
                 <span className="text-xs font-medium text-stone-500">Tool</span>
-                <div id="tutorial-pencil" className="inline-flex rounded-full border border-brand/20 bg-white/90 p-0.5 shadow-sm">
+                <div className="inline-flex rounded-full border border-brand/20 bg-white/90 p-0.5 shadow-sm">
                   <button
                     type="button"
                     onClick={() => setTool("pencil")}
                     className={`rounded-full px-3 py-1 text-xs font-medium transition-colors duration-150 ${
                       tool === "pencil"
                         ? "bg-brand text-white shadow-sm"
-                        : "text-gray-700 hover:bg-pink-50 hover:text-gray-900"
+                        : "text-gray-700 hover:bg-brand/10 hover:text-gray-900"
                     }`}
                   >
                     Pencil
@@ -534,7 +555,7 @@ export function GridCanvas({
                     className={`rounded-full px-3 py-1 text-xs font-medium transition-colors duration-150 ${
                       tool === "eraser"
                         ? "bg-brand text-white shadow-sm"
-                        : "text-gray-700 hover:bg-pink-50 hover:text-gray-900"
+                        : "text-gray-700 hover:bg-brand/10 hover:text-gray-900"
                     }`}
                   >
                     Eraser
@@ -579,7 +600,7 @@ export function GridCanvas({
         )}
 
         {/* Normal mode: fullscreen entry button */}
-        {!fullscreen && (
+        {!fullscreen && !hideFullscreenEntry && (
           <button
             type="button"
             onClick={() => setFullscreen(true)}
@@ -592,8 +613,12 @@ export function GridCanvas({
 
       {/* Canvas container — outer: positions HUD; inner: scrolls */}
       <div
-        className="relative min-h-0 w-full flex-1 overflow-hidden rounded-xl border border-rose-100/80 bg-white/90 shadow-sm"
-        style={fullscreen ? { flex: 1, minHeight: 0 } : undefined}
+        className="relative min-h-0 w-full flex-1 overflow-hidden border border-card-edge"
+        style={{
+          ...(fullscreen ? { flex: 1, minHeight: 0 } : undefined),
+          backgroundColor: paperColor || "#E8E2D0",
+          transition: "background-color 0.35s ease",
+        }}
       >
         <div
           ref={wrapRef}
@@ -601,7 +626,7 @@ export function GridCanvas({
         >
           {showRowTracker && layoutState && rowComplete && onToggleRowComplete ? (
             <div
-              className="pointer-events-auto absolute z-20 flex flex-col border-r border-rose-100/90 bg-white/95 shadow-sm"
+              className="pointer-events-auto absolute z-20 flex flex-col border-r border-brand/15 bg-white/95 shadow-sm"
               style={{
                 left: LABEL_SIZE,
                 top: layoutState.offsetY,
@@ -612,9 +637,9 @@ export function GridCanvas({
               {rowComplete.map((done, r) => (
                 <label
                   key={r}
-                  className={`flex shrink-0 cursor-pointer items-center justify-center gap-0.5 border-b border-rose-100/70 last:border-b-0 ${
-                    done ? "bg-[rgba(168,70,111,0.06)]" : ""
-                  } ${r === currentRow ? "border-l-2 border-l-[#A8466F]" : ""}`}
+                  className={`flex shrink-0 cursor-pointer items-center justify-center gap-0.5 border-b border-card-edge last:border-b-0 ${
+                    done ? "bg-key-blue/10" : ""
+                  } ${r === currentRow ? "border-l-[3px] border-l-key-blue bg-[rgba(180,210,230,0.35)]" : ""}`}
                   style={{ height: layoutState.cell }}
                 >
                   <input
@@ -629,9 +654,9 @@ export function GridCanvas({
                     style={{
                       width: 12,
                       height: 12,
-                      borderRadius: 4,
-                      border: done ? "1.5px solid #A8466F" : "1.5px solid rgba(168,70,111,0.35)",
-                      background: done ? "#A8466F" : "#fff",
+                      borderRadius: 2,
+                      border: done ? "1.5px solid #5B7EC9" : "1.5px solid rgba(91,126,201,0.4)",
+                      background: done ? "#5B7EC9" : "#E8E2D0",
                     }}
                   >
                     {done && (
@@ -641,10 +666,9 @@ export function GridCanvas({
                     )}
                   </span>
                   <span
-                    className={`min-w-[1rem] text-center text-[10px] font-medium tabular-nums ${
-                      done ? "line-through" : "text-stone-600"
+                    className={`min-w-[1rem] text-center font-mono text-[10px] font-medium tabular-nums ${
+                      done ? "line-through text-key-blue" : "text-ink/70"
                     }`}
-                    style={done ? { color: "#A8466F" } : undefined}
                   >
                     {r + 1}
                   </span>
@@ -671,7 +695,7 @@ export function GridCanvas({
               className={`rounded-full border px-2.5 py-1 text-xs font-medium shadow-sm transition-colors duration-150 ${
                 zoom === "fit"
                   ? "border-brand/40 bg-brand text-white"
-                  : "border-stone-200 bg-white/95 text-gray-700 hover:bg-pink-50"
+                  : "border-stone-200 bg-white/95 text-gray-700 hover:bg-brand/10"
               }`}
             >
               Fit
@@ -681,7 +705,7 @@ export function GridCanvas({
                 type="button"
                 onClick={() => setZoom((z) => Math.max(25, (z === "fit" ? 100 : z) - 10))}
                 disabled={typeof zoom === "number" && zoom <= 25}
-                className="rounded-l-full px-2.5 py-1 text-sm font-bold text-gray-700 transition-colors hover:bg-pink-50 disabled:opacity-40"
+                className="rounded-l-full px-2.5 py-1 text-sm font-bold text-gray-700 transition-colors hover:bg-brand/10 disabled:opacity-40"
               >
                 −
               </button>
@@ -692,7 +716,7 @@ export function GridCanvas({
                 type="button"
                 onClick={() => setZoom((z) => Math.min(200, (z === "fit" ? 100 : z) + 10))}
                 disabled={typeof zoom === "number" && zoom >= 200}
-                className="rounded-r-full px-2.5 py-1 text-sm font-bold text-gray-700 transition-colors hover:bg-pink-50 disabled:opacity-40"
+                className="rounded-r-full px-2.5 py-1 text-sm font-bold text-gray-700 transition-colors hover:bg-brand/10 disabled:opacity-40"
               >
                 +
               </button>

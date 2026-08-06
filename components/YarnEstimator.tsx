@@ -125,113 +125,75 @@ export function YarnEstimator({
 
   return (
     <section
-      className={`relative z-10 flex shrink-0 flex-col gap-4 rounded-xl border pointer-events-auto overflow-y-auto ${className ?? ""}`}
+      className={`relative z-10 flex shrink-0 flex-col overflow-y-auto pointer-events-auto ${className ?? ""}`}
       style={{
-        background: "#FBF7EF",
-        border: "1px solid rgba(61,42,30,0.10)",
-        padding: 20,
+        background: "#fff",
+        border: "1px solid #3A3E44",
+        boxShadow: "2px 3px 0 rgba(74,78,85,0.12)",
       }}
     >
-      {/* Header */}
-      <div>
-        <div className="font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-muted" style={{ marginBottom: 2 }}>
-          Estimator
+      <div className="flex items-center justify-between border-b border-[#D6DCE4] bg-[#2F5F9E] px-3 py-2">
+        <h2 className="m-0 font-mono text-[10px] font-bold tracking-[0.14em] text-white uppercase">Yarn</h2>
+        <div className="inline-flex items-center gap-0.5 border border-white/30 bg-white/10 p-0.5">
+          {(["metric", "imperial"] as const).map((u) => (
+            <button
+              key={u}
+              type="button"
+              aria-pressed={units === u}
+              onClick={() => setUnits(u)}
+              className={`px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase ${
+                units === u ? "bg-white text-[#2F5F9E]" : "text-white/80"
+              }`}
+            >
+              {u === "imperial" ? "In" : "Cm"}
+            </button>
+          ))}
         </div>
-        <h2 className="font-serif text-[20px] font-bold leading-none tracking-[-0.01em] text-text-strong">
-          Yarn needed
-        </h2>
       </div>
 
-      {/* Big estimate display */}
+      <div className="flex flex-col gap-2 p-3">
       <div
-        className="rounded-[14px] p-4"
-        style={{ background: "rgba(168,70,111,0.07)", border: "1px solid rgba(168,70,111,0.18)" }}
+        className="flex items-baseline justify-between gap-2 px-2 py-1.5"
+        style={{ background: "rgba(47,95,158,0.08)", border: "1px solid rgba(47,95,158,0.22)" }}
       >
-        {/* Imperial/metric toggle inside the pill */}
-        <div className="mb-3 flex items-center justify-between">
-          <div
-            className="inline-flex items-center rounded-full p-[3px]"
-            style={{ background: "rgba(61,42,30,0.06)" }}
-          >
-            {(["metric", "imperial"] as const).map((u) => (
-              <button
-                key={u}
-                type="button"
-                aria-pressed={units === u}
-                onClick={() => setUnits(u)}
-                className={`rounded-full px-2.5 py-0.5 font-sans text-[11px] font-bold transition-colors ${
-                  units === u ? "bg-brand text-[#FBF7EF]" : "bg-transparent text-muted hover:text-text-strong"
-                }`}
-              >
-                {u === "imperial" ? "Imperial" : "Metric"}
-              </button>
-            ))}
-          </div>
+        <div className="font-mono font-bold text-[#2F5F9E]" style={{ fontSize: 28, lineHeight: 1 }}>
+          ~{units === "metric" ? result.grams : result.oz}
+          <span className="ml-0.5 text-[12px] font-bold">{units === "metric" ? "g" : "oz"}</span>
         </div>
-
-        {units === "metric" ? (
-          <>
-            <div className="font-serif font-bold leading-none tracking-[-0.02em]" style={{ color: "#A8466F" }}>
-              <span style={{ fontSize: 48 }}>~{result.grams}</span>
-              <span className="font-sans font-semibold" style={{ fontSize: 20, verticalAlign: "super" }}>g</span>
-            </div>
-            <div className="mt-1.5 font-sans text-[13px] font-semibold text-muted">
-              about {result.meters} m · {skeins} {skeins === 1 ? "skein" : "skeins"} of {WEIGHT_LABELS[value.weight].toLowerCase()}
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="font-serif font-bold leading-none tracking-[-0.02em]" style={{ color: "#A8466F" }}>
-              <span style={{ fontSize: 48 }}>~{result.oz}</span>
-              <span className="font-sans font-semibold" style={{ fontSize: 20, verticalAlign: "super" }}>oz</span>
-            </div>
-            <div className="mt-1.5 font-sans text-[13px] font-semibold text-muted">
-              about {result.yards} yd · {skeins} {skeins === 1 ? "skein" : "skeins"} of {WEIGHT_LABELS[value.weight].toLowerCase()}
-            </div>
-          </>
-        )}
+        <div className="text-right font-mono text-[10px] font-bold text-[#4A4E55]">
+          {units === "metric" ? `${result.meters} m` : `${result.yards} yd`}
+          <br />
+          {skeins} sk · {WEIGHT_LABELS[value.weight]}
+        </div>
       </div>
 
-      {/* Yarn settings rows */}
-      <div className="flex flex-col gap-2">
-        {/* Weight */}
-        <div
-          className="flex items-center justify-between rounded-[10px] px-3 py-2"
-          style={{ background: "#fff", border: "1px solid rgba(61,42,30,0.10)" }}
-        >
-          <span className="font-sans text-[12px] font-bold text-muted">Weight</span>
+      <div className="flex flex-col gap-1">
+        <label className="flex items-center justify-between gap-2 border-b border-[#D6DCE4] bg-transparent px-0 py-1.5">
+          <span className="font-mono text-[9px] font-bold text-[#2F5F9E] uppercase">Wt</span>
           <select
             id={`${idPrefix}-weight`}
             value={value.weight}
             onChange={(e) => onChange({ ...value, weight: e.target.value as YarnWeightCategory })}
-            className="bg-transparent font-sans text-[13px] font-bold text-text-strong focus:outline-none"
+            className="bg-transparent font-mono text-[11px] font-bold text-ink focus:outline-none"
           >
             {YARN_WEIGHT_CATEGORIES.map((w) => (
               <option key={w} value={w}>{WEIGHT_LABELS[w]}</option>
             ))}
           </select>
-        </div>
-        {/* Hook */}
-        <div
-          className="flex items-center justify-between rounded-[10px] px-3 py-2"
-          style={{ background: "#fff", border: "1px solid rgba(61,42,30,0.10)" }}
-        >
-          <span className="font-sans text-[12px] font-bold text-muted">Hook</span>
+        </label>
+        <label className="flex items-center justify-between gap-2 border-b border-[#D6DCE4] bg-transparent px-0 py-1.5">
+          <span className="font-mono text-[9px] font-bold text-[#2F5F9E] uppercase">Hook</span>
           <input
             id={`${idPrefix}-hook`}
             type="text"
             value={value.hookSize}
             onChange={(e) => onChange({ ...value, hookSize: e.target.value })}
             placeholder={HOOK_DEFAULTS[value.weight]}
-            className="w-24 bg-transparent text-right font-sans text-[13px] font-bold text-text-strong focus:outline-none"
+            className="w-20 bg-transparent text-right font-mono text-[11px] font-bold text-ink focus:outline-none"
           />
-        </div>
-        {/* Gauge */}
-        <div
-          className="flex items-center justify-between rounded-[10px] px-3 py-2"
-          style={{ background: "#FFF8E8", border: "1px solid rgba(168,70,111,0.30)" }}
-        >
-          <span className="font-sans text-[12px] font-bold uppercase tracking-[0.04em]" style={{ color: "#A8466F" }}>Gauge</span>
+        </label>
+        <label className="flex items-center justify-between gap-2 border-b border-[#D6DCE4] bg-transparent px-0 py-1.5">
+          <span className="font-mono text-[9px] font-bold text-[#2F5F9E] uppercase">Gauge</span>
           <div className="flex items-center gap-1">
             <input
               id={`${idPrefix}-gauge`}
@@ -257,91 +219,33 @@ export function YarnEstimator({
                 const stored = units === "imperial" ? parseFloat((n * 3.937).toFixed(2)) : n;
                 onChange({ ...value, customGaugeStitchesPerInch: stored });
               }}
-              className="w-16 bg-transparent text-right font-sans text-[13px] font-bold text-text-strong focus:outline-none"
+              className="w-12 bg-transparent text-right font-mono text-[11px] font-bold text-ink focus:outline-none"
             />
-            <span className="font-sans text-[11px] text-muted">
-              {units === "imperial" ? "sq / inch" : "sq / 10 cm"}
+            <span className="font-mono text-[9px] text-muted">
+              {units === "imperial" ? "/in" : "/10cm"}
             </span>
           </div>
+        </label>
+      </div>
+
+      <div className="border-b border-[#D6DCE4] px-0 py-1.5">
+        <div className="font-mono text-[9px] font-bold text-[#2F5F9E] uppercase">Size</div>
+        <div className="font-mono text-[15px] font-bold text-ink">
+          {units === "metric"
+            ? `${widthCm} × ${heightCm} cm`
+            : `${toFractionalInch(widthCm)} × ${toFractionalInch(heightCm)} in`}
+        </div>
+        <div className="mt-0.5 font-mono text-[9px] text-muted">
+          {units === "metric" ? `≈ ${widthIn} × ${heightIn} in` : `≈ ${widthCm} × ${heightCm} cm`}
+          {" · "}
+          {isCustomGauge ? "custom" : "est."} gauge
         </div>
       </div>
 
-      {/* Finished size */}
-      <div>
-        <div className="font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-muted" style={{ marginBottom: 8 }}>
-          Finished size
-        </div>
-        {units === "metric" ? (
-          <>
-            <div className="font-serif font-bold tracking-[-0.01em] text-text-strong" style={{ fontSize: 26, lineHeight: 1 }}>
-              {widthCm} × {heightCm}
-              <span className="font-sans font-semibold text-muted" style={{ fontSize: 16, marginLeft: 6 }}>cm</span>
-            </div>
-            <div className="mt-1 font-sans text-[12px] font-semibold text-muted">
-              ≈ {widthIn} × {heightIn} in · {isCustomGauge ? "your gauge" : "estimated gauge"}
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="font-serif font-bold tracking-[-0.01em] text-text-strong" style={{ fontSize: 26, lineHeight: 1 }}>
-              {toFractionalInch(widthCm)} × {toFractionalInch(heightCm)}
-              <span className="font-sans font-semibold text-muted" style={{ fontSize: 16, marginLeft: 6 }}>in</span>
-            </div>
-            <div className="mt-1 font-sans text-[12px] font-semibold text-muted">
-              ≈ {widthCm} × {heightCm} cm · {isCustomGauge ? "your gauge" : "estimated gauge"}
-            </div>
-          </>
-        )}
-        <div
-          className="mt-2 rounded-[10px] font-mono text-[11px] font-medium leading-[1.55]"
-          style={{ padding: "10px 12px", background: "#FFF8E8", border: "1px solid rgba(61,42,30,0.10)", color: "#7A6A5F" }}
-        >
-          {units === "metric" ? (
-            <>
-              <div>
-                <span style={{ color: "#7A6A5F", fontSize: 10 }}>W: </span>
-                <span style={{ color: "#A8466F", fontWeight: 700 }}>{gridWidth}</span>
-                <span> ÷ (</span>
-                <span style={{ color: "#A8466F", fontWeight: 700 }}>{gaugeSquaresPer10cm}</span>
-                <span> ÷ 10) = </span>
-                <span style={{ color: "#1F1410", fontWeight: 700 }}>{widthCm} cm</span>
-              </div>
-              <div style={{ marginTop: 4 }}>
-                <span style={{ color: "#7A6A5F", fontSize: 10 }}>H: </span>
-                <span style={{ color: "#A8466F", fontWeight: 700 }}>{gridHeight}</span>
-                <span> ÷ (</span>
-                <span style={{ color: "#A8466F", fontWeight: 700 }}>{gaugeSquaresPer10cm}</span>
-                <span> ÷ 10) = </span>
-                <span style={{ color: "#1F1410", fontWeight: 700 }}>{heightCm} cm</span>
-              </div>
-            </>
-          ) : (
-            <>
-              <div>
-                <span style={{ color: "#7A6A5F", fontSize: 10 }}>W: </span>
-                <span style={{ color: "#A8466F", fontWeight: 700 }}>{gridWidth}</span>
-                <span> ÷ </span>
-                <span style={{ color: "#A8466F", fontWeight: 700 }}>{parseFloat((gaugeSquaresPer10cm / 3.937).toFixed(1))} sq/in</span>
-                <span> = </span>
-                <span style={{ color: "#1F1410", fontWeight: 700 }}>{widthIn} in</span>
-              </div>
-              <div style={{ marginTop: 4 }}>
-                <span style={{ color: "#7A6A5F", fontSize: 10 }}>H: </span>
-                <span style={{ color: "#A8466F", fontWeight: 700 }}>{gridHeight}</span>
-                <span> ÷ </span>
-                <span style={{ color: "#A8466F", fontWeight: 700 }}>{parseFloat((gaugeSquaresPer10cm / 3.937).toFixed(1))} sq/in</span>
-                <span> = </span>
-                <span style={{ color: "#1F1410", fontWeight: 700 }}>{heightIn} in</span>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Tip */}
-      <p className="font-sans text-[11px] italic text-muted" style={{ marginTop: "auto" }}>
-        Tip: estimates assume ~5% loss for turning chains and weaving in ends.
+      <p className="m-0 font-sans text-[10px] leading-snug text-[#4A4E55]">
+        ~5% loss built in for chains &amp; ends. W {gridWidth}÷({gaugeSquaresPer10cm}÷10)={widthCm}cm
       </p>
+      </div>
     </section>
   );
 }

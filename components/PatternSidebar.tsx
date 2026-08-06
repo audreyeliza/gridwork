@@ -132,59 +132,53 @@ export function PatternSidebar({
 
   return (
     <aside
-      className="flex h-full shrink-0 flex-col bg-[#FBF7EF]"
-      style={{ width: 244, borderRight: "1px solid rgba(61,42,30,0.10)" }}
+      className="flex h-full shrink-0 flex-col bg-recess"
+      style={{ width: 244, borderRight: "2px solid var(--chassis-dark)" }}
     >
-      {/* Header */}
       <div
         className="flex shrink-0 items-center justify-between"
-        style={{ padding: "18px 18px 14px", borderBottom: "1px solid rgba(61,42,30,0.10)" }}
+        style={{ padding: "14px 12px 10px", borderBottom: "1px solid var(--chassis-dark)" }}
       >
         <div>
-          <div
-            className="font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-muted"
-            style={{ marginBottom: 2 }}
-          >
-            Your library
+          <div className="font-mono text-[9px] font-bold uppercase tracking-[0.16em] text-chassis-light">
+            Card hopper
           </div>
-          <div className="font-serif text-[18px] font-bold tracking-[-0.01em] text-text-strong">
+          <div className="font-mono text-[14px] font-bold tracking-[0.04em] text-card uppercase">
             Patterns
           </div>
         </div>
         {user && (
-          <button
-            type="button"
-            onClick={onCreateNew}
-            className="inline-flex items-center rounded-full bg-brand font-sans text-[12px] font-bold text-[#FBF7EF] hover:bg-brand-dark"
-            style={{ padding: "6px 10px", boxShadow: "0 4px 14px rgba(168,70,111,0.30)" }}
-          >
+          <button type="button" onClick={onCreateNew} className="punch-key punch-key-blue !min-h-0 !px-2 !py-1 text-[9px]">
             + New
           </button>
         )}
       </div>
 
-      {/* Search */}
-      <div style={{ padding: "10px 12px 6px", flexShrink: 0 }}>
+      <div
+        className="mx-2 mt-2 h-2 shrink-0"
+        style={{
+          background: "repeating-linear-gradient(90deg, var(--chassis-dark) 0 2px, transparent 2px 10px)",
+          opacity: 0.5,
+        }}
+      />
+
+      <div style={{ padding: "8px 10px 6px", flexShrink: 0 }}>
         <input
           type="text"
-          placeholder="Search patterns…"
+          placeholder="Search…"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full rounded-full border border-[rgba(61,42,30,0.12)] bg-white px-3.5 py-2 font-sans text-[13px] font-medium text-text-strong shadow-[0_2px_8px_rgba(40,20,30,0.08)] placeholder:text-muted focus:border-brand/35 focus:outline-none focus:ring-2 focus:ring-brand/15"
+          className="w-full border border-chassis-dark bg-card px-2.5 py-1.5 font-mono text-[11px] font-medium text-ink placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-key-blue"
         />
       </div>
 
       {/* Content */}
       {!user ? (
         <div className="flex flex-1 flex-col items-stretch justify-center gap-3 p-4">
-          <p className="text-center font-sans text-[13px] text-muted">
+          <p className="text-center font-mono text-[11px] text-chassis-light">
             Log in to view and save your patterns.
           </p>
-          <button
-            type="button"
-            onClick={onOpenAuth}
-            className="rounded-full bg-brand px-3 py-2 font-sans text-sm font-bold text-[#FBF7EF] shadow-sm hover:bg-brand-dark"
-          >
+          <button type="button" onClick={onOpenAuth} className="punch-key punch-key-blue w-full">
             Log in
           </button>
         </div>
@@ -197,7 +191,8 @@ export function PatternSidebar({
               {searchQuery ? "No patterns match." : "No patterns yet. Create one with New."}
             </p>
           ) : (
-            <ul className="flex flex-col" style={{ gap: 2 }}>
+            <>
+            <ul className="flex flex-col" style={{ gap: 6 }}>
               {filteredPatterns.map((p) => (
                 <li key={p.id} className="group relative">
                   {editingId === p.id ? (
@@ -205,8 +200,8 @@ export function PatternSidebar({
                       className="rounded-[10px]"
                       style={{
                         padding: "9px 12px",
-                        background: "rgba(168,70,111,0.10)",
-                        border: "1px solid rgba(168,70,111,0.30)",
+                        background: "rgba(91,126,201,0.12)",
+                        border: "1px solid rgba(91,126,201,0.35)",
                       }}
                     >
                       <input
@@ -219,24 +214,28 @@ export function PatternSidebar({
                           if (e.key === "Escape") cancelEdit();
                         }}
                         onBlur={commitEdit}
-                        className="w-full bg-transparent font-serif text-[15px] font-semibold text-text-strong outline-none"
+                        className="w-full bg-transparent font-mono text-[14px] font-bold text-ink outline-none"
                       />
                     </div>
                   ) : (
                     <div
-                      className={`flex items-center rounded-[10px] transition-colors ${
-                        confirmDeleteId === p.id ? "ring-1 ring-rose-300 bg-rose-50/60" : ""
+                      className={`hopper-card flex items-center transition-colors ${
+                        confirmDeleteId === p.id ? "ring-1 ring-red-300 bg-red-50/60" : ""
                       }`}
+                      data-active={selectedPatternId === p.id ? "true" : undefined}
                       style={{
-                        padding: "9px 12px",
+                        padding: "8px 10px",
                         background:
-                          confirmDeleteId !== p.id && selectedPatternId === p.id
-                            ? "rgba(168,70,111,0.10)"
+                          confirmDeleteId !== p.id
+                            ? selectedPatternId === p.id
+                              ? "rgba(91,126,201,0.14)"
+                              : "#F2EDD3"
                             : undefined,
                         border:
                           selectedPatternId === p.id && confirmDeleteId !== p.id
-                            ? "1px solid rgba(168,70,111,0.30)"
-                            : "1px solid transparent",
+                            ? "1.5px solid #5B7EC9"
+                            : "1.5px solid #D6CCA8",
+                        clipPath: "polygon(6px 0, 100% 0, 100% 100%, 0 100%, 0 6px)",
                       }}
                     >
                       <button
@@ -248,7 +247,7 @@ export function PatternSidebar({
                         }}
                         className="min-w-0 flex-1 text-left"
                       >
-                        <span className="block truncate font-serif text-[15px] font-semibold text-text-strong">
+                        <span className="block truncate font-mono text-[13px] font-bold text-ink">
                           {p.name}
                         </span>
                         <span
@@ -289,7 +288,7 @@ export function PatternSidebar({
                           type="button"
                           onClick={(e) => confirmDelete(e, p.id)}
                           title="Delete pattern"
-                          className="mr-1.5 shrink-0 rounded-md p-1.5 text-muted opacity-0 transition-opacity hover:bg-rose-50 hover:text-rose-500 group-hover:opacity-100"
+                          className="mr-1.5 shrink-0 rounded-md p-1.5 text-muted opacity-0 transition-opacity hover:bg-red-50 hover:text-red-600 group-hover:opacity-100"
                         >
                           <TrashIcon />
                         </button>
@@ -299,6 +298,7 @@ export function PatternSidebar({
                 </li>
               ))}
             </ul>
+            </>
           )}
         </div>
       )}
@@ -310,11 +310,11 @@ export function PatternSidebar({
           onClick={() => { if (!deleting) setConfirmDeleteId(null); }}
         >
           <div
-            className="mx-4 w-full max-w-sm rounded-2xl border border-rose-100 bg-white p-6 shadow-2xl"
+            className="mx-4 w-full max-w-sm rounded-2xl border border-red-100 bg-white p-6 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-1 flex items-center gap-2">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-600">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-600">
                 <TrashIcon />
               </span>
               <h2 className="text-sm font-semibold text-stone-900">Delete pattern?</h2>
@@ -338,7 +338,7 @@ export function PatternSidebar({
                 type="button"
                 onClick={() => void handleDelete()}
                 disabled={deleting}
-                className="flex-1 rounded-full bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-50"
+                className="flex-1 rounded-full bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
               >
                 {deleting ? "Deleting…" : "Delete permanently"}
               </button>

@@ -16,7 +16,7 @@ import {
   loadImageFromDataUrl,
   type PatternImageSettings,
 } from "@/lib/imageSettings";
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type MutableRefObject } from "react";
 
 export type ImageReferenceMode = "none" | "underlay" | "convert";
 
@@ -51,6 +51,10 @@ export type ImageToolsProps = {
   /** External draw tool override — passed through to GridCanvas. */
   toolOverride?: GridTool;
   onToolOverrideChange?: (tool: GridTool) => void;
+  /** Manila card stock fill for the grid. */
+  paperColor?: string;
+  hideFullscreenEntry?: boolean;
+  enterFullscreenRef?: MutableRefObject<(() => void) | null>;
 };
 
 const MAX_BEST_FIT_CELLS = 80;
@@ -380,6 +384,9 @@ export function ImageTools({
   sidePanelTarget,
   toolOverride,
   onToolOverrideChange,
+  paperColor = "#E8E2D0",
+  hideFullscreenEntry = false,
+  enterFullscreenRef,
 }: ImageToolsProps) {
   const fileInputId = useId();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -759,18 +766,31 @@ export function ImageTools({
   );
 
   const controlsPanel = !gridFullscreen ? (
-    <div className="relative z-30 flex shrink-0 flex-col gap-3 rounded-xl p-4" style={{ background: "#FBF7EF", border: "1px solid rgba(61,42,30,0.10)" }}>
+    <div
+      className="relative z-30 flex shrink-0 flex-col gap-3 overflow-y-auto p-0"
+      style={{
+        background: "#fff",
+        border: "1px solid #3A3E44",
+        boxShadow: "2px 3px 0 rgba(74,78,85,0.12)",
+      }}
+    >
+      <div className="flex items-center justify-between border-b border-[#D6DCE4] bg-[#2F5F9E] px-3 py-2">
+        <span className="font-mono text-[10px] font-bold tracking-[0.14em] text-white uppercase">
+          {sidePanelTarget ? "Import" : "Reference"}
+        </span>
+      </div>
+      <div className="flex flex-col gap-2 px-3 pb-3">
 
       {sidePanelTarget && (
         <div className="mb-1">
-          <div className="font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-muted mb-1">Reference image</div>
-          <div className="font-serif text-[20px] font-bold leading-none tracking-[-0.01em] text-text-strong">Import & convert</div>
+          <div className="font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-[#2F5F9E] mb-1">Reference image</div>
+          <div className="font-mono text-[14px] font-bold leading-none tracking-[-0.01em] text-ink">Import & convert</div>
         </div>
       )}
 
       {/* Upload row */}
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-semibold text-stone-700">Reference image</span>
+        <span className="font-mono text-[10px] font-bold uppercase text-[#4A4E55]">Reference image</span>
         <input
           ref={fileRef}
           id={fileInputId}
@@ -781,7 +801,7 @@ export function ImageTools({
         />
         <label
           htmlFor={fileInputId}
-          className="cursor-pointer rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-medium text-rose-800 hover:bg-rose-100"
+          className="cursor-pointer font-mono text-[11px] font-bold tracking-[0.08em] text-[#2F5F9E] uppercase underline decoration-[#2F5F9E]/40 underline-offset-2 hover:opacity-70"
         >
           Upload…
         </label>
@@ -789,7 +809,7 @@ export function ImageTools({
           <button
             type="button"
             onClick={clearImage}
-            className="text-xs font-medium text-stone-500 underline decoration-rose-200 hover:text-rose-700"
+            className="font-mono text-[11px] font-bold tracking-[0.06em] text-[#4A4E55] uppercase underline decoration-[#4A4E55]/30 hover:opacity-70"
           >
             Clear image
           </button>
@@ -806,7 +826,7 @@ export function ImageTools({
               type="button"
               onClick={() => setCropExpanded(true)}
               title="Expand crop preview"
-              className="rounded-full border border-gray-300 px-2 py-0.5 text-[11px] font-medium text-gray-700 hover:bg-pink-50"
+              className="rounded-full border border-gray-300 px-2 py-0.5 text-[11px] font-medium text-gray-700 hover:bg-brand/10"
             >
               ⤢
             </button>
@@ -814,7 +834,7 @@ export function ImageTools({
               type="button"
               onClick={applyCrop}
               disabled={positionLocked}
-              className="rounded-full bg-brand px-2.5 py-0.5 text-[11px] font-medium text-white shadow-sm transition-colors disabled:opacity-50 hover:bg-brand-dark"
+              className="punch-key punch-key-blue !min-h-0 !px-2 !py-0.5 text-[10px] disabled:opacity-50"
             >
               Apply Crop
             </button>
@@ -822,7 +842,7 @@ export function ImageTools({
               type="button"
               onClick={resetCrop}
               disabled={positionLocked}
-              className="rounded-full border border-gray-300 px-2.5 py-0.5 text-[11px] font-medium text-gray-700 transition-colors disabled:opacity-40 hover:bg-pink-50"
+              className="rounded-full border border-gray-300 px-2.5 py-0.5 text-[11px] font-medium text-gray-700 transition-colors disabled:opacity-40 hover:bg-brand/10"
             >
               Reset
             </button>
@@ -835,7 +855,7 @@ export function ImageTools({
               type="button"
               onClick={() => setPositionLocked((p) => !p)}
               title={positionLocked ? "Unlock position" : "Lock position — freeze crop and pan"}
-              className={`ml-auto rounded-md border border-gray-300 bg-white/80 p-1.5 transition-colors hover:bg-pink-50 ${
+              className={`ml-auto rounded-md border border-gray-300 bg-white/80 p-1.5 transition-colors hover:bg-brand/10 ${
                 positionLocked ? "text-brand" : "text-gray-400"
               }`}
             >
@@ -924,7 +944,7 @@ export function ImageTools({
                 type="button"
                 onClick={() => void handleTransform(type)}
                 disabled={positionLocked}
-                className="rounded-full border border-gray-300 bg-white px-2 py-0.5 text-[11px] font-medium text-gray-700 transition-colors hover:bg-pink-50 hover:text-gray-900 disabled:opacity-40"
+                className="rounded-full border border-gray-300 bg-white px-2 py-0.5 text-[11px] font-medium text-gray-700 transition-colors hover:bg-brand/10 hover:text-gray-900 disabled:opacity-40"
               >
                 {type === "flipH" ? "Flip H" : type === "flipV" ? "Flip V" : type === "rotateLeft" ? "↺ 90°" : "↻ 90°"}
               </button>
@@ -948,7 +968,7 @@ export function ImageTools({
             className={`rounded-full px-3 py-1 text-xs font-medium transition-colors duration-150 ${
               mode === m
                 ? "border-transparent bg-brand text-white shadow-sm"
-                : "border border-gray-300 bg-white text-gray-700 hover:bg-pink-50 hover:text-gray-900"
+                : "border border-gray-300 bg-white text-gray-700 hover:bg-brand/10 hover:text-gray-900"
             }`}
           >
             {label}
@@ -982,7 +1002,7 @@ export function ImageTools({
                     type="button"
                     onClick={() => setDarkIsFilled(true)}
                     className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors duration-150 ${
-                      darkIsFilled ? "bg-brand text-white shadow-sm" : "text-gray-700 hover:bg-pink-50"
+                      darkIsFilled ? "bg-brand text-white shadow-sm" : "text-gray-700 hover:bg-brand/10"
                     }`}
                   >
                     Dark fills
@@ -991,7 +1011,7 @@ export function ImageTools({
                     type="button"
                     onClick={() => setDarkIsFilled(false)}
                     className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors duration-150 ${
-                      !darkIsFilled ? "bg-brand text-white shadow-sm" : "text-gray-700 hover:bg-pink-50"
+                      !darkIsFilled ? "bg-brand text-white shadow-sm" : "text-gray-700 hover:bg-brand/10"
                     }`}
                   >
                     Light fills
@@ -1018,7 +1038,7 @@ export function ImageTools({
           <button
             type="button"
             onClick={applyConversion}
-            className="w-fit rounded-full bg-brand px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-brand-dark"
+            className="punch-key punch-key-blue w-fit text-[10px]"
           >
             Apply to grid
           </button>
@@ -1029,6 +1049,7 @@ export function ImageTools({
       ) : null}
 
       {status ? <p className="text-xs text-amber-800">{status}</p> : null}
+      </div>
     </div>
   ) : null;
 
@@ -1049,7 +1070,7 @@ export function ImageTools({
                   type="button"
                   onClick={applyCrop}
                   disabled={positionLocked}
-                  className="rounded-full bg-brand px-2.5 py-0.5 text-[11px] font-medium text-white shadow-sm hover:bg-brand-dark disabled:opacity-50"
+                  className="punch-key punch-key-blue !min-h-0 !px-2 !py-0.5 text-[10px] disabled:opacity-50"
                 >
                   Apply Crop
                 </button>
@@ -1057,7 +1078,7 @@ export function ImageTools({
                   type="button"
                   onClick={resetCrop}
                   disabled={positionLocked}
-                  className="rounded-full border border-gray-300 px-2.5 py-0.5 text-[11px] font-medium text-gray-700 hover:bg-pink-50 disabled:opacity-40"
+                  className="rounded-full border border-gray-300 px-2.5 py-0.5 text-[11px] font-medium text-gray-700 hover:bg-brand/10 disabled:opacity-40"
                 >
                   Reset
                 </button>
@@ -1103,6 +1124,9 @@ export function ImageTools({
           onStepRow={onStepRow}
           toolOverride={toolOverride}
           onToolOverrideChange={onToolOverrideChange}
+          paperColor={paperColor}
+          hideFullscreenEntry={hideFullscreenEntry}
+          enterFullscreenRef={enterFullscreenRef}
           className="min-h-0"
         />
       </div>

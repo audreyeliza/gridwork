@@ -130,14 +130,14 @@ export function TutorialWalkthrough() {
       />
 
       {/* Card */}
-      <div className="relative z-10 w-full max-w-sm rounded-2xl border border-rose-100 bg-white shadow-2xl">
+      <div className="relative z-10 w-full max-w-sm rounded-2xl border border-brand/15 bg-white shadow-2xl">
         {/* Progress bar */}
         <div className="flex gap-1 p-4 pb-0">
           {STEPS.map((_, i) => (
             <div
               key={i}
               className={`h-1 flex-1 rounded-full transition-colors duration-300 ${
-                i <= step ? "bg-rose-400" : "bg-stone-100"
+                i <= step ? "bg-key-blue" : "bg-stone-100"
               }`}
             />
           ))}
@@ -148,7 +148,7 @@ export function TutorialWalkthrough() {
           <div className="mb-4 flex items-start gap-4">
             <div className="shrink-0">{current.icon}</div>
             <div>
-              <p className="text-[11px] font-medium uppercase tracking-wider text-rose-400">
+              <p className="text-[11px] font-medium uppercase tracking-wider text-key-blue">
                 Step {step + 1} of {STEPS.length}
               </p>
               <h2 className="mt-0.5 text-lg font-semibold text-stone-800">{current.title}</h2>
@@ -179,7 +179,7 @@ export function TutorialWalkthrough() {
               <button
                 type="button"
                 onClick={next}
-                className="rounded-full bg-rose-500 px-5 py-2 text-sm font-medium text-white shadow-sm hover:bg-rose-600"
+                className="rounded-full bg-key-blue px-5 py-2 text-sm font-medium text-white shadow-sm hover:bg-key-blue-dark"
               >
                 {step < STEPS.length - 1 ? "Next" : "Get started"}
               </button>

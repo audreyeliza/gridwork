@@ -48,9 +48,8 @@ export async function compressImageToDataUrl(
   canvas.height = h;
   const ctx = canvas.getContext("2d");
   if (!ctx) return img.src;
-  // Fill white before drawing — JPEG has no transparency channel and will otherwise
-  // encode transparent pixels as black.
-  ctx.fillStyle = "#ffffff";
+  // Manila card stock — matches editor paper (JPEG has no alpha)
+  ctx.fillStyle = "#F2EDD3";
   ctx.fillRect(0, 0, w, h);
   ctx.drawImage(img, 0, 0, w, h);
   return canvas.toDataURL("image/jpeg", quality);
@@ -99,7 +98,10 @@ export function parseImageSettings(data: Json | undefined): PatternImageSettings
   };
 }
 
-export function serializeImageSettings(s: PatternImageSettings): Json {
+export function serializeImageSettings(
+  s: PatternImageSettings,
+  extra?: Record<string, unknown>,
+): Json {
   return {
     mode: s.mode,
     imageDataUrl: s.imageDataUrl,
@@ -112,5 +114,6 @@ export function serializeImageSettings(s: PatternImageSettings): Json {
     panY: s.panY,
     imageZoom: s.imageZoom,
     positionLocked: s.positionLocked,
+    ...extra,
   } as Json;
 }

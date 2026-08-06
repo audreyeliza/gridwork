@@ -54,7 +54,7 @@ export function PrintGridSvg({
             y={colPad + r * cellPx + 0.5}
             width={cellPx - 1}
             height={cellPx - 1}
-            fill={filled ? "#27272a" : "#ffffff"}
+            fill={filled ? "#2C2C2C" : "#F2EDD3"}
             stroke="#a3a3a3"
             strokeWidth={0.6}
           />

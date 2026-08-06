@@ -87,14 +87,17 @@ export function DisplayNameModal({
   const canSave = !localError && availability === "available" && name.trim() !== "" && !saving;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-sm rounded-2xl border border-brand/20 bg-white p-6 shadow-2xl">
-        <h2 className="font-serif text-lg font-bold text-stone-900">Set your display name</h2>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-recess/70 p-4">
+      <div
+        className="w-full max-w-sm border-2 border-chassis-dark bg-card p-6"
+        style={{ clipPath: "polygon(12px 0, 100% 0, 100% 100%, 0 100%, 0 12px)" }}
+      >
+        <h2 className="font-mono text-lg font-bold tracking-[0.04em] text-ink uppercase">Set your display name</h2>
 
         {message ? (
-          <p className="mt-1.5 text-sm text-brand">{message}</p>
+          <p className="mt-1.5 font-mono text-sm text-key-blue">{message}</p>
         ) : (
-          <p className="mt-1.5 text-sm text-stone-500">
+          <p className="mt-1.5 font-mono text-sm text-muted">
             This is how you appear on public patterns. You can change it later.
           </p>
         )}
@@ -110,21 +113,21 @@ export function DisplayNameModal({
             }}
             placeholder="your_username"
             maxLength={30}
-            className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-900 shadow-sm placeholder:text-stone-400 focus:border-brand/40 focus:outline-none focus:ring-1 focus:ring-brand/30"
+            className="w-full border border-chassis-dark bg-paper px-3 py-2.5 font-mono text-sm text-ink outline-none focus:ring-2 focus:ring-key-blue"
           />
 
-          <div className="mt-1.5 min-h-[18px] text-xs">
+          <div className="mt-1.5 min-h-[18px] font-mono text-xs">
             {localError && name !== "" && (
-              <span className="text-brand">{localError}</span>
+              <span className="text-key-blue">{localError}</span>
             )}
             {!localError && availability === "checking" && (
-              <span className="text-stone-400">Checking…</span>
+              <span className="text-muted">Checking…</span>
             )}
             {!localError && availability === "available" && (
-              <span className="text-teal-600">✓ available</span>
+              <span className="text-teal-700">✓ available</span>
             )}
             {!localError && availability === "taken" && (
-              <span className="text-brand">✗ taken</span>
+              <span className="text-key-blue">✗ taken</span>
             )}
           </div>
         </div>
@@ -134,14 +137,14 @@ export function DisplayNameModal({
             type="button"
             onClick={() => void handleSave()}
             disabled={!canSave}
-            className="w-full rounded-full bg-brand py-2.5 text-sm font-medium text-white shadow-sm hover:bg-brand-dark disabled:opacity-40"
+            className="punch-key punch-key-blue w-full min-h-[44px] disabled:opacity-40"
           >
             {saving ? "Saving…" : "Set name"}
           </button>
           <button
             type="button"
             onClick={onSkip}
-            className="text-center text-xs text-stone-400 hover:text-stone-600"
+            className="punch-key w-full"
           >
             Skip for now
           </button>

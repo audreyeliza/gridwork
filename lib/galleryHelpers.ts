@@ -1,4 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  parseManilaStockFromSettings,
+  type ManilaStockId,
+} from "@/lib/manilaStock";
 
 export type GalleryPattern = {
   id: string;
@@ -10,7 +14,27 @@ export type GalleryPattern = {
   likes_count: number;
   copies_count: number;
   updated_at: string;
+  manila_stock?: ManilaStockId;
 };
+
+const GALLERY_SELECT =
+  "id, user_id, name, grid_width, grid_height, thumbnail, likes_count, copies_count, updated_at, image_settings";
+
+function mapGalleryRow(row: Record<string, unknown>): GalleryPattern {
+  const stock = parseManilaStockFromSettings(row.image_settings);
+  return {
+    id: row.id as string,
+    user_id: row.user_id as string,
+    name: row.name as string,
+    grid_width: row.grid_width as number,
+    grid_height: row.grid_height as number,
+    thumbnail: (row.thumbnail as string | null) ?? null,
+    likes_count: (row.likes_count as number) ?? 0,
+    copies_count: (row.copies_count as number) ?? 0,
+    updated_at: row.updated_at as string,
+    manila_stock: stock,
+  };
+}
 
 export type GallerySortBy = "newest" | "popular";
 
@@ -29,10 +53,7 @@ export async function fetchGalleryPatterns(
 
   let query = supabase
     .from("patterns")
-    .select(
-      "id, user_id, name, grid_width, grid_height, thumbnail, likes_count, copies_count, updated_at",
-      { count: "exact" },
-    )
+    .select(GALLERY_SELECT, { count: "exact" })
     .eq("is_public", true);
 
   if (search.trim()) {
@@ -52,7 +73,7 @@ export async function fetchGalleryPatterns(
   const { data, error, count } = await query;
 
   return {
-    data: (data as GalleryPattern[] | null) ?? [],
+    data: ((data as Record<string, unknown>[] | null) ?? []).map(mapGalleryRow),
     total: count ?? 0,
     error: error as Error | null,
   };
@@ -145,15 +166,13 @@ export async function fetchUserLikedPatterns(
 
   const { data, error } = await supabase
     .from("patterns")
-    .select(
-      "id, user_id, name, grid_width, grid_height, thumbnail, likes_count, copies_count, updated_at",
-    )
+    .select(GALLERY_SELECT)
     .in("id", ids)
     .eq("is_public", true)
     .order("updated_at", { ascending: false });
 
   return {
-    data: (data as GalleryPattern[] | null) ?? [],
+    data: ((data as Record<string, unknown>[] | null) ?? []).map(mapGalleryRow),
     error: error as Error | null,
   };
 }
@@ -164,14 +183,12 @@ export async function fetchPublicPatternsByUserId(
 ): Promise<{ data: GalleryPattern[]; error: Error | null }> {
   const { data, error } = await supabase
     .from("patterns")
-    .select(
-      "id, user_id, name, grid_width, grid_height, thumbnail, likes_count, copies_count, updated_at",
-    )
+    .select(GALLERY_SELECT)
     .eq("is_public", true)
     .eq("user_id", userId)
     .order("updated_at", { ascending: false });
   return {
-    data: (data as GalleryPattern[] | null) ?? [],
+    data: ((data as Record<string, unknown>[] | null) ?? []).map(mapGalleryRow),
     error: error as Error | null,
   };
 }

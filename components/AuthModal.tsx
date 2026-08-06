@@ -10,7 +10,6 @@ export type AuthModalProps = {
   open: boolean;
   onClose: () => void;
   supabase: SupabaseClient | null;
-  /** False until client has finished resolving env + client (avoids false "not configured" before init). */
   supabaseReady?: boolean;
   initialMode?: AuthMode;
 };
@@ -84,7 +83,7 @@ export function AuthModal({
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <button
         type="button"
-        className="absolute inset-0 bg-stone-900/35"
+        className="absolute inset-0 bg-recess/70"
         aria-label="Close dialog"
         onClick={onClose}
       />
@@ -93,18 +92,22 @@ export function AuthModal({
         aria-modal="true"
         aria-labelledby={titleId}
         onPointerDown={(e) => e.stopPropagation()}
-        className="relative z-10 w-full max-w-md rounded-2xl border border-brand/20 bg-white p-6 shadow-xl"
+        className="punch-card relative z-10 w-full max-w-md px-7 py-6"
+        style={{ ["--manila-stock" as string]: "#E8E2D0" }}
       >
-        <h2 id={titleId} className="text-lg font-semibold text-stone-800">
+        <p className="font-mono text-[9px] font-bold tracking-[0.16em] text-[var(--print-ink-faint)] uppercase">
+          Operator card
+        </p>
+        <h2 id={titleId} className="mt-1 font-mono text-lg font-bold tracking-[0.04em] text-[var(--print-ink)] uppercase">
           {mode === "signin" ? "Log in" : "Sign up"}
         </h2>
-        <p className="mt-1 text-sm text-stone-600">
+        <p className="mt-1 font-mono text-[12px] text-[var(--print-ink-faint)]">
           {mode === "signin" ? "Welcome back." : "Create an account to save patterns."}
         </p>
 
-        <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
+        <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-5">
           <div>
-            <label htmlFor="auth-email" className="block text-sm font-medium text-stone-700">
+            <label htmlFor="auth-email" className="block font-mono text-[10px] font-bold tracking-[0.12em] text-[var(--print-ink)] uppercase">
               Email
             </label>
             <input
@@ -114,11 +117,11 @@ export function AuthModal({
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-brand/20 bg-white px-3 py-2 text-stone-900 outline-none ring-brand/30 focus:ring-2"
+              className="punch-print-field"
             />
           </div>
           <div>
-            <label htmlFor="auth-password" className="block text-sm font-medium text-stone-700">
+            <label htmlFor="auth-password" className="block font-mono text-[10px] font-bold tracking-[0.12em] text-[var(--print-ink)] uppercase">
               Password
             </label>
             <input
@@ -128,16 +131,16 @@ export function AuthModal({
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-brand/20 bg-white px-3 py-2 text-stone-900 outline-none ring-brand/30 focus:ring-2"
+              className="punch-print-field"
             />
           </div>
 
           {!supabaseReady ? (
-            <p className="text-sm text-stone-500">Connecting to services…</p>
+            <p className="font-mono text-sm text-[var(--print-ink-faint)]">Connecting to services…</p>
           ) : null}
 
           {error ? (
-            <p className="text-sm text-red-600" role="alert">
+            <p className="font-mono text-sm text-red-700" role="alert">
               {error}
             </p>
           ) : null}
@@ -145,60 +148,58 @@ export function AuthModal({
           <button
             type="submit"
             disabled={loading || !supabaseReady}
-            className="rounded-full bg-brand px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-brand-dark disabled:opacity-50"
+            className="punch-print justify-start text-[12px] tracking-[0.1em]"
           >
-            {loading ? "Please wait…" : mode === "signin" ? "Log in" : "Sign up"}
+            {loading ? "Please wait…" : mode === "signin" ? "Log in →" : "Sign up →"}
           </button>
 
           {mode === "signup" && (
-            <p className="text-center text-xs text-stone-400">
+            <p className="font-mono text-[11px] text-[var(--print-ink-faint)]">
               By signing up you agree to our{" "}
-              <Link href="/terms" className="underline hover:text-stone-600">Terms</Link>
+              <Link href="/terms" className="punch-print inline text-[11px]">Terms</Link>
               {" "}and{" "}
-              <Link href="/privacy" className="underline hover:text-stone-600">Privacy Policy</Link>
+              <Link href="/privacy" className="punch-print inline text-[11px]">Privacy Policy</Link>
             </p>
           )}
         </form>
 
-        <p className="mt-4 text-center text-sm text-stone-600">
-          {mode === "signin" ? (
-            <>
-              No account?{" "}
-              <button
-                type="button"
-                className="font-medium text-accent underline decoration-accent/30 hover:text-accent-dark"
-                onClick={() => {
-                  setMode("signup");
-                  setError(null);
-                }}
-              >
-                Sign up
-              </button>
-            </>
-          ) : (
-            <>
-              Already have an account?{" "}
-              <button
-                type="button"
-                className="font-medium text-accent underline decoration-accent/30 hover:text-accent-dark"
-                onClick={() => {
-                  setMode("signin");
-                  setError(null);
-                }}
-              >
-                Log in
-              </button>
-            </>
-          )}
-        </p>
+        <div className="mt-8 flex flex-col gap-4 border-t border-[color-mix(in_srgb,var(--print-ink)_18%,transparent)] pt-5">
+          <p className="m-0 font-mono text-[12px] text-[var(--print-ink-faint)]">
+            {mode === "signin" ? (
+              <>
+                No account?{" "}
+                <button
+                  type="button"
+                  className="punch-print inline text-[12px]"
+                  onClick={() => {
+                    setMode("signup");
+                    setError(null);
+                  }}
+                >
+                  Sign up
+                </button>
+              </>
+            ) : (
+              <>
+                Already have an account?{" "}
+                <button
+                  type="button"
+                  className="punch-print inline text-[12px]"
+                  onClick={() => {
+                    setMode("signin");
+                    setError(null);
+                  }}
+                >
+                  Log in
+                </button>
+              </>
+            )}
+          </p>
 
-        <button
-          type="button"
-          onClick={onClose}
-          className="mt-4 w-full rounded-full border border-stone-200 py-2 text-sm font-medium text-stone-600 hover:bg-stone-50"
-        >
-          Cancel
-        </button>
+          <button type="button" onClick={onClose} className="punch-print self-start text-[11px]">
+            Cancel
+          </button>
+        </div>
       </div>
     </div>
   );
