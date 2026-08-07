@@ -7,17 +7,17 @@ import {
   resolveNavLabel,
   useNavAuth,
 } from "@/components/NavAuthProvider";
-import type { MachineZone } from "@/components/machine/zones";
+import { pathForZone, type MachineZone } from "@/components/machine/zones";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 export type { MachineZone };
 
-const ZONE_LAMPS: { id: MachineZone; label: string; lamp: string; href: string }[] = [
-  { id: "primer", label: "Manual", lamp: "punch-lamp punch-lamp-blue", href: "/?zone=primer" },
-  { id: "hopper", label: "Hopper", lamp: "punch-lamp punch-lamp-red", href: "/?zone=hopper" },
-  { id: "reader", label: "Program", lamp: "punch-lamp punch-lamp-green", href: "/?zone=reader" },
+const ZONE_LAMPS: { id: MachineZone; label: string; lamp: string }[] = [
+  { id: "manual", label: "Manual", lamp: "punch-lamp punch-lamp-blue" },
+  { id: "hopper", label: "Hopper", lamp: "punch-lamp punch-lamp-red" },
+  { id: "program", label: "Program", lamp: "punch-lamp punch-lamp-green" },
 ];
 
 type Props = {
@@ -50,7 +50,7 @@ export function MachineKeyboardBar({
 
   const goZone = (id: MachineZone) => {
     if (onSelectZone) onSelectZone(id);
-    else router.push(ZONE_LAMPS.find((z) => z.id === id)?.href ?? "/");
+    else router.push(pathForZone(id));
   };
 
   return (
@@ -62,7 +62,7 @@ export function MachineKeyboardBar({
       >
         <div className="relative z-[2] flex items-stretch gap-2 px-2 py-3 sm:gap-3 sm:px-5 md:px-8">
           <Link
-            href="/?zone=primer"
+            href={pathForZone("manual")}
             className="hidden shrink-0 items-center gap-2 self-center font-mono text-[14px] font-bold tracking-[0.1em] text-white/90 uppercase no-underline sm:inline-flex"
           >
             <CrochetMark size={26} variant="onChassis" />
@@ -90,9 +90,9 @@ export function MachineKeyboardBar({
               {user ? (
                 <button
                   type="button"
-                  onClick={() => goZone("maker")}
+                  onClick={() => goZone("profile")}
                   className={`punch-lamp punch-lamp-amber flex w-full !min-h-[56px] items-center justify-center gap-2 !px-2 text-[11px] sm:!min-h-[60px] sm:text-[12px] ${
-                    activeZone === "maker" ? "is-lit" : "is-dim"
+                    activeZone === "profile" ? "is-lit" : "is-dim"
                   }`}
                 >
                   <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full bg-black/30 text-[10px] font-bold text-white">

@@ -924,17 +924,6 @@ export function EditorWorkspace({
                       : "Autosave on"}
               </span>
             )}
-            {!user && (
-              <button
-                id="tutorial-login"
-                type="button"
-                onClick={() => setAuthModalOpen(true)}
-                className="font-mono text-[9px] uppercase underline underline-offset-2 transition-opacity hover:opacity-70"
-                style={{ color: "#0A0A0A" }}
-              >
-                Sign in to save
-              </button>
-            )}
           </div>
 
           <div className="flex min-w-0 flex-wrap items-end justify-between gap-4">

@@ -58,7 +58,7 @@ export function LegalManualPage({ title, updated, sections, otherHref, otherLabe
 
           <div className="flex items-center justify-between gap-4 border-t border-[#D6DCE4] bg-white px-5 py-4 md:px-6">
             <Link
-              href="/?zone=primer"
+              href="/"
               className="font-mono text-[12px] font-bold tracking-[0.12em] text-[#2F5F9E] uppercase no-underline hover:opacity-70"
             >
               ← Manual

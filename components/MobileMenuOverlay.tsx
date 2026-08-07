@@ -10,10 +10,10 @@ export type MobileMenuPage = "home" | "learn" | "gallery" | "editor" | "profile"
 type NavItem = { label: string; href: string; page: MobileMenuPage; requiresAuth?: boolean };
 
 const NAV_ITEMS: NavItem[] = [
-  { label: "Hopper", href: "/?zone=hopper", page: "gallery" },
-  { label: "Manual", href: "/?zone=primer", page: "home" },
-  { label: "Program", href: "/?zone=reader", page: "editor" },
-  { label: "Maker", href: "/?zone=maker", page: "profile", requiresAuth: true },
+  { label: "Hopper", href: "/hopper", page: "gallery" },
+  { label: "Manual", href: "/", page: "home" },
+  { label: "Program", href: "/program", page: "editor" },
+  { label: "Maker", href: "/profile", page: "profile", requiresAuth: true },
 ];
 
 type Props = {

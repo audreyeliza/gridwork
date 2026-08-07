@@ -329,10 +329,11 @@ export function HopperZone({
     const next = searchInput.trim();
     setActiveSearch(next);
     const params = new URLSearchParams(searchParams.toString());
-    params.set("zone", "hopper");
+    params.delete("zone");
     if (next) params.set("q", next);
     else params.delete("q");
-    router.replace(`/?${params.toString()}`, { scroll: false });
+    const qs = params.toString();
+    router.replace(qs ? `/hopper?${qs}` : "/hopper", { scroll: false });
   };
 
   return (

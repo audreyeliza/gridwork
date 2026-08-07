@@ -1369,7 +1369,7 @@ export function ImageTools({
                 onClick={applyConversion}
                 className="mt-1 font-mono text-[10px] font-bold tracking-[0.08em] uppercase punch-print-ink hover:underline hover:underline-offset-2 hover:opacity-70"
               >
-                Apply to grid
+                Apply
               </button>
             </div>
           ) : null}

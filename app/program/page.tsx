@@ -2,6 +2,6 @@
 
 import { MachineShellPage } from "@/components/machine/MachineShellPage";
 
-export default function Home() {
+export default function ProgramPage() {
   return <MachineShellPage />;
 }

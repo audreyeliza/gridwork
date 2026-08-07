@@ -7,8 +7,8 @@ import Link from "next/link";
 
 const NAV: { href: string; label: string; page: MobileMenuPage }[] = [
   { href: "/", label: "Home", page: "home" },
-  { href: "/gallery", label: "Gallery", page: "gallery" },
-  { href: "/editor", label: "Editor", page: "editor" },
+  { href: "/hopper", label: "Gallery", page: "gallery" },
+  { href: "/program", label: "Editor", page: "editor" },
 ];
 
 type Props = {

@@ -7,7 +7,13 @@ import { HopperZone } from "@/components/machine/HopperZone";
 import { MachineKeyboardBar } from "@/components/machine/MachineKeyboardBar";
 import { MakerZone } from "@/components/machine/MakerZone";
 import { PrimerZone } from "@/components/machine/PrimerZone";
-import type { MachineZone } from "@/components/machine/zones";
+import {
+  buildZoneHref,
+  parseZoneQuery,
+  pathForZone,
+  zoneFromPathname,
+  type MachineZone,
+} from "@/components/machine/zones";
 import { ManilaThumbnail } from "@/components/ManilaThumbnail";
 import { CopyGlyph, HeartGlyph } from "@/components/PatternGalleryCard";
 import {
@@ -20,7 +26,7 @@ import { manilaHex } from "@/lib/manilaStock";
 import { createUntitledPattern } from "@/lib/patternHelpers";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 export type { MachineZone };
@@ -50,15 +56,11 @@ type SyncTick = {
   liked: boolean;
 };
 
-function parseZone(raw: string | null): MachineZone {
-  if (raw === "reader" || raw === "primer" || raw === "maker" || raw === "hopper") return raw;
-  return "primer";
-}
-
 export function MachineShell() {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
-  const zone = parseZone(searchParams.get("zone"));
+  const zone = zoneFromPathname(pathname);
   const patternId = searchParams.get("pattern");
 
   const { supabase, user } = useNavAuth();
@@ -70,6 +72,17 @@ export function MachineShell() {
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
   const [syncTick, setSyncTick] = useState<SyncTick | null>(null);
   const [syncSeq, setSyncSeq] = useState(0);
+
+  // Legacy bookmarks: /?zone=maker|primer|reader → /profile|/|/program.
+  useEffect(() => {
+    const legacy = parseZoneQuery(searchParams.get("zone"));
+    if (!legacy) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("zone");
+    const qs = params.toString();
+    const href = qs ? `${pathForZone(legacy)}?${qs}` : pathForZone(legacy);
+    router.replace(href, { scroll: false });
+  }, [router, searchParams]);
 
   useEffect(() => {
     if (!supabase || !user) {
@@ -88,33 +101,47 @@ export function MachineShell() {
   const setZone = useCallback(
     (next: MachineZone) => {
       setPreview(null);
-      const params = new URLSearchParams();
-      params.set("zone", next);
-      if (patternId) params.set("pattern", patternId);
-      router.replace(`/?${params.toString()}`, { scroll: false });
+      router.replace(buildZoneHref(next, { preserve: searchParams }), { scroll: false });
     },
-    [router, patternId],
+    [router, searchParams],
   );
 
   const openProgram = useCallback(
     (id: string | null, opts?: { tutorial?: boolean }) => {
       setPreview(null);
-      const params = new URLSearchParams();
-      params.set("zone", "reader");
-      if (id) params.set("pattern", id);
-      if (opts?.tutorial) params.set("tutorial", "1");
-      router.replace(`/?${params.toString()}`, { scroll: false });
+      router.replace(
+        buildZoneHref("program", {
+          pattern: id,
+          tutorial: opts?.tutorial === true,
+          // Keep hopper search when opening a program from elsewhere.
+          q: searchParams.get("q"),
+        }),
+        { scroll: false },
+      );
     },
-    [router],
+    [router, searchParams],
+  );
+
+  /** Update ?pattern on the current path without forcing Program (avoids nav races). */
+  const syncPatternInUrl = useCallback(
+    (id: string | null) => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("zone");
+      if (id) params.set("pattern", id);
+      else params.delete("pattern");
+      const qs = params.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [router, pathname, searchParams],
   );
 
   const handlePatternIdChange = useCallback(
     (id: string | null) => {
       if (id === patternId) return;
       if (!id && !patternId) return;
-      openProgram(id);
+      syncPatternInUrl(id);
     },
-    [patternId, openProgram],
+    [patternId, syncPatternInUrl],
   );
 
   const handleNewProgram = useCallback(async () => {
@@ -144,10 +171,14 @@ export function MachineShell() {
 
   const clearTutorialParam = useCallback(() => {
     if (searchParams.get("tutorial") !== "1") return;
-    const params = new URLSearchParams();
-    params.set("zone", "reader");
-    if (patternId) params.set("pattern", patternId);
-    router.replace(`/?${params.toString()}`, { scroll: false });
+    router.replace(
+      buildZoneHref("program", {
+        pattern: patternId,
+        tutorial: false,
+        q: searchParams.get("q"),
+      }),
+      { scroll: false },
+    );
   }, [router, searchParams, patternId]);
 
   const handlePreview = useCallback((state: PreviewState) => {
@@ -277,8 +308,8 @@ export function MachineShell() {
     }
   }, [preview, user, likedIds, pushSync, openProgram]);
 
-  const expanded = zone === "reader";
-  const showReaderAside = zone === "hopper" || zone === "maker";
+  const expanded = zone === "program";
+  const showReaderAside = zone === "hopper" || zone === "profile";
   const previewLiked = preview ? likedIds.has(preview.pattern.id) : false;
 
   const previewPaper = useMemo(
@@ -308,7 +339,7 @@ export function MachineShell() {
                 forceTutorial={searchParams.get("tutorial") === "1"}
                 onTutorialConsumed={clearTutorialParam}
                 onPatternIdChange={handlePatternIdChange}
-                onRequestMaker={() => setZone("maker")}
+                onRequestMaker={() => setZone("profile")}
                 onRequestHopper={() => setZone("hopper")}
                 onRequestAuth={() => setAuthOpen(true)}
               />
@@ -324,7 +355,7 @@ export function MachineShell() {
               className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
               style={{
                 background:
-                  zone === "primer"
+                  zone === "manual"
                     ? "#EDE8D5"
                     : "linear-gradient(180deg, rgba(255,255,255,0.08) 0%, transparent 45%, rgba(0,0,0,0.12) 100%), var(--console-desk)",
                 flex: showReaderAside ? "1 1 56%" : "1 1 100%",
@@ -342,8 +373,8 @@ export function MachineShell() {
                     onProgramCard={openProgram}
                   />
                 )}
-                {zone === "primer" && <PrimerZone onStartTutorial={startTutorialFromManual} />}
-                {zone === "maker" && (
+                {zone === "manual" && <PrimerZone onStartTutorial={startTutorialFromManual} />}
+                {zone === "profile" && (
                   <MakerZone
                     previewId={preview?.pattern.id ?? null}
                     onPreviewCard={(pattern, makerLabel, isOwn) =>
@@ -399,7 +430,7 @@ export function MachineShell() {
                               <p className="mt-0.5 font-mono text-[10px] font-bold tracking-[0.06em] uppercase punch-print-faint">
                                 {preview.pattern.grid_width}×{preview.pattern.grid_height}
                               </p>
-                              {zone === "maker" ? (
+                              {zone === "profile" ? (
                                 <div className="mt-1 flex items-center justify-between gap-2">
                                   <p className="truncate punch-print-label">
                                     {preview.isOwn
@@ -491,8 +522,8 @@ export function MachineShell() {
       <MachineKeyboardBar
         activeZone={zone}
         onSelectZone={(id) => {
-          if (id === "reader") {
-            if (zone === "reader") return;
+          if (id === "program") {
+            if (zone === "program") return;
             openProgram(patternId);
           } else {
             setZone(id);
