@@ -3,7 +3,6 @@
 import { AuthModal } from "@/components/AuthModal";
 import { CardReaderPreview } from "@/components/CardReaderPreview";
 import { PatternGalleryCard } from "@/components/PatternGalleryCard";
-import { FlipSwitch } from "@/components/machine/FlipSwitch";
 import { RotaryKnob } from "@/components/machine/RotaryKnob";
 import {
   copyPublicPattern,
@@ -19,6 +18,7 @@ import { fetchProfilesByUserIds } from "@/lib/profileHelpers";
 import { getSupabaseBrowserClient, resetSupabaseBrowserClient } from "@/lib/supabase";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 type SupabaseInit = {
@@ -38,6 +38,30 @@ function initSupabaseClient(): SupabaseInit {
 }
 
 const PAGE_SIZE = 24;
+
+const USER_LAMP_COLORS = [
+  "punch-lamp-red",
+  "punch-lamp-orange",
+  "punch-lamp-amber",
+  "punch-lamp-green",
+  "punch-lamp-blue",
+  "punch-lamp-violet",
+] as const;
+
+type UserSearchResultWithLamp = UserSearchResult & {
+  lampClass: (typeof USER_LAMP_COLORS)[number];
+};
+
+function randomUserLampClass(): (typeof USER_LAMP_COLORS)[number] {
+  return USER_LAMP_COLORS[Math.floor(Math.random() * USER_LAMP_COLORS.length)]!;
+}
+
+function makerProfileHref(displayName: string, q: string): string {
+  const params = new URLSearchParams({ ref: "gallery" });
+  const trimmed = q.trim();
+  if (trimmed) params.set("q", trimmed);
+  return `/u/${encodeURIComponent(displayName)}?${params.toString()}`;
+}
 
 export type HopperZoneProps = {
   onProgramCard?: (patternId: string | null) => void;
@@ -61,6 +85,9 @@ export function HopperZone({
   compact = false,
   syncTick = null,
 }: HopperZoneProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const urlQ = searchParams.get("q")?.trim() ?? "";
 
   const [supabaseInit, setSupabaseInit] = useState<SupabaseInit>(() => ({
     supabase: null,
@@ -117,13 +144,19 @@ export function HopperZone({
   const [page, setPage] = useState(0);
   const [sortBy, setSortBy] = useState<GallerySortBy>("newest");
   const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
-  const [searchInput, setSearchInput] = useState("");
-  const [activeSearch, setActiveSearch] = useState("");
+  const [searchInput, setSearchInput] = useState(urlQ);
+  const [activeSearch, setActiveSearch] = useState(urlQ);
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
   const [copying, setCopying] = useState<string | null>(null);
   const [modalPreviewId, setModalPreviewId] = useState<string | null>(null);
   const [displayNames, setDisplayNames] = useState<Map<string, string>>(new Map());
-  const [userResults, setUserResults] = useState<UserSearchResult[]>([]);
+  const [userResults, setUserResults] = useState<UserSearchResultWithLamp[]>([]);
+
+  useEffect(() => {
+    const q = searchParams.get("q")?.trim() ?? "";
+    setSearchInput(q);
+    setActiveSearch(q);
+  }, [searchParams]);
 
   const hasMore = patterns.length < total;
   const previewPattern = modalPreviewId ? (patterns.find((p) => p.id === modalPreviewId) ?? null) : null;
@@ -179,7 +212,11 @@ export function HopperZone({
 
     const userFetch = activeSearch.trim()
       ? searchUsers(supabase, activeSearch).then((results) => {
-          if (!cancelled) setUserResults(results);
+          if (!cancelled) {
+            setUserResults(
+              results.map((u) => ({ ...u, lampClass: randomUserLampClass() })),
+            );
+          }
         })
       : Promise.resolve();
 
@@ -289,12 +326,13 @@ export function HopperZone({
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setActiveSearch(searchInput);
-  };
-
-  const handleClearSearch = () => {
-    setSearchInput("");
-    setActiveSearch("");
+    const next = searchInput.trim();
+    setActiveSearch(next);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("zone", "hopper");
+    if (next) params.set("q", next);
+    else params.delete("q");
+    router.replace(`/?${params.toString()}`, { scroll: false });
   };
 
   return (
@@ -307,64 +345,64 @@ export function HopperZone({
 
         <div className="punch-console flex min-h-0 flex-1 flex-col !rounded-none !border-0 !shadow-none">
 
-          <div className="punch-console-face !items-center !gap-4">
-            <form
-              onSubmit={handleSearchSubmit}
-              className="punch-console-slot min-w-0 flex-1"
-            >
-              <input
-                type="text"
-                placeholder="Search patterns…"
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                className="min-w-0 flex-1 bg-transparent py-1.5 font-mono text-[12px] font-medium text-card placeholder:text-chassis-light focus:outline-none"
-              />
-              <FlipSwitch
-                label={activeSearch ? "Clear" : "Search"}
-                on={Boolean(activeSearch)}
-                onClick={() => {
-                  if (activeSearch) handleClearSearch();
-                  else {
-                    setActiveSearch(searchInput);
-                  }
-                }}
-                title={activeSearch ? "Clear search" : "Run search"}
-              />
-            </form>
+          <div className="punch-console-face !flex-col !items-stretch !justify-between !gap-2">
+            <span className="font-mono text-[10px] font-bold tracking-[0.16em] uppercase" style={{ color: "#0A0A0A" }}>
+              Hopper
+            </span>
+            <div className="flex min-w-0 flex-wrap items-center gap-8">
+              <form
+                onSubmit={handleSearchSubmit}
+                className="punch-console-slot min-w-0 flex-1"
+              >
+                <input
+                  type="text"
+                  placeholder="Search patterns…"
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  className="min-w-0 flex-1 bg-transparent py-2 font-mono text-[12px] font-medium text-chassis-light placeholder:text-chassis-light focus:outline-none"
+                />
+              </form>
 
-            <div className="flex shrink-0 items-center gap-4">
-              <RotaryKnob
-                label="Mode"
-                value={sortBy}
-                options={[
-                  { value: "newest" as const, label: "Newest" },
-                  { value: "popular" as const, label: "Popular" },
-                ]}
-                onChange={setSortBy}
-                accent="#1A1A1A"
-              />
-              <RotaryKnob
-                label="Order"
-                value={sortDir}
-                options={[
-                  { value: "desc" as const, label: "Desc" },
-                  { value: "asc" as const, label: "Asc" },
-                ]}
-                onChange={setSortDir}
-                accent="#1A1A1A"
-              />
+              <div className="flex shrink-0 items-center gap-5">
+                <RotaryKnob
+                  label="Mode"
+                  value={sortBy}
+                  options={[
+                    { value: "newest" as const, label: "Newest" },
+                    { value: "popular" as const, label: "Popular" },
+                  ]}
+                  onChange={setSortBy}
+                  accent="#0A0A0A"
+                  pointer="#FFFFFF"
+                  dial="var(--key-blue)"
+                />
+                <RotaryKnob
+                  label="Order"
+                  value={sortDir}
+                  options={[
+                    { value: "desc" as const, label: "Desc" },
+                    { value: "asc" as const, label: "Asc" },
+                  ]}
+                  onChange={setSortDir}
+                  accent="#0A0A0A"
+                  pointer="#FFFFFF"
+                  dial="var(--key-blue)"
+                />
+              </div>
             </div>
           </div>
 
           {activeSearch && userResults.length > 0 && (
-            <div className="relative z-[2] border-b border-recess px-4 py-3" style={{ background: "var(--console-face)" }}>
-              <p className="mb-2 font-mono text-[10px] font-bold tracking-[0.14em] text-chassis-light uppercase">Users</p>
-              <div className="flex flex-wrap gap-2">
+            <div className="relative z-[2] px-3 py-3">
+              <p className="mb-2 pl-2 font-mono text-[10px] font-medium tracking-[0.08em] uppercase" style={{ color: "#0A0A0A" }}>
+                {userResults.length} user{userResults.length === 1 ? "" : "s"}
+              </p>
+              <div className="flex flex-wrap gap-2 pl-2">
                 {userResults.map((u) => (
                   <Link
                     key={u.display_name}
-                    href={`/u/${u.display_name}?ref=gallery`}
-                    className="punch-lamp punch-lamp-blue !min-h-[36px] !px-3 no-underline"
+                    href={makerProfileHref(u.display_name, activeSearch)}
+                    className={`punch-lamp ${u.lampClass} !min-h-[36px] !px-3 no-underline`}
                     title={`${u.public_pattern_count} public pattern${u.public_pattern_count === 1 ? "" : "s"}`}
                   >
                     <span className="font-mono text-[11px] font-bold tracking-[0.06em] uppercase">
@@ -381,7 +419,7 @@ export function HopperZone({
 
           <div className="punch-console-bay">
             {!loading && (
-              <p className="relative z-[2] mb-3 pl-2 font-mono text-[10px] font-medium tracking-[0.08em] text-chassis-light uppercase">
+              <p className="relative z-[2] mb-3 pl-2 font-mono text-[10px] font-medium tracking-[0.08em] uppercase" style={{ color: "#0A0A0A" }}>
                 {total === 0
                   ? activeSearch
                     ? `No patterns found for "${activeSearch}".`
@@ -396,36 +434,42 @@ export function HopperZone({
               </div>
             ) : (
               <>
-                <div className="hopper-bay pl-6">
-                  <div className="relative z-[2] grid grid-cols-2 gap-x-3 gap-y-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-                    {displayPatterns.map((p) => (
-                      <PatternGalleryCard
-                        key={p.id}
-                        pattern={p}
-                        isLiked={likedIds.has(p.id)}
-                        isOwn={user?.id === p.user_id}
-                        onLike={() => void handleLike(p.id)}
-                        onCopy={() => void handleCopy(p.id)}
-                        onPreview={() => {
-                          const maker = displayNames.get(p.user_id);
-                          const makerLabel = maker
-                            ? `@${maker}`
-                            : `@${p.user_id.slice(0, 6).toLowerCase()}`;
-                          if (onPreviewCard) {
-                            onPreviewCard(p, makerLabel, user?.id === p.user_id);
-                            return;
+                {displayPatterns.length > 0 && (
+                  <div className="hopper-bay pl-6">
+                    <div className="relative z-[2] grid grid-cols-2 gap-x-3 gap-y-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+                      {displayPatterns.map((p) => (
+                        <PatternGalleryCard
+                          key={p.id}
+                          pattern={p}
+                          isLiked={likedIds.has(p.id)}
+                          isOwn={user?.id === p.user_id}
+                          onLike={() => void handleLike(p.id)}
+                          onCopy={() => void handleCopy(p.id)}
+                          onPreview={() => {
+                            const maker = displayNames.get(p.user_id);
+                            const makerLabel = maker
+                              ? `@${maker}`
+                              : `@${p.user_id.slice(0, 6).toLowerCase()}`;
+                            if (onPreviewCard) {
+                              onPreviewCard(p, makerLabel, user?.id === p.user_id);
+                              return;
+                            }
+                            setModalPreviewId(p.id);
+                          }}
+                          copying={copying === p.id}
+                          canInteract={Boolean(user)}
+                          makerDisplayName={displayNames.get(p.user_id) ?? null}
+                          makerHref={
+                            displayNames.get(p.user_id)
+                              ? makerProfileHref(displayNames.get(p.user_id)!, activeSearch)
+                              : undefined
                           }
-                          setModalPreviewId(p.id);
-                        }}
-                        copying={copying === p.id}
-                        canInteract={Boolean(user)}
-                        makerDisplayName={displayNames.get(p.user_id) ?? null}
-                        makerHref={displayNames.get(p.user_id) ? `/u/${displayNames.get(p.user_id)}?ref=gallery` : undefined}
-                        active={previewId === p.id}
-                      />
-                    ))}
+                          active={previewId === p.id}
+                        />
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {hasMore && (
                   <div className="relative z-[2] mt-4 flex justify-center">

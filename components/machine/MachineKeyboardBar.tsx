@@ -56,6 +56,7 @@ export function MachineKeyboardBar({
   return (
     <>
       <nav
+        data-machine-keyboard
         className="relative z-40 shrink-0 border-t-2 border-black"
         style={{ background: "#0A0A0A" }}
       >

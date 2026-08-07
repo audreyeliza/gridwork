@@ -1,5 +1,6 @@
 "use client";
 
+import { CopyGlyph, HeartGlyph } from "@/components/PatternGalleryCard";
 import { ManilaThumbnail } from "@/components/ManilaThumbnail";
 import { manilaHex, type ManilaStockId } from "@/lib/manilaStock";
 
@@ -8,8 +9,10 @@ type Props = {
   thumbnail?: string | null;
   gridWidth?: number;
   gridHeight?: number;
-  /** Optional status line under the name (e.g. "Public · 40×40"). */
-  meta?: string | null;
+  /** Left status line (e.g. "Private · Edited 8/7/26"). */
+  statusLabel?: string | null;
+  likesCount?: number;
+  copiesCount?: number;
   manilaStock?: ManilaStockId | null;
   active?: boolean;
   onClick: () => void;
@@ -21,15 +24,17 @@ export function MakerHopperCard({
   thumbnail,
   gridWidth,
   gridHeight,
-  meta,
+  statusLabel = null,
+  likesCount,
+  copiesCount,
   manilaStock = "manila",
   active = false,
   onClick,
 }: Props) {
   const paper = manilaHex(manilaStock ?? "manila");
-  const fallbackMeta =
+  const sizeLine =
     gridWidth != null && gridHeight != null ? `${gridWidth}×${gridHeight}` : null;
-  const line = meta ?? fallbackMeta;
+  const showStats = typeof likesCount === "number" || typeof copiesCount === "number";
 
   return (
     <button
@@ -52,17 +57,38 @@ export function MakerHopperCard({
           </div>
         )}
       </div>
-      <div
-        className="border-t px-2 py-1.5"
-        style={{
-          borderColor: "color-mix(in srgb, var(--manila-stock) 92%, #8B3A2A 8%)",
-          background: paper,
-        }}
-      >
-        <p className="truncate font-mono text-[11px] font-bold uppercase punch-print-ink">{name}</p>
-        {line ? (
-          <p className="font-mono text-[9px] uppercase punch-print-faint">{line}</p>
+      <div className="px-2.5 py-2" style={{ background: paper }}>
+        <p className="truncate font-mono text-[12px] font-bold tracking-[0.06em] uppercase punch-print-ink">
+          {name}
+        </p>
+        {sizeLine ? (
+          <p className="mt-0.5 font-mono text-[10px] font-bold tracking-[0.06em] uppercase punch-print-faint">
+            {sizeLine}
+          </p>
         ) : null}
+        {(statusLabel || showStats) && (
+          <div className="mt-1.5 flex items-center justify-between gap-2">
+            {statusLabel ? (
+              <span className="truncate punch-print-label">
+                {statusLabel}
+              </span>
+            ) : (
+              <span />
+            )}
+            {showStats ? (
+              <div className="flex shrink-0 items-center gap-2 punch-print-faint">
+                <span className="inline-flex items-center gap-0.5 font-mono text-[10px] font-bold">
+                  <HeartGlyph filled={false} />
+                  {likesCount ?? 0}
+                </span>
+                <span className="inline-flex items-center gap-0.5 font-mono text-[10px] font-bold">
+                  <CopyGlyph />
+                  {copiesCount ?? 0}
+                </span>
+              </div>
+            ) : null}
+          </div>
+        )}
       </div>
     </button>
   );

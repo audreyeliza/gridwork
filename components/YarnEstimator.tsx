@@ -7,8 +7,8 @@ import {
   type YarnWeightCategory,
   YARN_WEIGHT_CATEGORIES,
 } from "@/lib/yarnEstimator";
-import type { PatternYarnSettings } from "@/lib/yarnSettings";
-import { useEffect, useId, useMemo, useState } from "react";
+import type { PatternYarnSettings, YarnUnits } from "@/lib/yarnSettings";
+import { useId, useMemo } from "react";
 
 const WEIGHT_LABELS: Record<YarnWeightCategory, string> = {
   lace: "Lace",
@@ -66,134 +66,121 @@ export function YarnEstimator({
   className,
 }: YarnEstimatorProps) {
   const idPrefix = useId();
-  const [units, setUnits] = useState<"imperial" | "metric">("metric");
+  const units: YarnUnits = value.units === "imperial" ? "imperial" : "metric";
 
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem("gridwork:yarnUnit");
-      if (saved === "imperial" || saved === "metric") setUnits(saved);
-    } catch {}
-  }, []);
-
-  useEffect(() => {
-    try { localStorage.setItem("gridwork:yarnUnit", units); } catch {}
-  }, [units]);
+  /** Squares per 10cm — shared basis for Size display and Amount estimate. */
+  const gaugeSqPer10cm = useMemo(() => {
+    const custom = value.customGaugeStitchesPerInch ?? 0;
+    if (custom > 0) return custom;
+    const range = FILET_GAUGE[value.weight];
+    const mm = parseHookMillimeters(value.hookSize);
+    if (mm != null && mm >= range.hookMinMm && mm <= range.hookMaxMm) {
+      const t = (mm - range.hookMinMm) / (range.hookMaxMm - range.hookMinMm);
+      return parseFloat((range.maxSq + t * (range.minSq - range.maxSq)).toFixed(1));
+    }
+    return range.defaultSq;
+  }, [value.customGaugeStitchesPerInch, value.weight, value.hookSize]);
 
   const result: YarnEstimateResult = useMemo(
     () =>
       estimateYarnUsage({
         weight: value.weight,
         hookSize: value.hookSize,
-        customGaugeStitchesPerInch: value.customGaugeStitchesPerInch,
+        // Same gauge as Size (sq/10cm numeric scale used by the estimator).
+        customGaugeStitchesPerInch: gaugeSqPer10cm,
         gridWidth,
         gridHeight,
         filledCellCount,
         emptyCellCount,
       }),
-    [value.weight, value.hookSize, value.customGaugeStitchesPerInch, gridWidth, gridHeight, filledCellCount, emptyCellCount],
+    [value.weight, value.hookSize, gaugeSqPer10cm, gridWidth, gridHeight, filledCellCount, emptyCellCount],
   );
 
-  const isCustomGauge = (value.customGaugeStitchesPerInch ?? 0) > 0;
-  const { gaugeSquaresPer10cm, widthCm, heightCm, widthIn, heightIn } = useMemo(() => {
-    const custom = value.customGaugeStitchesPerInch ?? 0;
-    let sq: number;
-    if (custom > 0) {
-      sq = custom;
-    } else {
-      const range = FILET_GAUGE[value.weight];
-      const mm = parseHookMillimeters(value.hookSize);
-      if (mm != null && mm >= range.hookMinMm && mm <= range.hookMaxMm) {
-        const t = (mm - range.hookMinMm) / (range.hookMaxMm - range.hookMinMm);
-        sq = parseFloat((range.maxSq + t * (range.minSq - range.maxSq)).toFixed(1));
-      } else {
-        sq = range.defaultSq;
-      }
-    }
-    const wCm = parseFloat((gridWidth * 10 / sq).toFixed(1));
-    const hCm = parseFloat((gridHeight * 10 / sq).toFixed(1));
-    return {
-      gaugeSquaresPer10cm: sq,
-      widthCm: wCm,
-      heightCm: hCm,
-      widthIn: parseFloat((wCm * 0.3937).toFixed(1)),
-      heightIn: parseFloat((hCm * 0.3937).toFixed(1)),
-    };
-  }, [value.customGaugeStitchesPerInch, value.weight, value.hookSize, gridWidth, gridHeight]);
-
-  const skeinGrams = value.weight === "lace" ? 50 : value.weight === "fingering" ? 100 : value.weight === "super_bulky" ? 200 : 100;
-  const skeins = Math.ceil(result.grams / skeinGrams);
+  const { widthCm, heightCm } = useMemo(
+    () => ({
+      widthCm: parseFloat(((gridWidth * 10) / gaugeSqPer10cm).toFixed(1)),
+      heightCm: parseFloat(((gridHeight * 10) / gaugeSqPer10cm).toFixed(1)),
+    }),
+    [gaugeSqPer10cm, gridWidth, gridHeight],
+  );
 
   return (
-    <section
-      className={`relative z-10 flex shrink-0 flex-col overflow-y-auto pointer-events-auto ${className ?? ""}`}
-      style={{
-        background: "#fff",
-        border: "1px solid #3A3E44",
-        boxShadow: "2px 3px 0 rgba(74,78,85,0.12)",
-      }}
-    >
-      <div className="flex items-center justify-between border-b border-[#D6DCE4] bg-[#2F5F9E] px-3 py-2">
-        <h2 className="m-0 font-mono text-[10px] font-bold tracking-[0.14em] text-white uppercase">Yarn</h2>
-        <div className="inline-flex items-center gap-0.5 border border-white/30 bg-white/10 p-0.5">
-          {(["metric", "imperial"] as const).map((u) => (
+    <section className={`flex flex-col gap-4 pointer-events-auto ${className ?? ""}`}>
+      <div className="flex items-center gap-2" role="group" aria-label="Units">
+        {(["metric", "imperial"] as const).map((u, i) => (
+          <span key={u} className="flex items-center gap-2">
+            {i > 0 && (
+              <span className="font-mono text-[10px] punch-print-faint" aria-hidden>
+                ·
+              </span>
+            )}
             <button
-              key={u}
               type="button"
               aria-pressed={units === u}
-              onClick={() => setUnits(u)}
-              className={`px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase ${
-                units === u ? "bg-white text-[#2F5F9E]" : "text-white/80"
+              onClick={() => onChange({ ...value, units: u })}
+              className={`font-mono text-[11px] font-bold tracking-[0.1em] uppercase transition-opacity ${
+                units === u
+                  ? "punch-print-ink underline decoration-[var(--print-ink)] underline-offset-4"
+                  : "punch-print-faint hover:opacity-80"
               }`}
             >
-              {u === "imperial" ? "In" : "Cm"}
+              {u === "imperial" ? "Imperial" : "Metric"}
             </button>
-          ))}
+          </span>
+        ))}
+      </div>
+
+      <div className="border-b pb-3" style={{ borderColor: "var(--print-ink-faint)" }}>
+        <div className="font-mono text-[10px] font-bold tracking-[0.12em] uppercase punch-print-ink">
+          Amount
+        </div>
+        <div className="mt-1.5 flex items-baseline justify-between gap-3">
+          <div className="font-mono font-bold punch-print-ink" style={{ fontSize: 28, lineHeight: 1 }}>
+            ~{units === "metric" ? result.grams : result.oz}
+            <span className="ml-0.5 text-[12px] font-bold">{units === "metric" ? "g" : "oz"}</span>
+          </div>
+          <div className="font-mono font-bold punch-print-faint" style={{ fontSize: 18, lineHeight: 1 }}>
+            {units === "metric" ? `${result.meters} m` : `${result.yards} yd`}
+          </div>
         </div>
       </div>
 
-      <div className="flex flex-col gap-2 p-3">
-      <div
-        className="flex items-baseline justify-between gap-2 px-2 py-1.5"
-        style={{ background: "rgba(47,95,158,0.08)", border: "1px solid rgba(47,95,158,0.22)" }}
-      >
-        <div className="font-mono font-bold text-[#2F5F9E]" style={{ fontSize: 28, lineHeight: 1 }}>
-          ~{units === "metric" ? result.grams : result.oz}
-          <span className="ml-0.5 text-[12px] font-bold">{units === "metric" ? "g" : "oz"}</span>
-        </div>
-        <div className="text-right font-mono text-[10px] font-bold text-[#4A4E55]">
-          {units === "metric" ? `${result.meters} m` : `${result.yards} yd`}
-          <br />
-          {skeins} sk · {WEIGHT_LABELS[value.weight]}
+      <div className="border-b pb-3" style={{ borderColor: "var(--print-ink-faint)" }}>
+        <div className="font-mono text-[10px] font-bold tracking-[0.12em] uppercase punch-print-ink">Size</div>
+        <div className="mt-1.5 font-mono text-[15px] font-bold punch-print-ink">
+          {units === "metric"
+            ? `${widthCm} × ${heightCm} cm`
+            : `${toFractionalInch(widthCm)} × ${toFractionalInch(heightCm)} in`}
         </div>
       </div>
 
-      <div className="flex flex-col gap-1">
-        <label className="flex items-center justify-between gap-2 border-b border-[#D6DCE4] bg-transparent px-0 py-1.5">
-          <span className="font-mono text-[9px] font-bold text-[#2F5F9E] uppercase">Wt</span>
+      <div className="flex flex-col gap-2">
+        <label className="flex items-center justify-between gap-2 border-b py-2.5" style={{ borderColor: "var(--print-ink-faint)" }}>
+          <span className="font-mono text-[10px] font-bold tracking-[0.12em] uppercase punch-print-ink">Weight</span>
           <select
             id={`${idPrefix}-weight`}
             value={value.weight}
             onChange={(e) => onChange({ ...value, weight: e.target.value as YarnWeightCategory })}
-            className="bg-transparent font-mono text-[11px] font-bold text-ink focus:outline-none"
+            className="bg-transparent font-mono text-[12px] font-bold punch-print-ink focus:outline-none"
           >
             {YARN_WEIGHT_CATEGORIES.map((w) => (
               <option key={w} value={w}>{WEIGHT_LABELS[w]}</option>
             ))}
           </select>
         </label>
-        <label className="flex items-center justify-between gap-2 border-b border-[#D6DCE4] bg-transparent px-0 py-1.5">
-          <span className="font-mono text-[9px] font-bold text-[#2F5F9E] uppercase">Hook</span>
+        <label className="flex items-center justify-between gap-2 border-b py-2.5" style={{ borderColor: "var(--print-ink-faint)" }}>
+          <span className="font-mono text-[10px] font-bold tracking-[0.12em] uppercase punch-print-ink">Hook</span>
           <input
             id={`${idPrefix}-hook`}
             type="text"
             value={value.hookSize}
             onChange={(e) => onChange({ ...value, hookSize: e.target.value })}
             placeholder={HOOK_DEFAULTS[value.weight]}
-            className="w-20 bg-transparent text-right font-mono text-[11px] font-bold text-ink focus:outline-none"
+            className="w-24 bg-transparent text-right font-mono text-[12px] font-bold punch-print-ink placeholder:text-[var(--print-ink-faint)] focus:outline-none"
           />
         </label>
-        <label className="flex items-center justify-between gap-2 border-b border-[#D6DCE4] bg-transparent px-0 py-1.5">
-          <span className="font-mono text-[9px] font-bold text-[#2F5F9E] uppercase">Gauge</span>
+        <label className="flex items-center justify-between gap-2 border-b py-2.5" style={{ borderColor: "var(--print-ink-faint)" }}>
+          <span className="font-mono text-[10px] font-bold tracking-[0.12em] uppercase punch-print-ink">Gauge</span>
           <div className="flex items-center gap-1">
             <input
               id={`${idPrefix}-gauge`}
@@ -219,32 +206,13 @@ export function YarnEstimator({
                 const stored = units === "imperial" ? parseFloat((n * 3.937).toFixed(2)) : n;
                 onChange({ ...value, customGaugeStitchesPerInch: stored });
               }}
-              className="w-12 bg-transparent text-right font-mono text-[11px] font-bold text-ink focus:outline-none"
+              className="w-12 bg-transparent text-right font-mono text-[12px] font-bold punch-print-ink placeholder:text-[var(--print-ink-faint)] focus:outline-none"
             />
-            <span className="font-mono text-[9px] text-muted">
+            <span className="font-mono text-[9px] punch-print-faint">
               {units === "imperial" ? "/in" : "/10cm"}
             </span>
           </div>
         </label>
-      </div>
-
-      <div className="border-b border-[#D6DCE4] px-0 py-1.5">
-        <div className="font-mono text-[9px] font-bold text-[#2F5F9E] uppercase">Size</div>
-        <div className="font-mono text-[15px] font-bold text-ink">
-          {units === "metric"
-            ? `${widthCm} × ${heightCm} cm`
-            : `${toFractionalInch(widthCm)} × ${toFractionalInch(heightCm)} in`}
-        </div>
-        <div className="mt-0.5 font-mono text-[9px] text-muted">
-          {units === "metric" ? `≈ ${widthIn} × ${heightIn} in` : `≈ ${widthCm} × ${heightCm} cm`}
-          {" · "}
-          {isCustomGauge ? "custom" : "est."} gauge
-        </div>
-      </div>
-
-      <p className="m-0 font-sans text-[10px] leading-snug text-[#4A4E55]">
-        ~5% loss built in for chains &amp; ends. W {gridWidth}÷({gaugeSquaresPer10cm}÷10)={widthCm}cm
-      </p>
       </div>
     </section>
   );

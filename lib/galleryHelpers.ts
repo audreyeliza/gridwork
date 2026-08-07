@@ -15,6 +15,8 @@ export type GalleryPattern = {
   copies_count: number;
   updated_at: string;
   manila_stock?: ManilaStockId;
+  /** Present for own patterns in the private deck; gallery rows are always public. */
+  is_public?: boolean;
 };
 
 const GALLERY_SELECT =

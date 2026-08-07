@@ -7,12 +7,14 @@ import { FlipSwitch } from "@/components/machine/FlipSwitch";
 import { RotaryKnob } from "@/components/machine/RotaryKnob";
 import { useNavAuth } from "@/components/NavAuthProvider";
 import { ImageTools } from "@/components/ImageTools";
+import { OperatorCardHeader } from "@/components/OperatorCardHeader";
 import { YarnEstimator } from "@/components/YarnEstimator";
 import { PatternSidebar } from "@/components/PatternSidebar";
-import { TutorialSpotlight } from "@/components/TutorialSpotlight";
+import { shouldAutoOpenTutorial, TutorialSpotlight } from "@/components/TutorialSpotlight";
 import { useAutoSave } from "@/hooks/useAutoSave";
 import { usePatternHistory } from "@/hooks/usePatternHistory";
 import {
+  createUntitledPattern,
   fetchPatternById,
   deletePattern,
   fetchPatternsForUser,
@@ -40,15 +42,17 @@ import {
   type PatternYarnSettings,
 } from "@/lib/yarnSettings";
 import {
-  DEFAULT_PATTERN_IMAGE_SETTINGS,
-  parseImageSettings,
-  serializeImageSettings,
-  type PatternImageSettings,
+  DEFAULT_PATTERN_IMAGE_DOCUMENT,
+  documentHasImage,
+  parseImageDocument,
+  serializeImageDocument,
+  type PatternImageDocument,
 } from "@/lib/imageSettings";
 import { setPatternPublic } from "@/lib/galleryHelpers";
 import { fetchProfile, upsertProfile } from "@/lib/profileHelpers";
 import { generateGridThumbnail } from "@/lib/thumbnailUtils";
 import {
+  DEFAULT_MANILA_STOCK,
   loadManilaStock,
   manilaHex,
   MANILA_STOCKS,
@@ -59,6 +63,7 @@ import {
 import { getSupabaseBrowserClient, resetSupabaseBrowserClient } from "@/lib/supabase";
 import type { Session, SupabaseClient, User } from "@supabase/supabase-js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 type SupabaseInit = {
   supabase: SupabaseClient | null;
@@ -77,12 +82,24 @@ function initSupabaseClient(): SupabaseInit {
 }
 
 const GRID_PRESETS = [
-  { label: "Pillow front (40×40)", w: 40, h: 40 },
-  { label: "Curtain panel (60×80)", w: 60, h: 80 },
-  { label: "Curtain trim (80×20)", w: 80, h: 20 },
-  { label: "Table runner (30×80)", w: 30, h: 80 },
-  { label: "Bookmark (10×40)", w: 10, h: 40 },
+  { value: "10x40", label: "10×40", w: 10, h: 40 },
+  { value: "40x40", label: "40×40", w: 40, h: 40 },
+  { value: "80x20", label: "80×20", w: 80, h: 20 },
+  { value: "30x80", label: "30×80", w: 30, h: 80 },
+  { value: "60x80", label: "60×80", w: 60, h: 80 },
 ] as const;
+
+const SIZE_DIAL_OPTIONS = [
+  ...GRID_PRESETS.map((p) => ({ value: p.value, label: p.label })),
+  { value: "custom" as const, label: "Custom" },
+];
+
+type SizeDialValue = (typeof SIZE_DIAL_OPTIONS)[number]["value"];
+
+function matchSizeDial(w: number, h: number): SizeDialValue {
+  const hit = GRID_PRESETS.find((p) => p.w === w && p.h === h);
+  return hit?.value ?? "custom";
+}
 
 function clampGridSize(n: number): number {
   if (Number.isNaN(n) || n < 5) return 5;
@@ -90,13 +107,29 @@ function clampGridSize(n: number): number {
   return Math.floor(n);
 }
 
-function loadLocalImageSettings(key: string): PatternImageSettings | null {
+/** Demo motif for the console tour when no program is open yet. */
+function createTutorialMockGrid(w: number, h: number): boolean[][] {
+  const g = createEmptyGrid(w, h);
+  const cx = Math.floor(w / 2);
+  const top = Math.max(4, Math.floor(h * 0.18));
+  const bottom = Math.min(h - 4, Math.floor(h * 0.62));
+  for (let r = top; r < bottom; r++) {
+    const t = (r - top) / Math.max(1, bottom - top - 1);
+    const spread = Math.max(0, Math.round((1 - Math.abs(t * 2 - 1)) * (cx - 1)));
+    for (let c = cx - spread; c <= cx + spread; c++) {
+      if (c >= 0 && c < w) g[r]![c] = true;
+    }
+  }
+  return g;
+}
+
+function loadLocalImageDocument(key: string): PatternImageDocument | null {
   try {
     const raw = localStorage.getItem(key);
     if (!raw) return null;
     // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-    const parsed = parseImageSettings(JSON.parse(raw));
-    return parsed.imageDataUrl ? parsed : null;
+    const parsed = parseImageDocument(JSON.parse(raw));
+    return documentHasImage(parsed) ? parsed : null;
   } catch {
     return null;
   }
@@ -111,6 +144,15 @@ export type EditorWorkspaceProps = {
   onReturn?: () => void;
   /** Hide pattern list sidebar (Profile owns your cards). */
   hideSidebar?: boolean;
+  /** Open the console tour once (e.g. from Manual “Go to tutorial”). */
+  forceTutorial?: boolean;
+  /** Called after forceTutorial has been applied so the URL flag can clear. */
+  onTutorialConsumed?: () => void;
+  /** Keep the URL `pattern` param in sync with the open program. */
+  onPatternIdChange?: (id: string | null) => void;
+  onRequestMaker?: () => void;
+  onRequestHopper?: () => void;
+  onRequestAuth?: () => void;
 };
 
 export function EditorWorkspace({
@@ -118,6 +160,12 @@ export function EditorWorkspace({
   initialPatternId = null,
   onReturn,
   hideSidebar = false,
+  forceTutorial = false,
+  onTutorialConsumed,
+  onPatternIdChange,
+  onRequestMaker,
+  onRequestHopper,
+  onRequestAuth,
 }: EditorWorkspaceProps) {
   const [supabaseInit, setSupabaseInit] = useState<SupabaseInit>(() => ({
     supabase: null,
@@ -154,28 +202,36 @@ export function EditorWorkspace({
   const [user, setUser] = useState<User | null>(null);
   const [patterns, setPatterns] = useState<Pattern[]>([]);
   const [patternsLoading, setPatternsLoading] = useState(false);
-  const [selectedPatternId, setSelectedPatternId] = useState<string | null>(null);
-  const initialPatternApplied = useRef(false);
+  const [selectedPatternId, setSelectedPatternId] = useState<string | null>(initialPatternId);
+  const [creatingProgram, setCreatingProgram] = useState(false);
+
+  // URL is source of truth for the open program.
   useEffect(() => {
-    if (!initialPatternId || initialPatternApplied.current) return;
     setSelectedPatternId(initialPatternId);
-    initialPatternApplied.current = true;
   }, [initialPatternId]);
+
+  useEffect(() => {
+    onPatternIdChange?.(selectedPatternId);
+  }, [selectedPatternId, onPatternIdChange]);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [aspectLocked, setAspectLocked] = useState(false);
   const [lockedRatio, setLockedRatio] = useState<number | null>(null);
   const [manilaStock, setManilaStock] = useState<ManilaStockId>("manila");
-  const [imageCropExpanded, setImageCropExpanded] = useState(false);
   const [gridFullscreen, setGridFullscreen] = useState(false);
   const enterFullscreenRef = useRef<(() => void) | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [editorMode, setEditorMode] = useState<"draw" | "import">("draw");
+  const [toolsPanel, setToolsPanel] = useState<null | "yarn" | "import">(null);
   const [isRenamingTitle, setIsRenamingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
-  const [drawMode, setDrawMode] = useState<"block" | "mesh">("block");
+  const [draftTitle, setDraftTitle] = useState("Untitled");
+  const [editLocked, setEditLocked] = useState(false);
+  const [tutorialOpen, setTutorialOpen] = useState(false);
   const [importPanelEl, setImportPanelEl] = useState<HTMLDivElement | null>(null);
   const [wDraft, setWDraft] = useState<string>("10");
-  const [hDraft, setHDraft] = useState<string>("10");
+  const [hDraft, setHDraft] = useState<string>("40");
+  const [sizePreset, setSizePreset] = useState<SizeDialValue>("10x40");
+  const zoomApiRef = useRef<{ fit: () => void; zoomIn: () => void; zoomOut: () => void } | null>(null);
+  const sizeCustom = sizePreset === "custom";
 
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [displayNameModalOpen, setDisplayNameModalOpen] = useState(false);
@@ -184,15 +240,16 @@ export function EditorWorkspace({
   const { setDisplayName: setNavDisplayName } = useNavAuth();
 
   const [gridW, setGridW] = useState(10);
-  const [gridH, setGridH] = useState(10);
+  const [gridH, setGridH] = useState(40);
   const [yarnSettings, setYarnSettings] = useState<PatternYarnSettings>(DEFAULT_PATTERN_YARN_SETTINGS);
-  const [progress, setProgress] = useState<PatternProgressState>(() => defaultProgressState(10));
-  const [imageSettings, setImageSettings] = useState<PatternImageSettings>(DEFAULT_PATTERN_IMAGE_SETTINGS);
+  const [progress, setProgress] = useState<PatternProgressState>(() => defaultProgressState(40));
+  const [imageDocument, setImageDocument] = useState<PatternImageDocument>({
+    images: [],
+    activeImageId: null,
+  });
   /** Incremented each time a pattern's data is fully loaded from the DB, triggering ImageTools reinit. */
   const [imageSettingsLoadKey, setImageSettingsLoadKey] = useState("");
   const { cells, commit, replace, reset, undo, redo, canUndo, canRedo } = usePatternHistory(gridW, gridH);
-
-  const drawTool = drawMode === "block" ? "pencil" as const : "eraser" as const;
 
   // Keep draft inputs in sync when gridW/gridH are changed externally (preset picker, DB load)
   useEffect(() => { setWDraft(String(gridW)); }, [gridW]);
@@ -200,6 +257,15 @@ export function EditorWorkspace({
   useEffect(() => {
     setManilaStock(loadManilaStock());
   }, []);
+
+  useEffect(() => {
+    if (!toolsPanel) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setToolsPanel(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [toolsPanel]);
 
   const paperColor = manilaHex(manilaStock);
 
@@ -230,23 +296,23 @@ export function EditorWorkspace({
     setYarnSettings(next);
   }, []);
 
-  const handleImageSettingsChange = useCallback((next: PatternImageSettings) => {
-    setImageSettings(next);
+  const handleImageDocumentChange = useCallback((next: PatternImageDocument) => {
+    setImageDocument(next);
   }, []);
 
   // Back up image settings to localStorage so they survive refresh / logout.
   // Debounced 800ms to avoid rapid writes during slider drags.
   useEffect(() => {
     const key = selectedPatternId ? `gridwork:imgset:${selectedPatternId}` : "gridwork:imgset:draft";
-    if (!imageSettings.imageDataUrl) {
+    if (!documentHasImage(imageDocument)) {
       try { localStorage.removeItem(key); } catch {}
       return;
     }
     const timerId = window.setTimeout(() => {
-      try { localStorage.setItem(key, JSON.stringify(imageSettings)); } catch {}
+      try { localStorage.setItem(key, JSON.stringify(imageDocument)); } catch {}
     }, 800);
     return () => window.clearTimeout(timerId);
-  }, [imageSettings, selectedPatternId]);
+  }, [imageDocument, selectedPatternId]);
 
   const patternsRef = useRef(patterns);
   useEffect(() => {
@@ -316,64 +382,78 @@ export function EditorWorkspace({
   }, [supabase, user]);
 
   useEffect(() => {
+    if (gridFullscreen) return;
+    if (forceTutorial) {
+      const id = window.setTimeout(() => {
+        setTutorialOpen(true);
+        onTutorialConsumed?.();
+      }, 400);
+      return () => window.clearTimeout(id);
+    }
+    if (!shouldAutoOpenTutorial()) return;
+    const id = window.setTimeout(() => setTutorialOpen(true), 400);
+    return () => window.clearTimeout(id);
+  }, [gridFullscreen, forceTutorial, onTutorialConsumed]);
+
+  useEffect(() => {
     if (selectedPatternId !== null) return;
     let cancelled = false;
     const id = window.setTimeout(() => {
       if (cancelled) return;
       isLoadingRef.current = true;
       setGridW(10);
-      setGridH(10);
-      reset(createEmptyGrid(10, 10));
+      setGridH(40);
+      setSizePreset("10x40");
+      reset(tutorialOpen ? createTutorialMockGrid(10, 40) : createEmptyGrid(10, 40));
       setYarnSettings({ ...DEFAULT_PATTERN_YARN_SETTINGS });
-      setProgress(defaultProgressState(10));
-      setImageSettings(loadLocalImageSettings("gridwork:imgset:draft") ?? { ...DEFAULT_PATTERN_IMAGE_SETTINGS });
-      setImageSettingsLoadKey("unsaved-" + Date.now());
+      setProgress(defaultProgressState(40));
+      setImageDocument({ images: [], activeImageId: null });
+      setImageSettingsLoadKey((tutorialOpen ? "tutorial-" : "empty-") + Date.now());
+      setDraftTitle("Untitled");
+      if (!tutorialOpen) setToolsPanel(null);
       window.setTimeout(() => { isLoadingRef.current = false; }, 0);
     }, 0);
     return () => {
       cancelled = true;
       window.clearTimeout(id);
     };
-  }, [selectedPatternId, reset]);
+  }, [selectedPatternId, tutorialOpen, reset]);
 
   useEffect(() => {
     if (!selectedPatternId || !supabase || !user) return;
     let cancelled = false;
     const id = window.setTimeout(() => {
-      const fromList = patternsRef.current.find((p) => p.id === selectedPatternId);
-      if (fromList) {
-        const w = clampGridSize(fromList.grid_width);
-        const h = clampGridSize(fromList.grid_height);
+      const hydrate = (row: Pattern) => {
+        const w = clampGridSize(row.grid_width);
+        const h = clampGridSize(row.grid_height);
         isLoadingRef.current = true;
         setGridW(w);
         setGridH(h);
-        reset(parseGridData(fromList.grid_data, w, h));
-        setYarnSettings(parsePatternYarnSettings(fromList.yarn_settings));
-        setProgress(parseProgressData(fromList.progress_data, h));
-        const dbImgA = parseImageSettings(fromList.image_settings);
-        setImageSettings(dbImgA.imageDataUrl ? dbImgA : (loadLocalImageSettings(`gridwork:imgset:${fromList.id}`) ?? dbImgA));
-        setImageSettingsLoadKey(fromList.id + "-" + fromList.updated_at);
-        setManilaStock(parseManilaStockFromSettings(fromList.image_settings));
+        setSizePreset(matchSizeDial(w, h));
+        reset(parseGridData(row.grid_data, w, h));
+        setYarnSettings(parsePatternYarnSettings(row.yarn_settings));
+        setProgress(parseProgressData(row.progress_data, h));
+        const dbImg = parseImageDocument(row.image_settings);
+        const resolved =
+          documentHasImage(dbImg)
+            ? dbImg
+            : (loadLocalImageDocument(`gridwork:imgset:${row.id}`) ?? dbImg);
+        setImageDocument(resolved);
+        setImageSettingsLoadKey(row.id + "-" + row.updated_at);
+        setManilaStock(parseManilaStockFromSettings(row.image_settings));
         window.setTimeout(() => { isLoadingRef.current = false; }, 0);
+      };
+
+      const fromList = patternsRef.current.find((p) => p.id === selectedPatternId);
+      if (fromList) {
+        hydrate(fromList);
         return;
       }
 
       void fetchPatternById(supabase, selectedPatternId, user.id).then(({ data }) => {
         if (cancelled || !data) return;
-        const w = clampGridSize(data.grid_width);
-        const h = clampGridSize(data.grid_height);
-        isLoadingRef.current = true;
-        setGridW(w);
-        setGridH(h);
-        reset(parseGridData(data.grid_data, w, h));
-        setYarnSettings(parsePatternYarnSettings(data.yarn_settings));
-        setProgress(parseProgressData(data.progress_data, h));
-        const dbImgB = parseImageSettings(data.image_settings);
-        setImageSettings(dbImgB.imageDataUrl ? dbImgB : (loadLocalImageSettings(`gridwork:imgset:${data.id}`) ?? dbImgB));
-        setImageSettingsLoadKey(data.id + "-" + data.updated_at);
-        setManilaStock(parseManilaStockFromSettings(data.image_settings));
+        hydrate(data);
         setPatterns((prev) => (prev.some((p) => p.id === data.id) ? prev : [data, ...prev]));
-        window.setTimeout(() => { isLoadingRef.current = false; }, 0);
       });
     }, 0);
     return () => {
@@ -383,55 +463,37 @@ export function EditorWorkspace({
   }, [selectedPatternId, supabase, user, reset]);
 
   useEffect(() => {
-    if (user || filledCellCount === 0) return;
+    if (user || filledCellCount === 0 || selectedPatternId === null) return;
     const handler = (e: BeforeUnloadEvent) => {
       e.preventDefault();
       e.returnValue = "You have unsaved changes. Log in to save your pattern before leaving.";
     };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
-  }, [user, filledCellCount]);
+  }, [user, filledCellCount, selectedPatternId]);
 
   const handleCreateNew = useCallback(async () => {
-    if (!supabase || !user) return;
-    const { data, error } = await upsertPattern(supabase, {
-      user_id: user.id,
-      name: "Untitled",
-      grid_data: serializeGridCells(createEmptyGrid(10, 10)),
-      grid_width: 10,
-      grid_height: 10,
-      progress_data: serializeProgressData(defaultProgressState(10)),
-      yarn_settings: serializePatternYarnSettings(DEFAULT_PATTERN_YARN_SETTINGS),
-    });
-    if (error) {
-      console.error(error);
+    if (!supabase || !user) {
+      onRequestAuth?.();
       return;
     }
-    await loadPatterns(supabase, user.id);
-    if (data?.id) setSelectedPatternId(data.id);
-  }, [supabase, user, loadPatterns]);
-
-  const handleSaveCurrentAsPattern = useCallback(async () => {
-    if (!supabase || !user) return;
-    const thumbnail = generateGridThumbnail(cells, { stockId: manilaStock });
-    const { data, error } = await upsertPattern(supabase, {
-      user_id: user.id,
-      name: "Untitled",
-      grid_data: serializeGridCells(cells),
-      grid_width: gridW,
-      grid_height: gridH,
-      progress_data: serializeProgressData(progress),
-      yarn_settings: serializePatternYarnSettings(yarnSettings),
-      image_settings: serializeImageSettings(imageSettings, { manila_stock: manilaStock }),
-      thumbnail: thumbnail || null,
-    });
-    if (error) {
-      console.error(error);
-      return;
+    setCreatingProgram(true);
+    try {
+      const { data, error } = await createUntitledPattern(supabase, user.id, {
+        image_settings: serializeImageDocument(DEFAULT_PATTERN_IMAGE_DOCUMENT, {
+          manila_stock: manilaStock,
+        }),
+      });
+      if (error) {
+        console.error(error);
+        return;
+      }
+      await loadPatterns(supabase, user.id);
+      if (data?.id) setSelectedPatternId(data.id);
+    } finally {
+      setCreatingProgram(false);
     }
-    await loadPatterns(supabase, user.id);
-    if (data?.id) setSelectedPatternId(data.id);
-  }, [supabase, user, cells, gridW, gridH, progress, yarnSettings, imageSettings, manilaStock, loadPatterns]);
+  }, [supabase, user, loadPatterns, manilaStock, onRequestAuth]);
 
   const handleCommitGrid = useCallback(
     (next: boolean[][]) => {
@@ -454,6 +516,7 @@ export function EditorWorkspace({
         const h = clampGridSize(Math.round(w / lockedRatio));
         setGridW(w);
         setGridH(h);
+        setSizePreset(matchSizeDial(w, h));
         replace(resizeGridPreserve(cells, w, h));
         setProgress((p) => ({
           ...p,
@@ -462,6 +525,7 @@ export function EditorWorkspace({
         }));
       } else {
         setGridW(w);
+        setSizePreset(matchSizeDial(w, gridH));
         replace(resizeGridPreserve(cells, w, gridH));
       }
     },
@@ -475,6 +539,7 @@ export function EditorWorkspace({
         const w = clampGridSize(Math.round(h * lockedRatio));
         setGridW(w);
         setGridH(h);
+        setSizePreset(matchSizeDial(w, h));
         replace(resizeGridPreserve(cells, w, h));
         setProgress((p) => ({
           ...p,
@@ -483,6 +548,7 @@ export function EditorWorkspace({
         }));
       } else {
         setGridH(h);
+        setSizePreset(matchSizeDial(gridW, h));
         replace(resizeGridPreserve(cells, gridW, h));
         setProgress((p) => ({
           ...p,
@@ -509,6 +575,7 @@ export function EditorWorkspace({
       const ch = clampGridSize(h);
       setGridW(cw);
       setGridH(ch);
+      setSizePreset(matchSizeDial(cw, ch));
       replace(resizeGridPreserve(cells, cw, ch));
       setProgress((p) => ({
         ...p,
@@ -520,11 +587,31 @@ export function EditorWorkspace({
   );
 
   const handleToggleAspectLock = useCallback(() => {
+    if (!sizeCustom) return;
     if (!aspectLocked) {
       setLockedRatio(gridW / gridH);
     }
     setAspectLocked((prev) => !prev);
-  }, [aspectLocked, gridW, gridH]);
+  }, [aspectLocked, gridW, gridH, sizeCustom]);
+
+  const handleSizePreset = useCallback(
+    (value: SizeDialValue) => {
+      setSizePreset(value);
+      if (value === "custom") return;
+      const preset = GRID_PRESETS.find((p) => p.value === value);
+      if (!preset) return;
+      setAspectLocked(false);
+      setGridW(preset.w);
+      setGridH(preset.h);
+      replace(resizeGridPreserve(cells, preset.w, preset.h));
+      setProgress((p) => ({
+        ...p,
+        rowComplete: resizeRowComplete(p.rowComplete, preset.h),
+        currentRow: clampCurrentRow(p.currentRow, preset.h),
+      }));
+    },
+    [replace, cells],
+  );
 
   const handleImageLoad = useCallback((naturalWidth: number, naturalHeight: number) => {
     setLockedRatio(naturalWidth / naturalHeight);
@@ -551,6 +638,9 @@ export function EditorWorkspace({
         grid_height: pattern.grid_height,
         progress_data: pattern.progress_data,
         yarn_settings: pattern.yarn_settings,
+        image_settings: pattern.image_settings,
+        thumbnail: pattern.thumbnail ?? null,
+        is_public: pattern.is_public,
       });
       if (error) console.error(error);
     },
@@ -582,20 +672,26 @@ export function EditorWorkspace({
 
   const dirtyKey = useMemo(
     () => JSON.stringify({
-      gridW, gridH, cells, yarnSettings, progress,
-      imageMode: imageSettings.mode,
-      imageUrlSig: imageSettings.imageDataUrl?.length ?? 0,
-      imageUnderlayOpacity: imageSettings.underlayOpacityPct,
-      imageCropRect: imageSettings.cropRect,
-      imageAppliedCrop: imageSettings.appliedCrop,
-      imagePanX: imageSettings.panX,
-      imagePanY: imageSettings.panY,
-      imageZoom: imageSettings.imageZoom,
-      imageThreshold: imageSettings.threshold,
-      imageDarkIsFilled: imageSettings.darkIsFilled,
-      imagePositionLocked: imageSettings.positionLocked,
+      gridW, gridH, cells, yarnSettings, progress, manilaStock,
+      images: imageDocument.images.map((img) => ({
+        id: img.id,
+        name: img.name,
+        visible: img.visible,
+        mode: img.mode,
+        imageUrlSig: img.imageDataUrl?.length ?? 0,
+        underlayOpacityPct: img.underlayOpacityPct,
+        cropRect: img.cropRect,
+        appliedCrop: img.appliedCrop,
+        panX: img.panX,
+        panY: img.panY,
+        imageZoom: img.imageZoom,
+        threshold: img.threshold,
+        darkIsFilled: img.darkIsFilled,
+        positionLocked: img.positionLocked,
+      })),
+      activeImageId: imageDocument.activeImageId,
     }),
-    [gridW, gridH, cells, yarnSettings, progress, imageSettings],
+    [gridW, gridH, cells, yarnSettings, progress, imageDocument, manilaStock],
   );
 
   const handleSaveDisplayName = useCallback(
@@ -640,11 +736,11 @@ export function EditorWorkspace({
       grid_data: serializeGridCells(cells),
       progress_data: serializeProgressData(progress),
       yarn_settings: serializePatternYarnSettings(yarnSettings),
-      image_settings: serializeImageSettings(imageSettings, { manila_stock: manilaStock }),
+      image_settings: serializeImageDocument(imageDocument, { manila_stock: manilaStock }),
       thumbnail: thumbnail || null,
     });
     if (error) console.error(error);
-  }, [supabase, user, selectedPatternId, activePattern, gridW, gridH, cells, yarnSettings, progress, imageSettings, manilaStock]);
+  }, [supabase, user, selectedPatternId, activePattern, gridW, gridH, cells, yarnSettings, progress, imageDocument, manilaStock]);
 
   const [saveIndicator, setSaveIndicator] = useState<"idle" | "pending" | "saving" | "saved">("idle");
   const savedTimerRef = useRef<number | undefined>(undefined);
@@ -678,17 +774,20 @@ export function EditorWorkspace({
 
   useAutoSave({
     enabled: Boolean(supabase && user && selectedPatternId && activePattern),
-    delayMs: 2000,
+    delayMs: 800,
     dirtyKey,
     onSave: handleSave,
   });
 
+  const hasOpenProgram = selectedPatternId !== null;
+  /** Show grid + tracker during the tour even before a program is selected. */
+  const showProgramSurface = hasOpenProgram || tutorialOpen;
+
   return (
-    <div className={`relative flex flex-col bg-paper ${embedded ? "h-full min-h-0" : "h-screen max-md:h-auto max-md:min-h-screen"}`}>
-      {!embedded && (
+    <div className={`relative flex flex-col ${embedded || gridFullscreen ? "h-full min-h-0" : "h-screen max-md:h-auto max-md:min-h-screen"} ${gridFullscreen ? "bg-transparent" : "bg-paper"}`}>
+      {!embedded && !gridFullscreen && (
         <ChassisNav
           activePage="editor"
-          loginButtonId="tutorial-login"
           leading={
             <button
               type="button"
@@ -702,26 +801,29 @@ export function EditorWorkspace({
       )}
 
       {/* Chassis machine body */}
-      <div className={`flex min-h-0 flex-1 flex-col overflow-hidden ${embedded ? "punch-chassis punch-chassis-flush" : "mx-2 mb-2 mt-2 punch-chassis max-md:mx-0 max-md:mb-0 max-md:mt-0 max-md:rounded-none max-md:border-0"}`}>
-        {/* Title strip — pattern name + save status only */}
-        <div
-          className="flex shrink-0 flex-wrap items-center gap-3 border-b border-chassis-dark px-3 py-2 md:px-4"
-          style={{ background: "var(--chassis-light)", borderRadius: 0 }}
-        >
-          {embedded && !hideSidebar && (
-            <button
-              type="button"
-              onClick={() => setSidebarOpen((p) => !p)}
-              className="punch-key text-[10px] md:hidden"
-            >
-              {sidebarOpen ? "Close" : "Cards"}
-            </button>
-          )}
-          <div className="min-w-0 flex-1">
-            <div className="font-mono text-[9px] font-bold tracking-[0.14em] text-recess uppercase">
-              {embedded ? "Program" : "Editing"}
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
+      <div
+        className={`flex min-h-0 flex-1 flex-col overflow-hidden ${
+          embedded || gridFullscreen
+            ? "punch-chassis punch-chassis-flush !m-0"
+            : "mx-2 mb-2 mt-2 punch-chassis max-md:mx-0 max-md:mb-0 max-md:mt-0 max-md:rounded-none max-md:border-0"
+        }`}
+      >
+        {!gridFullscreen && (
+        <div id="tutorial-grid-size" className="punch-console-face !flex-col !items-stretch !justify-between !gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-4">
+            {embedded && !hideSidebar && (
+              <button
+                type="button"
+                onClick={() => setSidebarOpen((p) => !p)}
+                className="punch-key text-[10px] md:hidden"
+              >
+                {sidebarOpen ? "Close" : "Cards"}
+              </button>
+            )}
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="font-mono text-[10px] font-bold tracking-[0.16em] uppercase" style={{ color: "#0A0A0A" }}>
+                Program
+              </span>
               {isRenamingTitle ? (
                 <input
                   autoFocus
@@ -729,48 +831,303 @@ export function EditorWorkspace({
                   value={titleDraft}
                   onChange={(e) => setTitleDraft(e.target.value)}
                   onBlur={() => {
-                    if (selectedPatternId && titleDraft.trim()) {
-                      void handleRenamePattern(selectedPatternId, titleDraft.trim());
+                    const next = titleDraft.trim() || "Untitled";
+                    if (selectedPatternId) {
+                      void handleRenamePattern(selectedPatternId, next);
+                    } else {
+                      setDraftTitle(next);
                     }
                     setIsRenamingTitle(false);
                   }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
-                      if (selectedPatternId && titleDraft.trim()) {
-                        void handleRenamePattern(selectedPatternId, titleDraft.trim());
+                      const next = titleDraft.trim() || "Untitled";
+                      if (selectedPatternId) {
+                        void handleRenamePattern(selectedPatternId, next);
+                      } else {
+                        setDraftTitle(next);
                       }
                       setIsRenamingTitle(false);
                     } else if (e.key === "Escape") {
                       setIsRenamingTitle(false);
                     }
                   }}
-                  className="min-w-[120px] border-b-2 border-key-blue bg-transparent font-mono text-[16px] font-bold text-ink focus:outline-none"
+                  className="min-w-[120px] max-w-full border-b-2 border-key-blue bg-transparent font-mono text-[15px] font-bold tracking-[0.06em] uppercase text-ink focus:outline-none"
                 />
               ) : (
                 <button
                   type="button"
                   onClick={() => {
-                    if (!selectedPatternId) return;
-                    setTitleDraft(activePattern?.name ?? "");
+                    if (!hasOpenProgram) return;
+                    setTitleDraft(activePattern?.name ?? draftTitle);
                     setIsRenamingTitle(true);
                   }}
-                  title={selectedPatternId ? "Click to rename" : undefined}
-                  className={`font-mono text-[16px] font-bold tracking-[0.04em] text-ink uppercase text-left ${selectedPatternId ? "cursor-pointer" : "cursor-default"}`}
+                  title={
+                    hasOpenProgram
+                      ? "Click to rename"
+                      : tutorialOpen
+                        ? "Tutorial sample"
+                        : "No program open"
+                  }
+                  disabled={!hasOpenProgram}
+                  className="min-w-0 truncate font-mono text-[15px] font-bold tracking-[0.06em] uppercase text-left cursor-pointer transition-opacity hover:underline hover:opacity-70 disabled:cursor-default disabled:no-underline disabled:opacity-70"
+                  style={{ color: "#0A0A0A" }}
                 >
-                  {activePattern?.name ?? "Unsaved pattern"}
+                  {hasOpenProgram
+                    ? (activePattern?.name ?? draftTitle)
+                    : tutorialOpen
+                      ? "Tutorial sample"
+                      : "No program"}
                 </button>
               )}
-              {user && selectedPatternId && (
-                <span className="font-mono text-[9px] font-bold tracking-[0.08em] text-recess uppercase">
-                  {saveIndicator === "saving" ? "Saving…" : saveIndicator === "saved" ? "Saved" : saveIndicator === "pending" ? "Unsaved" : "Autosave on"}
-                </span>
+            </div>
+            {user && selectedPatternId && (
+              <span className="inline-flex items-center gap-1.5 font-mono text-[9px] font-bold tracking-[0.08em] uppercase" style={{ color: "#0A0A0A" }}>
+                <span
+                  className="inline-block h-2 w-2 shrink-0 rounded-full"
+                  style={{
+                    background:
+                      saveIndicator === "saving"
+                        ? "#C9A227"
+                        : saveIndicator === "saved"
+                          ? "#2E7D4F"
+                          : saveIndicator === "pending"
+                            ? "#C62828"
+                            : "#2E7D4F",
+                    boxShadow:
+                      saveIndicator === "saving"
+                        ? "0 0 4px #C9A227"
+                        : saveIndicator === "saved" || saveIndicator === "idle"
+                          ? "0 0 4px #2E7D4F"
+                          : "0 0 4px #C62828",
+                  }}
+                  aria-hidden
+                />
+                {saveIndicator === "saving"
+                  ? "Saving…"
+                  : saveIndicator === "saved"
+                    ? "Saved"
+                    : saveIndicator === "pending"
+                      ? "Unsaved"
+                      : "Autosave on"}
+              </span>
+            )}
+            {!user && (
+              <button
+                id="tutorial-login"
+                type="button"
+                onClick={() => setAuthModalOpen(true)}
+                className="font-mono text-[9px] uppercase underline underline-offset-2 transition-opacity hover:opacity-70"
+                style={{ color: "#0A0A0A" }}
+              >
+                Sign in to save
+              </button>
+            )}
+          </div>
+
+          <div className="flex min-w-0 flex-wrap items-end gap-4">
+            <RotaryKnob
+              label="Stock"
+              value={manilaStock}
+              options={MANILA_STOCKS.map((s) => ({ value: s.id, label: s.label }))}
+              onChange={(id) => {
+                setManilaStock(id);
+                saveManilaStock(id);
+              }}
+              accent="#0A0A0A"
+              pointer="#FFFFFF"
+              dial="var(--key-blue)"
+            />
+
+            <RotaryKnob
+              label="Size"
+              value={sizePreset}
+              options={SIZE_DIAL_OPTIONS}
+              onChange={handleSizePreset}
+              accent="#0A0A0A"
+              pointer="#FFFFFF"
+              dial="var(--key-blue)"
+            />
+
+            <div
+              className={`flex items-end gap-3 pb-0.5 ${sizeCustom ? "" : "pointer-events-none opacity-40"}`}
+            >
+              <div className="flex flex-col items-center gap-0.5">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  aria-label="Width"
+                  disabled={!sizeCustom}
+                  value={wDraft}
+                  onChange={(e) => setWDraft(e.target.value)}
+                  onFocus={(e) => e.target.select()}
+                  onBlur={() => {
+                    const n = parseInt(wDraft, 10);
+                    if (Number.isNaN(n)) { setWDraft(String(gridW)); } else { handleWidthChange(n); }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      const n = parseInt(wDraft, 10);
+                      if (!Number.isNaN(n)) handleWidthChange(n);
+                      (e.target as HTMLInputElement).blur();
+                    }
+                  }}
+                  className="punch-readout"
+                />
+                <span className="font-mono text-[6px] font-bold tracking-[0.12em] uppercase" style={{ color: "#0A0A0A" }}>W</span>
+              </div>
+              <div className="flex flex-col items-center gap-0.5">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  aria-label="Height"
+                  disabled={!sizeCustom}
+                  value={hDraft}
+                  onChange={(e) => setHDraft(e.target.value)}
+                  onFocus={(e) => e.target.select()}
+                  onBlur={() => {
+                    const n = parseInt(hDraft, 10);
+                    if (Number.isNaN(n)) { setHDraft(String(gridH)); } else { handleHeightChange(n); }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      const n = parseInt(hDraft, 10);
+                      if (!Number.isNaN(n)) handleHeightChange(n);
+                      (e.target as HTMLInputElement).blur();
+                    }
+                  }}
+                  className="punch-readout"
+                />
+                <span className="font-mono text-[6px] font-bold tracking-[0.12em] uppercase" style={{ color: "#0A0A0A" }}>H</span>
+              </div>
+            </div>
+
+            <div className="flex items-end gap-3">
+              <FlipSwitch
+                topLabel="Free"
+                bottomLabel="Ratio"
+                on={aspectLocked}
+                orientation="vertical"
+                disabled={!sizeCustom}
+                onClick={handleToggleAspectLock}
+                title={
+                  !sizeCustom
+                    ? "Switch Size to Custom to edit dimensions"
+                    : aspectLocked
+                      ? "Unlock aspect ratio"
+                      : "Lock aspect ratio"
+                }
+              />
+              <div id="tutorial-pencil" className="flex">
+                <FlipSwitch
+                  topLabel="Edit"
+                  bottomLabel="Lock"
+                  on={editLocked}
+                  orientation="vertical"
+                  onClick={() => setEditLocked((v) => !v)}
+                  title={editLocked ? "Unlock editing" : "Lock editing"}
+                />
+              </div>
+              <button
+                id="tutorial-image-tools"
+                type="button"
+                onClick={() => {
+                  if (!showProgramSurface) return;
+                  setToolsPanel((p) => (p === "import" ? null : "import"));
+                }}
+                disabled={!showProgramSurface}
+                className={`punch-lamp punch-lamp-red !min-h-[32px] !px-2.5 text-[9px] self-end mb-0.5 ${
+                  toolsPanel === "import" ? "is-lit" : ""
+                }`}
+                title={toolsPanel === "import" ? "Close import" : "Import reference image"}
+                aria-pressed={toolsPanel === "import"}
+              >
+                Import
+              </button>
+            </div>
+
+            <div className="min-w-0 flex-1" />
+
+            <div className="flex flex-wrap items-center gap-2 pb-0.5">
+              <button
+                type="button"
+                disabled={!canUndo || editLocked}
+                onClick={() => undo()}
+                title="Undo"
+                className="punch-lamp punch-lamp-orange !min-h-[32px] !px-2.5 text-[9px] disabled:opacity-40"
+              >
+                Undo
+              </button>
+              <button
+                type="button"
+                disabled={!canRedo || editLocked}
+                onClick={() => redo()}
+                title="Redo"
+                className="punch-lamp punch-lamp-orange !min-h-[32px] !px-2.5 text-[9px] disabled:opacity-40"
+              >
+                Redo
+              </button>
+              {user && (
+                <button
+                  id="tutorial-save"
+                  type="button"
+                  disabled={
+                    creatingProgram ||
+                    (Boolean(selectedPatternId) && saveIndicator === "saving")
+                  }
+                  onClick={() => {
+                    if (selectedPatternId) void handleSave();
+                    else void handleCreateNew();
+                  }}
+                  className="punch-lamp punch-lamp-green !min-h-[32px] !px-2.5 text-[9px]"
+                >
+                  {creatingProgram
+                    ? "…"
+                    : selectedPatternId && saveIndicator === "saving"
+                      ? "Saving…"
+                      : selectedPatternId
+                        ? "Save"
+                        : "New"}
+                </button>
               )}
-              {!user && <span className="font-mono text-[9px] text-recess uppercase">Sign in to save</span>}
+              <button
+                type="button"
+                onClick={() => setToolsPanel("yarn")}
+                className="punch-lamp punch-lamp-red !min-h-[32px] !px-2.5 text-[9px]"
+                title="Yarn estimate"
+              >
+                Yarn
+              </button>
+              <button
+                id="tutorial-print"
+                type="button"
+                disabled={!selectedPatternId}
+                onClick={() => {
+                  if (!selectedPatternId) return;
+                  window.open(`/print/${selectedPatternId}`, "_blank", "noopener,noreferrer");
+                }}
+                className="punch-lamp punch-lamp-violet !min-h-[32px] !px-2.5 text-[9px]"
+              >
+                Print
+              </button>
+              <button
+                type="button"
+                onClick={() => setTutorialOpen(true)}
+                title="Tutorial"
+                aria-label="Open tutorial"
+                aria-pressed={tutorialOpen}
+                className={`punch-lamp punch-lamp-blue !min-h-[32px] !min-w-[32px] !px-2.5 text-[11px] font-bold ${
+                  tutorialOpen ? "is-lit" : ""
+                }`}
+              >
+                ?
+              </button>
             </div>
           </div>
         </div>
+        )}
 
-        {/* Body: hopper | canvas | dock */}
+        {/* Body: hopper | canvas | import aside */}
         <div className="relative flex min-h-0 flex-1">
           {!hideSidebar && sidebarOpen && (
             <div className="fixed inset-0 z-30 bg-black/40 md:hidden" onClick={() => setSidebarOpen(false)} />
@@ -795,179 +1152,83 @@ export function EditorWorkspace({
           </div>
           )}
 
-          <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto bg-paper p-3 max-md:p-2">
+          <div
+            className={`flex min-h-0 min-w-0 flex-1 ${
+              toolsPanel === "import" ? "flex-col md:flex-row" : "flex-col"
+            }`}
+          >
+          <main
+            className={`flex min-h-0 min-w-0 flex-1 flex-col ${gridFullscreen ? "overflow-hidden p-0" : "overflow-y-auto p-3 max-md:p-2"}`}
+            style={{
+              background:
+                "linear-gradient(180deg, rgba(255,255,255,0.08) 0%, transparent 45%, rgba(0,0,0,0.12) 100%), var(--console-desk)",
+            }}
+          >
             {configError ? (
               <div className="rounded-sm border border-amber-300 bg-amber-50 p-4 font-mono text-sm text-amber-900">
                 {configError}
               </div>
-            ) : (
-              <div className="flex flex-col gap-3 xl:flex-1 xl:min-h-0">
-                {/* Functional control panel — IBM 129 analog mix */}
+            ) : !showProgramSurface ? (
+              <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-6 p-6">
                 <div
-                  id="tutorial-grid-size"
-                  className="punch-metal relative flex w-full shrink-0 flex-wrap items-center justify-between gap-x-5 gap-y-3 border border-chassis-dark bg-recess px-4 py-2"
-                  style={{ borderRadius: 0 }}
+                  className="punch-card flex w-full max-w-sm flex-col px-6 py-5"
+                  style={{
+                    ["--manila-stock" as string]: paperColor,
+                    background: paperColor,
+                  }}
                 >
-                  <span className="font-mono text-[8px] font-bold tracking-[0.14em] text-chassis-light uppercase">
-                    Controls
-                  </span>
-
-                  <RotaryKnob
-                    label="Stock"
-                    value={manilaStock}
-                    options={MANILA_STOCKS.map((s) => ({ value: s.id, label: s.label }))}
-                    onChange={(id) => {
-                      setManilaStock(id);
-                      saveManilaStock(id);
-                    }}
-                    accent={manilaHex(manilaStock)}
-                    size={28}
-                  />
-
-                  <div id="tutorial-pencil">
-                    <FlipSwitch
-                      label={drawMode === "block" ? "Block" : "Mesh"}
-                      on={drawMode === "mesh"}
-                      onClick={() => setDrawMode((m) => (m === "block" ? "mesh" : "block"))}
-                      title="Toggle Block / Mesh"
-                      size="sm"
-                    />
-                  </div>
-
-                  <select
-                    value=""
-                    onChange={(e) => {
-                      const label = e.target.value;
-                      const preset = GRID_PRESETS.find((p) => p.label === label);
-                      if (!preset) return;
-                      setAspectLocked(false);
-                      handleBestFitGrid(preset.w, preset.h);
-                      e.target.value = "";
-                    }}
-                    className="punch-metal-select"
-                    title="Size preset"
-                  >
-                    <option value="" disabled>Preset…</option>
-                    {GRID_PRESETS.map((p) => (
-                      <option key={p.label} value={p.label}>{p.label}</option>
-                    ))}
-                  </select>
-
-                  <div className="flex items-center gap-3">
-                    <div className="flex flex-col items-center gap-0.5">
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        aria-label="Width"
-                        value={wDraft}
-                        onChange={(e) => setWDraft(e.target.value)}
-                        onFocus={(e) => e.target.select()}
-                        onBlur={() => {
-                          const n = parseInt(wDraft, 10);
-                          if (Number.isNaN(n)) { setWDraft(String(gridW)); } else { handleWidthChange(n); }
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            const n = parseInt(wDraft, 10);
-                            if (!Number.isNaN(n)) handleWidthChange(n);
-                            (e.target as HTMLInputElement).blur();
-                          }
-                        }}
-                        className="punch-readout"
-                      />
-                      <span className="font-mono text-[6px] font-bold tracking-[0.12em] text-chassis-light uppercase">W</span>
-                    </div>
-                    <FlipSwitch
-                      label={aspectLocked ? "Lock" : "Free"}
-                      on={aspectLocked}
-                      onClick={handleToggleAspectLock}
-                      title={aspectLocked ? "Unlock aspect ratio" : "Lock aspect ratio"}
-                      size="sm"
-                    />
-                    <div className="flex flex-col items-center gap-0.5">
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        aria-label="Height"
-                        value={hDraft}
-                        onChange={(e) => setHDraft(e.target.value)}
-                        onFocus={(e) => e.target.select()}
-                        onBlur={() => {
-                          const n = parseInt(hDraft, 10);
-                          if (Number.isNaN(n)) { setHDraft(String(gridH)); } else { handleHeightChange(n); }
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            const n = parseInt(hDraft, 10);
-                            if (!Number.isNaN(n)) handleHeightChange(n);
-                            (e.target as HTMLInputElement).blur();
-                          }
-                        }}
-                        className="punch-readout"
-                      />
-                      <span className="font-mono text-[6px] font-bold tracking-[0.12em] text-chassis-light uppercase">H</span>
-                    </div>
-                  </div>
-
-                  <span className="hidden h-6 w-px bg-chassis-dark sm:inline-block" />
-
-                  <button
-                    type="button"
-                    disabled={!canUndo}
-                    onClick={() => undo()}
-                    title="Undo"
-                    className="punch-lamp punch-lamp-clear !min-h-[32px] !px-2.5 text-[9px]"
-                  >
-                    Undo
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!canRedo}
-                    onClick={() => redo()}
-                    title="Redo"
-                    className="punch-lamp punch-lamp-clear !min-h-[32px] !px-2.5 text-[9px]"
-                  >
-                    Redo
-                  </button>
-
-                  <span className="hidden h-6 w-px bg-chassis-dark sm:inline-block" />
-
-                  <button
-                    id="tutorial-print"
-                    type="button"
-                    disabled={!selectedPatternId}
-                    onClick={() => {
-                      if (!selectedPatternId) return;
-                      window.open(`/print/${selectedPatternId}`, "_blank", "noopener,noreferrer");
-                    }}
-                    className="punch-lamp punch-lamp-amber !min-h-[32px] !px-2.5 text-[9px]"
-                  >
-                    Print
-                  </button>
-
-                  {user && !selectedPatternId && (
-                    <button type="button" onClick={() => void handleSaveCurrentAsPattern()} className="punch-lamp punch-lamp-green !min-h-[32px] !px-2.5 text-[9px]">
-                      Save
+                  <OperatorCardHeader title="Program card" colLabel="JOB PROG" />
+                  <h2 className="mt-4 font-mono text-[15px] font-bold tracking-[0.06em] uppercase punch-print-ink">
+                    New program
+                  </h2>
+                  <p className="mt-2 font-mono text-[11px] leading-relaxed punch-print-faint">
+                    Create a new card, open one from your deck, or copy a public pattern from the gallery.
+                  </p>
+                  <div className="mt-5 flex flex-col gap-3">
+                    <button
+                      type="button"
+                      disabled={creatingProgram}
+                      onClick={() => {
+                        if (!user) {
+                          onRequestAuth?.();
+                          return;
+                        }
+                        void handleCreateNew();
+                      }}
+                      className="punch-print text-left text-[12px] tracking-[0.1em] disabled:opacity-50"
+                    >
+                      {creatingProgram
+                        ? "Creating…"
+                        : user
+                          ? "New program →"
+                          : "Sign in to create →"}
                     </button>
-                  )}
-                  {user && selectedPatternId && (
-                    <button type="button" disabled={saveIndicator === "saving"} onClick={() => void handleSave()} className="punch-lamp punch-lamp-green !min-h-[32px] !px-2.5 text-[9px]">
-                      {saveIndicator === "saving" ? "Saving…" : "Save"}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!user) {
+                          onRequestAuth?.();
+                          return;
+                        }
+                        onRequestMaker?.();
+                      }}
+                      className="punch-print text-left text-[12px] tracking-[0.1em]"
+                    >
+                      {user ? "Open from your cards →" : "Sign in to open cards →"}
                     </button>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={() => enterFullscreenRef.current?.()}
-                    className="punch-lamp punch-lamp-blue !min-h-[32px] !px-2.5 text-[9px]"
-                    title="Fullscreen follow-along"
-                  >
-                    Full
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => onRequestHopper?.()}
+                      className="punch-print text-left text-[12px] tracking-[0.1em]"
+                    >
+                      Copy from gallery →
+                    </button>
+                  </div>
                 </div>
-
-                <div className="flex flex-col gap-3 xl:flex-row xl:flex-1 xl:min-h-0 xl:min-w-0 xl:items-stretch">
-                  <div className={`relative flex flex-col gap-2 xl:flex-1 xl:min-h-0 xl:min-w-0 transition-all duration-200 ${gridFullscreen ? "z-30 pointer-events-none" : ""}`}>
+              </div>
+            ) : (
+              <div className="flex min-h-0 flex-1 flex-col gap-0">
+                <div className="relative flex min-h-0 flex-1 flex-col">
                     <ImageTools
                       gridWidth={gridW}
                       gridHeight={gridH}
@@ -976,7 +1237,6 @@ export function EditorWorkspace({
                       onApplyConvertedGrid={handleApplyConvertedGrid}
                       onBestFitGrid={handleBestFitGrid}
                       onImageLoad={handleImageLoad}
-                      onCropExpandedChange={setImageCropExpanded}
                       onGridFullscreenChange={setGridFullscreen}
                       onUndo={undo}
                       onRedo={redo}
@@ -985,96 +1245,135 @@ export function EditorWorkspace({
                       onStepRow={handleStepCurrentRow}
                       progress={progress}
                       onToggleRowComplete={handleToggleRowComplete}
-                      savedImageSettings={imageSettings}
+                      savedImageDocument={imageDocument}
                       imageSettingsLoadKey={imageSettingsLoadKey}
-                      onImageSettingsChange={handleImageSettingsChange}
-                      sidePanelTarget={editorMode === "import" ? importPanelEl : null}
-                      toolOverride={drawTool}
-                      onToolOverrideChange={(t) => setDrawMode(t === "pencil" ? "block" : "mesh")}
+                      onImageDocumentChange={handleImageDocumentChange}
+                      sidePanelTarget={toolsPanel === "import" ? importPanelEl : null}
+                      editLocked={editLocked}
                       paperColor={paperColor}
                       hideFullscreenEntry
                       enterFullscreenRef={enterFullscreenRef}
-                      className="xl:flex-1 xl:min-h-0"
+                      zoomApiRef={zoomApiRef}
+                      className="min-h-0 flex-1"
                     />
 
-                    {/* Reader strip — row progress + steppers */}
+                    {/* Tracker — progress, steppers, zoom, follow */}
                     <div
                       id="tutorial-row-progress"
-                      className="flex shrink-0 flex-wrap items-center gap-3 border-2 border-reader-edge px-3 py-2"
-                      style={{ background: "var(--reader)" }}
+                      className="punch-tracker-face shrink-0"
                     >
-                      <div className="font-mono text-[9px] font-bold tracking-[0.14em] text-recess uppercase">
-                        Card reader
+                      <div className="font-mono text-[9px] font-bold tracking-[0.14em] uppercase" style={{ color: "#0A0A0A" }}>
+                        Tracker
                       </div>
                       <div className="flex items-baseline gap-1.5">
-                        <span className="font-mono text-2xl font-bold tabular-nums text-ink">
+                        <span className="font-mono text-2xl font-bold tabular-nums" style={{ color: "#0A0A0A" }}>
                           {String(progress.currentRow + 1).padStart(2, "0")}
                         </span>
-                        <span className="font-mono text-sm text-recess">/ {String(gridH).padStart(2, "0")}</span>
+                        <span className="font-mono text-sm" style={{ color: "rgba(10,10,10,0.55)" }}>/ {String(gridH).padStart(2, "0")}</span>
                       </div>
-                      <div className="h-1.5 min-w-[80px] flex-1 overflow-hidden bg-card-edge">
-                        <div className="h-full bg-key-blue transition-all" style={{ width: `${completedPct}%` }} />
+                      <div className="h-1.5 min-w-[80px] flex-1 overflow-hidden bg-chassis-dark/30">
+                        <div
+                          className="h-full transition-all"
+                          style={{
+                            width: `${completedPct}%`,
+                            background: `color-mix(in srgb, ${paperColor} 82%, #0A0A0A 18%)`,
+                          }}
+                        />
                       </div>
-                      <button type="button" disabled={progress.currentRow <= 0} onClick={() => handleStepCurrentRow(-1)} className="punch-key text-[10px]">
+                      <button
+                        type="button"
+                        disabled={progress.currentRow <= 0}
+                        onClick={() => handleStepCurrentRow(-1)}
+                        className="punch-lamp punch-lamp-orange !min-h-[28px] !px-2 text-[9px] disabled:opacity-40"
+                      >
                         ← Row
                       </button>
-                      <button type="button" disabled={progress.currentRow >= gridH - 1} onClick={() => handleStepCurrentRow(1)} className="punch-key text-[10px]">
+                      <button
+                        type="button"
+                        disabled={progress.currentRow >= gridH - 1}
+                        onClick={() => handleStepCurrentRow(1)}
+                        className="punch-lamp punch-lamp-orange !min-h-[28px] !px-2 text-[9px] disabled:opacity-40"
+                      >
                         Row →
                       </button>
-                      <span className="font-mono text-[10px] text-recess">
-                        <span className="font-bold text-ink">{filledCellCount}</span> holes ·{" "}
-                        <span className="font-bold text-ink">{emptyCellCount}</span> open
+                      <span className="font-mono text-[10px]" style={{ color: "rgba(10,10,10,0.55)" }}>
+                        <span className="font-bold" style={{ color: "#0A0A0A" }}>{filledCellCount}</span> filled ·{" "}
+                        <span className="font-bold" style={{ color: "#0A0A0A" }}>{emptyCellCount}</span> empty
                       </span>
-                    </div>
-                  </div>
-
-                  {/* Right dock: Yarn | Import */}
-                  <div
-                    className="flex w-full flex-col border border-chassis-dark bg-chassis-light xl:w-72 xl:shrink-0 xl:overflow-y-auto"
-                    style={{ pointerEvents: imageCropExpanded || gridFullscreen ? "none" : undefined }}
-                  >
-                    <div id="tutorial-image-tools" className="flex border-b border-chassis-dark">
-                      {([
-                        { key: "draw" as const, label: "Yarn" },
-                        { key: "import" as const, label: "Import" },
-                      ] as const).map(({ key, label }) => (
+                      <div className="ml-auto flex flex-wrap items-center gap-1.5">
                         <button
-                          key={key}
                           type="button"
-                          onClick={() => setEditorMode(key)}
-                          className={`flex-1 py-2 font-mono text-[10px] font-bold tracking-[0.12em] uppercase ${
-                            editorMode === key
-                              ? "bg-chassis-dark text-card"
-                              : "text-ink/60 hover:bg-chassis/40"
-                          }`}
+                          onClick={() => zoomApiRef.current?.fit()}
+                          className="punch-lamp punch-lamp-violet !min-h-[28px] !px-2 text-[9px]"
+                          title="Fit grid to width"
                         >
-                          {label}
+                          Fit
                         </button>
-                      ))}
-                    </div>
-                    <div className="p-3">
-                      <div
-                        ref={setImportPanelEl}
-                        className={editorMode === "import" ? "flex flex-1 flex-col" : "hidden"}
-                      />
-                      {editorMode !== "import" && (
-                        <YarnEstimator
-                          gridWidth={gridW}
-                          gridHeight={gridH}
-                          filledCellCount={filledCellCount}
-                          emptyCellCount={emptyCellCount}
-                          value={yarnSettings}
-                          onChange={handleYarnSettingsChange}
-                          className="w-full"
-                        />
-                      )}
+                        <button
+                          type="button"
+                          onClick={() => zoomApiRef.current?.zoomOut()}
+                          className="punch-lamp punch-lamp-violet !min-h-[28px] !px-2 text-[9px]"
+                          title="Zoom out"
+                        >
+                          −
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => zoomApiRef.current?.zoomIn()}
+                          className="punch-lamp punch-lamp-violet !min-h-[28px] !px-2 text-[9px]"
+                          title="Zoom in"
+                        >
+                          +
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => enterFullscreenRef.current?.()}
+                          className="punch-lamp punch-lamp-violet !min-h-[28px] !px-2 text-[9px]"
+                          title={gridFullscreen ? "Exit follow mode" : "Follow mode — hide console"}
+                        >
+                          {gridFullscreen ? "Exit" : "Full"}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
-
-              </div>
             )}
           </main>
+
+          {toolsPanel === "import" && showProgramSurface && (
+            <aside className="flex w-full shrink-0 flex-col border-t-2 border-chassis-dark md:w-[min(480px,44%)] md:border-l-2 md:border-t-0">
+              <div className="steel-tray flex h-full min-h-[260px] flex-col !rounded-none !border-0" style={{ minHeight: "100%" }}>
+                <div className="relative z-[2] mb-2 flex items-center gap-2">
+                  <div className="flex min-w-0 items-baseline gap-1.5">
+                    <span className="font-mono text-[10px] font-bold tracking-[0.16em] uppercase" style={{ color: "#0A0A0A" }}>
+                      Import
+                    </span>
+                    <span className="font-mono text-[10px] font-medium tracking-[0.16em] uppercase" style={{ color: "#0A0A0A" }}>
+                      · {documentHasImage(imageDocument) ? `${imageDocument.images.filter((i) => i.imageDataUrl).length} set` : "Ready"}
+                    </span>
+                  </div>
+                </div>
+                <div
+                  className="relative z-[2] flex min-h-0 flex-1 flex-col overflow-hidden"
+                >
+                  <div
+                    className="punch-card flex min-h-0 flex-1 flex-col overflow-hidden px-5 py-5"
+                    style={{
+                      ["--manila-stock" as string]: manilaHex(DEFAULT_MANILA_STOCK),
+                      background: manilaHex(DEFAULT_MANILA_STOCK),
+                    }}
+                  >
+                    <OperatorCardHeader className="shrink-0" title="Import card" colLabel="JOB IMP" />
+                    <div
+                      ref={setImportPanelEl}
+                      className="mt-4 min-h-0 flex-1 overflow-y-auto"
+                    />
+                  </div>
+                </div>
+              </div>
+            </aside>
+          )}
+          </div>
         </div>
       </div>
 
@@ -1098,7 +1397,53 @@ export function EditorWorkspace({
         />
       )}
 
-      <TutorialSpotlight />
+      <TutorialSpotlight open={tutorialOpen} onOpenChange={setTutorialOpen} />
+
+      {toolsPanel === "yarn" &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+            <button
+              type="button"
+              className="absolute inset-0 bg-recess/70"
+              aria-label="Close panel"
+              onClick={() => setToolsPanel(null)}
+            />
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Yarn estimate"
+              onPointerDown={(e) => e.stopPropagation()}
+              className="punch-card relative z-10 flex min-h-[26rem] max-h-[85vh] w-full max-w-sm flex-col overflow-hidden px-6 py-5"
+              style={{
+                ["--manila-stock" as string]: manilaHex(DEFAULT_MANILA_STOCK),
+              }}
+            >
+              <OperatorCardHeader className="shrink-0" title="Yarn card" colLabel="JOB YARN" />
+              <div className="mt-3 min-h-0 flex-1 overflow-y-auto">
+                <YarnEstimator
+                  gridWidth={gridW}
+                  gridHeight={gridH}
+                  filledCellCount={filledCellCount}
+                  emptyCellCount={emptyCellCount}
+                  value={yarnSettings}
+                  onChange={handleYarnSettingsChange}
+                  className="w-full"
+                />
+              </div>
+              <div className="mt-auto flex shrink-0 items-center justify-end pt-4">
+                <button
+                  type="button"
+                  onClick={() => setToolsPanel(null)}
+                  className="punch-print text-[11px] opacity-70"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
 
       <AuthModal
         key={authModalOpen ? "auth-open" : "auth-closed"}

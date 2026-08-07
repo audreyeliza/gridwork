@@ -1,8 +1,9 @@
 "use client";
 
+import { OperatorCardHeader } from "@/components/OperatorCardHeader";
 import { checkDisplayNameAvailable, upsertProfile } from "@/lib/profileHelpers";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 const NAME_REGEX = /^[a-zA-Z0-9_]+$/;
 
@@ -19,7 +20,7 @@ export type DisplayNameModalProps = {
   supabase: SupabaseClient;
   onSaved: (displayName: string) => void;
   onSkip: () => void;
-  /** Optional warning message shown in pink, e.g. when triggered by making a pattern public. */
+  /** Optional warning message shown when triggered by making a pattern public. */
   message?: string;
 };
 
@@ -31,6 +32,7 @@ export function DisplayNameModal({
   onSkip,
   message,
 }: DisplayNameModalProps) {
+  const titleId = useId();
   const [name, setName] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
   const [availability, setAvailability] = useState<"idle" | "checking" | "available" | "taken">("idle");
@@ -46,6 +48,15 @@ export function DisplayNameModal({
       window.setTimeout(() => inputRef.current?.focus(), 50);
     }
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onSkip();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open, onSkip]);
 
   const handleChange = useCallback(
     (value: string) => {
@@ -87,68 +98,93 @@ export function DisplayNameModal({
   const canSave = !localError && availability === "available" && name.trim() !== "" && !saving;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-recess/70 p-4">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      <button
+        type="button"
+        className="absolute inset-0 bg-recess/70"
+        aria-label="Close dialog"
+        onClick={onSkip}
+      />
       <div
-        className="w-full max-w-sm border-2 border-chassis-dark bg-card p-6"
-        style={{ clipPath: "polygon(12px 0, 100% 0, 100% 100%, 0 100%, 0 12px)" }}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        onPointerDown={(e) => e.stopPropagation()}
+        className="punch-card relative z-10 flex min-h-[26rem] w-full max-w-sm flex-col px-6 py-5"
+        style={{ ["--manila-stock" as string]: "#E8E2D0" }}
       >
-        <h2 className="font-mono text-lg font-bold tracking-[0.04em] text-ink uppercase">Set your display name</h2>
+        <OperatorCardHeader title="Display name card" colLabel="JOB NAME">
+          <h2 id={titleId} className="sr-only">
+            Set your display name
+          </h2>
+        </OperatorCardHeader>
 
-        {message ? (
-          <p className="mt-1.5 font-mono text-sm text-key-blue">{message}</p>
-        ) : (
-          <p className="mt-1.5 font-mono text-sm text-muted">
-            This is how you appear on public patterns. You can change it later.
-          </p>
-        )}
-
-        <div className="mt-4">
-          <input
-            ref={inputRef}
-            type="text"
-            value={name}
-            onChange={(e) => handleChange(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && canSave) void handleSave();
-            }}
-            placeholder="your_username"
-            maxLength={30}
-            className="w-full border border-chassis-dark bg-paper px-3 py-2.5 font-mono text-sm text-ink outline-none focus:ring-2 focus:ring-key-blue"
-          />
-
-          <div className="mt-1.5 min-h-[18px] font-mono text-xs">
-            {localError && name !== "" && (
-              <span className="text-key-blue">{localError}</span>
-            )}
-            {!localError && availability === "checking" && (
-              <span className="text-muted">Checking…</span>
-            )}
-            {!localError && availability === "available" && (
-              <span className="text-teal-700">✓ available</span>
-            )}
-            {!localError && availability === "taken" && (
-              <span className="text-key-blue">✗ taken</span>
-            )}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (canSave) void handleSave();
+          }}
+          className="mt-4 flex min-h-0 flex-1 flex-col gap-3"
+        >
+          <div>
+            <label
+              htmlFor="display-name"
+              className="block font-mono text-[10px] font-bold tracking-[0.12em] text-[var(--print-ink)] uppercase"
+            >
+              Display name
+            </label>
+            <input
+              ref={inputRef}
+              id="display-name"
+              type="text"
+              value={name}
+              onChange={(e) => handleChange(e.target.value)}
+              placeholder="your_username"
+              maxLength={30}
+              autoComplete="username"
+              className="punch-print-field"
+            />
+            <div className="mt-1.5 min-h-[18px] font-mono text-[10px]">
+              {message && !localError && availability === "idle" && name === "" ? (
+                <span className="text-[var(--print-ink)]">{message}</span>
+              ) : null}
+              {localError && name !== "" ? (
+                <span className="text-[var(--print-ink)]">{localError}</span>
+              ) : null}
+              {!localError && availability === "checking" ? (
+                <span className="text-[var(--print-ink-faint)]">Checking…</span>
+              ) : null}
+              {!localError && availability === "available" ? (
+                <span className="text-[var(--print-ink)]">Available</span>
+              ) : null}
+              {!localError && availability === "taken" ? (
+                <span className="text-[var(--print-ink)]">Taken</span>
+              ) : null}
+              {!message && !localError && availability === "idle" && name === "" ? (
+                <span className="text-[var(--print-ink-faint)]">
+                  How you appear on public patterns
+                </span>
+              ) : null}
+            </div>
           </div>
-        </div>
 
-        <div className="mt-4 flex flex-col gap-2">
-          <button
-            type="button"
-            onClick={() => void handleSave()}
-            disabled={!canSave}
-            className="punch-key punch-key-blue w-full min-h-[44px] disabled:opacity-40"
-          >
-            {saving ? "Saving…" : "Set name"}
-          </button>
-          <button
-            type="button"
-            onClick={onSkip}
-            className="punch-key w-full"
-          >
-            Skip for now
-          </button>
-        </div>
+          <div className="mt-auto flex items-center justify-between gap-3 pt-4">
+            <button
+              type="submit"
+              disabled={!canSave}
+              className="punch-print text-[12px] tracking-[0.1em] disabled:opacity-40"
+            >
+              {saving ? "Saving…" : "Set name →"}
+            </button>
+            <button
+              type="button"
+              onClick={onSkip}
+              className="punch-print text-[11px] opacity-70"
+            >
+              Skip
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

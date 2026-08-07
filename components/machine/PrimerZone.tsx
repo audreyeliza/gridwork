@@ -8,7 +8,12 @@ import { useEffect, useState, type TransitionEvent } from "react";
  * Two-leaf IBM manual: cover overview → open spread (4 steps left, 4 right).
  * CSS 3D cover flip with two-sided leaf and under-spread reveal.
  */
-export function PrimerZone() {
+type PrimerZoneProps = {
+  /** Navigate to Program and start the interactive console tour. */
+  onStartTutorial?: () => void;
+};
+
+export function PrimerZone({ onStartTutorial }: PrimerZoneProps) {
   const [open, setOpen] = useState(false);
   const [flipping, setFlipping] = useState(false);
   const left = PRIMER_SECTIONS.slice(0, 4);
@@ -90,7 +95,7 @@ export function PrimerZone() {
             </div>
           </div>
 
-          <div className="book-footer flex items-center justify-start border-t border-[#D6DCE4] bg-white px-5 md:px-6">
+          <div className="book-footer flex items-center justify-between gap-3 border-t border-[#D6DCE4] bg-white px-5 md:px-6">
             <button
               type="button"
               onClick={() => startFlip(false)}
@@ -98,6 +103,14 @@ export function PrimerZone() {
               className="font-mono text-[12px] font-bold tracking-[0.12em] text-[#2F5F9E] uppercase transition-opacity hover:opacity-70 disabled:pointer-events-none disabled:opacity-40"
             >
               ← Cover
+            </button>
+            <button
+              type="button"
+              onClick={() => onStartTutorial?.()}
+              disabled={flipping || !open || !onStartTutorial}
+              className="font-mono text-[12px] font-bold tracking-[0.12em] text-[#2F5F9E] uppercase transition-opacity hover:opacity-70 disabled:pointer-events-none disabled:opacity-40"
+            >
+              Go to tutorial →
             </button>
           </div>
         </div>

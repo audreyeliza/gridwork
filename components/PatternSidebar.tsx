@@ -141,7 +141,7 @@ export function PatternSidebar({
       >
         <div>
           <div className="font-mono text-[9px] font-bold uppercase tracking-[0.16em] text-chassis-light">
-            Card hopper
+            Hopper
           </div>
           <div className="font-mono text-[14px] font-bold tracking-[0.04em] text-card uppercase">
             Patterns

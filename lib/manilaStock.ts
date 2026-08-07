@@ -33,6 +33,37 @@ export function manilaHex(id: ManilaStockId): string {
   return MANILA_STOCKS.find((s) => s.id === id)?.hex ?? MANILA_STOCKS[0].hex;
 }
 
+/** Contrasting stock for row highlight — each paper maps to a unique partner. */
+const CONTRAST_STOCK: Record<ManilaStockId, ManilaStockId> = {
+  manila: "blue",
+  yellow: "brown",
+  green: "red",
+  blue: "yellow",
+  brown: "green",
+  red: "manila",
+};
+
+export function contrastManilaHex(id: ManilaStockId): string {
+  return manilaHex(CONTRAST_STOCK[id] ?? "blue");
+}
+
+export function contrastManilaHexFromPaper(paperHex: string): string {
+  const normalized = paperHex.trim().toLowerCase();
+  const found = MANILA_STOCKS.find((s) => s.hex.toLowerCase() === normalized);
+  return contrastManilaHex(found?.id ?? DEFAULT_MANILA_STOCK);
+}
+
+/** `#RRGGBB` → `rgba(r,g,b,a)` for translucent fills. */
+export function hexWithAlpha(hex: string, alpha: number): string {
+  const raw = hex.replace("#", "").trim();
+  if (raw.length !== 6) return hex;
+  const r = parseInt(raw.slice(0, 2), 16);
+  const g = parseInt(raw.slice(2, 4), 16);
+  const b = parseInt(raw.slice(4, 6), 16);
+  if ([r, g, b].some((n) => Number.isNaN(n))) return hex;
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
 export function loadManilaStock(): ManilaStockId {
   if (typeof window === "undefined") return DEFAULT_MANILA_STOCK;
   try {

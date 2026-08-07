@@ -9,6 +9,7 @@ import { MakerZone } from "@/components/machine/MakerZone";
 import { PrimerZone } from "@/components/machine/PrimerZone";
 import type { MachineZone } from "@/components/machine/zones";
 import { ManilaThumbnail } from "@/components/ManilaThumbnail";
+import { CopyGlyph, HeartGlyph } from "@/components/PatternGalleryCard";
 import {
   copyPublicPattern,
   fetchUserLikedPatternIds,
@@ -16,6 +17,7 @@ import {
   type GalleryPattern,
 } from "@/lib/galleryHelpers";
 import { manilaHex } from "@/lib/manilaStock";
+import { createUntitledPattern } from "@/lib/patternHelpers";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -30,11 +32,14 @@ type PreviewState = {
 };
 
 /** Profile href when makerLabel is a real @displayname (not a truncated user id). */
-function makerProfileHref(makerLabel: string): string | null {
+function makerProfileHref(makerLabel: string, q?: string | null): string | null {
   if (!makerLabel.startsWith("@")) return null;
   const name = makerLabel.slice(1);
   if (!name || /^[0-9a-f]{6}$/i.test(name)) return null;
-  return `/u/${encodeURIComponent(name)}?ref=gallery`;
+  const params = new URLSearchParams({ ref: "gallery" });
+  const trimmed = q?.trim();
+  if (trimmed) params.set("q", trimmed);
+  return `/u/${encodeURIComponent(name)}?${params.toString()}`;
 }
 
 type SyncTick = {
@@ -83,21 +88,67 @@ export function MachineShell() {
   const setZone = useCallback(
     (next: MachineZone) => {
       setPreview(null);
-      router.replace(`/?zone=${next}`, { scroll: false });
+      const params = new URLSearchParams();
+      params.set("zone", next);
+      if (patternId) params.set("pattern", patternId);
+      router.replace(`/?${params.toString()}`, { scroll: false });
     },
-    [router],
+    [router, patternId],
   );
 
   const openProgram = useCallback(
-    (id: string | null) => {
+    (id: string | null, opts?: { tutorial?: boolean }) => {
       setPreview(null);
       const params = new URLSearchParams();
       params.set("zone", "reader");
       if (id) params.set("pattern", id);
+      if (opts?.tutorial) params.set("tutorial", "1");
       router.replace(`/?${params.toString()}`, { scroll: false });
     },
     [router],
   );
+
+  const handlePatternIdChange = useCallback(
+    (id: string | null) => {
+      if (id === patternId) return;
+      if (!id && !patternId) return;
+      openProgram(id);
+    },
+    [patternId, openProgram],
+  );
+
+  const handleNewProgram = useCallback(async () => {
+    if (!user) {
+      setAuthOpen(true);
+      return;
+    }
+    if (!supabase) return;
+    setProgramming(true);
+    try {
+      const { data, error } = await createUntitledPattern(supabase, user.id);
+      if (error || !data?.id) {
+        console.error(error);
+        return;
+      }
+      openProgram(data.id);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setProgramming(false);
+    }
+  }, [user, supabase, openProgram]);
+
+  const startTutorialFromManual = useCallback(() => {
+    openProgram(patternId, { tutorial: true });
+  }, [openProgram, patternId]);
+
+  const clearTutorialParam = useCallback(() => {
+    if (searchParams.get("tutorial") !== "1") return;
+    const params = new URLSearchParams();
+    params.set("zone", "reader");
+    if (patternId) params.set("pattern", patternId);
+    router.replace(`/?${params.toString()}`, { scroll: false });
+  }, [router, searchParams, patternId]);
 
   const handlePreview = useCallback((state: PreviewState) => {
     setPreview(state);
@@ -234,7 +285,9 @@ export function MachineShell() {
     () => manilaHex(preview?.pattern.manila_stock ?? "manila"),
     [preview],
   );
-  const previewMakerHref = preview ? makerProfileHref(preview.makerLabel) : null;
+  const previewMakerHref = preview
+    ? makerProfileHref(preview.makerLabel, zone === "hopper" ? searchParams.get("q") : null)
+    : null;
 
   return (
     <div className="flex h-[100dvh] flex-col overflow-hidden bg-paper">
@@ -247,13 +300,18 @@ export function MachineShell() {
       >
         {expanded ? (
           <div className="punch-console flex min-h-0 flex-1 flex-col !rounded-none !border-0 !shadow-none">
-            <div className="punch-console-rail !rounded-none !border-x-0 !py-2">
-              <span className="relative z-[2] font-mono text-[10px] font-bold tracking-[0.16em] text-card uppercase">
-                Program · Card program
-              </span>
-            </div>
             <div className="relative z-[2] min-h-0 flex-1 overflow-hidden">
-              <EditorWorkspace embedded initialPatternId={patternId} hideSidebar />
+              <EditorWorkspace
+                embedded
+                initialPatternId={patternId}
+                hideSidebar
+                forceTutorial={searchParams.get("tutorial") === "1"}
+                onTutorialConsumed={clearTutorialParam}
+                onPatternIdChange={handlePatternIdChange}
+                onRequestMaker={() => setZone("maker")}
+                onRequestHopper={() => setZone("hopper")}
+                onRequestAuth={() => setAuthOpen(true)}
+              />
             </div>
           </div>
         ) : (
@@ -268,18 +326,10 @@ export function MachineShell() {
                 background:
                   zone === "primer"
                     ? "#EDE8D5"
-                    : "linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 30%, rgba(0,0,0,0.16) 100%), #5C6168",
+                    : "linear-gradient(180deg, rgba(255,255,255,0.08) 0%, transparent 45%, rgba(0,0,0,0.12) 100%), var(--console-desk)",
                 flex: showReaderAside ? "1 1 56%" : "1 1 100%",
               }}
             >
-              {zone !== "primer" && (
-                <div className="punch-console-rail !rounded-none !border-x-0 !py-2">
-                  <span className="relative z-[2] font-mono text-[10px] font-bold tracking-[0.16em] text-card uppercase">
-                    {zone === "hopper" && "Card hopper"}
-                    {zone === "maker" && "Maker station"}
-                  </span>
-                </div>
-              )}
               <div className="relative z-[2] min-h-0 flex-1 overflow-hidden">
                 {zone === "hopper" && (
                   <HopperZone
@@ -292,7 +342,7 @@ export function MachineShell() {
                     onProgramCard={openProgram}
                   />
                 )}
-                {zone === "primer" && <PrimerZone />}
+                {zone === "primer" && <PrimerZone onStartTutorial={startTutorialFromManual} />}
                 {zone === "maker" && (
                   <MakerZone
                     previewId={preview?.pattern.id ?? null}
@@ -300,6 +350,8 @@ export function MachineShell() {
                       handlePreview({ pattern, makerLabel, isOwn })
                     }
                     onProgramCard={openProgram}
+                    onNewProgram={() => void handleNewProgram()}
+                    creating={programming}
                   />
                 )}
               </div>
@@ -308,20 +360,15 @@ export function MachineShell() {
             {showReaderAside && (
               <aside className="flex w-full shrink-0 flex-col border-t-2 border-chassis-dark md:w-[min(480px,44%)] md:border-l-2 md:border-t-0">
                 <div className="steel-tray flex h-full min-h-[260px] flex-col !rounded-none !border-0" style={{ minHeight: "100%" }}>
-                  <div className="relative z-[2] mb-2 flex items-center justify-between gap-2">
-                    <p className="font-mono text-[9px] font-bold tracking-[0.16em] text-recess uppercase">
-                      Card reader · {preview ? "Preview" : "Idle"}
-                    </p>
-                    {zone === "maker" && (
-                      <button
-                        type="button"
-                        onClick={() => void handleProgramFromPreview()}
-                        disabled={programming}
-                        className="punch-lamp punch-lamp-green !min-h-[32px] !px-3 text-[9px]"
-                      >
-                        {programming ? "…" : "Program"}
-                      </button>
-                    )}
+                  <div className="relative z-[2] mb-2 flex items-center gap-2">
+                    <div className="flex min-w-0 items-baseline gap-1.5">
+                      <span className="font-mono text-[10px] font-bold tracking-[0.16em] uppercase" style={{ color: "#0A0A0A" }}>
+                        Reader
+                      </span>
+                      <span className="font-mono text-[10px] font-medium tracking-[0.16em] uppercase" style={{ color: "#0A0A0A" }}>
+                        · {preview ? "Preview" : "Idle"}
+                      </span>
+                    </div>
                   </div>
                   <div className="relative z-[2] flex min-h-0 flex-1 flex-col">
                     {preview ? (
@@ -344,25 +391,49 @@ export function MachineShell() {
                               </div>
                             )}
                           </div>
-                          <div className="shrink-0 px-3 py-2.5" style={{ background: previewPaper }}>
-                            <p className="truncate font-mono text-[13px] font-bold uppercase punch-print-ink">
-                              {preview.pattern.name}
-                            </p>
-                            <p className="mt-0.5 font-mono text-[10px] font-bold tracking-[0.06em] uppercase punch-print-faint">
-                              {preview.pattern.grid_width}×{preview.pattern.grid_height}
-                            </p>
-                            <div className="mt-1">
-                              {previewMakerHref ? (
-                                <Link
-                                  href={previewMakerHref}
-                                  className="punch-print truncate text-[10px]"
-                                >
-                                  {preview.makerLabel}
-                                </Link>
+                          <div className="card-meta-plate shrink-0 px-3 py-2.5" style={{ background: previewPaper }}>
+                            <div className="relative z-[1]">
+                              <p className="truncate font-mono text-[13px] font-bold uppercase punch-print-ink">
+                                {preview.pattern.name}
+                              </p>
+                              <p className="mt-0.5 font-mono text-[10px] font-bold tracking-[0.06em] uppercase punch-print-faint">
+                                {preview.pattern.grid_width}×{preview.pattern.grid_height}
+                              </p>
+                              {zone === "maker" ? (
+                                <div className="mt-1 flex items-center justify-between gap-2">
+                                  <p className="truncate punch-print-label">
+                                    {preview.isOwn
+                                      ? preview.pattern.is_public
+                                        ? "Public"
+                                        : "Private"
+                                      : "Public"}
+                                  </p>
+                                  <div className="flex shrink-0 items-center gap-2 punch-print-faint">
+                                    <span className="inline-flex items-center gap-0.5 font-mono text-[10px] font-bold">
+                                      <HeartGlyph filled={false} />
+                                      {preview.pattern.likes_count}
+                                    </span>
+                                    <span className="inline-flex items-center gap-0.5 font-mono text-[10px] font-bold">
+                                      <CopyGlyph />
+                                      {preview.pattern.copies_count}
+                                    </span>
+                                  </div>
+                                </div>
                               ) : (
-                                <p className="truncate font-mono text-[10px] uppercase punch-print-faint">
-                                  {preview.makerLabel}
-                                </p>
+                                <div className="mt-1">
+                                  {previewMakerHref ? (
+                                    <Link
+                                      href={previewMakerHref}
+                                      className="punch-print truncate text-[10px]"
+                                    >
+                                      {preview.makerLabel}
+                                    </Link>
+                                  ) : (
+                                    <p className="truncate punch-print-label">
+                                      {preview.makerLabel}
+                                    </p>
+                                  )}
+                                </div>
                               )}
                             </div>
                           </div>
@@ -389,13 +460,15 @@ export function MachineShell() {
                             </button>
                           </div>
                         ) : (
-                          <div className="relative z-[2] mt-2 flex items-center justify-end gap-2">
-                            <span className="font-mono text-[10px] font-bold uppercase text-recess">
-                              Like {preview.pattern.likes_count}
-                            </span>
-                            <span className="font-mono text-[10px] font-bold uppercase text-recess">
-                              Copy {preview.pattern.copies_count}
-                            </span>
+                          <div className="relative z-[2] mt-2 flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => void handleProgramFromPreview()}
+                              disabled={programming}
+                              className="punch-lamp punch-lamp-green !min-h-[32px] !px-2.5 text-[9px]"
+                            >
+                              {programming ? "…" : "Program"}
+                            </button>
                           </div>
                         )}
                       </>
@@ -418,8 +491,12 @@ export function MachineShell() {
       <MachineKeyboardBar
         activeZone={zone}
         onSelectZone={(id) => {
-          if (id === "reader") openProgram(null);
-          else setZone(id);
+          if (id === "reader") {
+            if (zone === "reader") return;
+            openProgram(patternId);
+          } else {
+            setZone(id);
+          }
         }}
       />
 

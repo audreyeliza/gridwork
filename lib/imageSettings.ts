@@ -18,6 +18,18 @@ export type PatternImageSettings = {
   positionLocked: boolean;
 };
 
+export type PatternImageLayer = PatternImageSettings & {
+  id: string;
+  visible: boolean;
+  /** Display name in the import list. */
+  name: string;
+};
+
+export type PatternImageDocument = {
+  images: PatternImageLayer[];
+  activeImageId: string | null;
+};
+
 export const DEFAULT_PATTERN_IMAGE_SETTINGS: PatternImageSettings = {
   mode: "none",
   imageDataUrl: null,
@@ -31,6 +43,60 @@ export const DEFAULT_PATTERN_IMAGE_SETTINGS: PatternImageSettings = {
   imageZoom: 1,
   positionLocked: false,
 };
+
+export const DEFAULT_PATTERN_IMAGE_DOCUMENT: PatternImageDocument = {
+  images: [],
+  activeImageId: null,
+};
+
+export function defaultImageLayerName(index: number): string {
+  return `Image ${index + 1}`;
+}
+
+export function createImageLayerId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `img_${crypto.randomUUID()}`;
+  }
+  return `img_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`;
+}
+
+export function createImageLayer(partial?: Partial<PatternImageLayer>): PatternImageLayer {
+  return {
+    ...DEFAULT_PATTERN_IMAGE_SETTINGS,
+    id: createImageLayerId(),
+    visible: true,
+    name: "Image",
+    ...partial,
+  };
+}
+
+export function layerToSettings(layer: PatternImageLayer): PatternImageSettings {
+  return {
+    mode: layer.mode,
+    imageDataUrl: layer.imageDataUrl,
+    underlayOpacityPct: layer.underlayOpacityPct,
+    threshold: layer.threshold,
+    darkIsFilled: layer.darkIsFilled,
+    cropRect: layer.cropRect,
+    appliedCrop: layer.appliedCrop,
+    panX: layer.panX,
+    panY: layer.panY,
+    imageZoom: layer.imageZoom,
+    positionLocked: layer.positionLocked,
+  };
+}
+
+export function documentHasImage(doc: PatternImageDocument): boolean {
+  return doc.images.some((img) => Boolean(img.imageDataUrl));
+}
+
+export function activeImageLayer(doc: PatternImageDocument): PatternImageLayer | null {
+  if (doc.activeImageId) {
+    const hit = doc.images.find((img) => img.id === doc.activeImageId);
+    if (hit) return hit;
+  }
+  return doc.images[0] ?? null;
+}
 
 /** Resize and JPEG-compress an image for storage. Max 1200px on the longest side. */
 export async function compressImageToDataUrl(
@@ -75,10 +141,8 @@ function isCropRect(v: unknown): v is StoredCropRect {
   );
 }
 
-export function parseImageSettings(data: Json | undefined): PatternImageSettings {
+function parseSettingsFields(o: Record<string, unknown>): PatternImageSettings {
   const d = DEFAULT_PATTERN_IMAGE_SETTINGS;
-  if (data == null || typeof data !== "object" || Array.isArray(data)) return { ...d };
-  const o = data as Record<string, unknown>;
   return {
     mode: o.mode === "underlay" || o.mode === "convert" ? o.mode : "none",
     imageDataUrl: typeof o.imageDataUrl === "string" ? o.imageDataUrl : null,
@@ -98,22 +162,87 @@ export function parseImageSettings(data: Json | undefined): PatternImageSettings
   };
 }
 
+function parseLayer(o: Record<string, unknown>, fallbackId: string, index: number): PatternImageLayer {
+  const name =
+    typeof o.name === "string" && o.name.trim()
+      ? o.name.trim()
+      : defaultImageLayerName(index);
+  return {
+    id: typeof o.id === "string" && o.id ? o.id : fallbackId,
+    visible: o.visible !== false,
+    name,
+    ...parseSettingsFields(o),
+  };
+}
+
+/** Parse multi-image document; migrates legacy single-image `image_settings` objects. */
+export function parseImageDocument(data: Json | undefined): PatternImageDocument {
+  if (data == null || typeof data !== "object" || Array.isArray(data)) {
+    return { images: [], activeImageId: null };
+  }
+  const o = data as Record<string, unknown>;
+
+  if (Array.isArray(o.images)) {
+    const images = o.images
+      .filter((item): item is Record<string, unknown> => item != null && typeof item === "object" && !Array.isArray(item))
+      .map((item, i) => parseLayer(item, `legacy_${i}`, i));
+    const activeImageId =
+      typeof o.activeImageId === "string" && images.some((img) => img.id === o.activeImageId)
+        ? o.activeImageId
+        : (images[0]?.id ?? null);
+    return { images, activeImageId };
+  }
+
+  // Legacy single-object shape (mode / imageDataUrl at top level)
+  const settings = parseSettingsFields(o);
+  if (!settings.imageDataUrl && settings.mode === "none") {
+    return { images: [], activeImageId: null };
+  }
+  const layer = createImageLayer({ ...settings, id: "legacy_0", name: defaultImageLayerName(0) });
+  return { images: [layer], activeImageId: layer.id };
+}
+
+export function serializeImageDocument(
+  doc: PatternImageDocument,
+  extra?: Record<string, unknown>,
+): Json {
+  return {
+    images: doc.images.map((img) => ({
+      id: img.id,
+      visible: img.visible,
+      name: img.name,
+      mode: img.mode,
+      imageDataUrl: img.imageDataUrl,
+      underlayOpacityPct: img.underlayOpacityPct,
+      threshold: img.threshold,
+      darkIsFilled: img.darkIsFilled,
+      cropRect: img.cropRect,
+      appliedCrop: img.appliedCrop,
+      panX: img.panX,
+      panY: img.panY,
+      imageZoom: img.imageZoom,
+      positionLocked: img.positionLocked,
+    })),
+    activeImageId: doc.activeImageId,
+    ...extra,
+  } as Json;
+}
+
+/** Active (or first) layer settings — used by callers that only need one image view. */
+export function parseImageSettings(data: Json | undefined): PatternImageSettings {
+  const doc = parseImageDocument(data);
+  const active = activeImageLayer(doc);
+  return active ? layerToSettings(active) : { ...DEFAULT_PATTERN_IMAGE_SETTINGS };
+}
+
+/** Serialize a single settings object as a one-layer document (backward-compatible write). */
 export function serializeImageSettings(
   s: PatternImageSettings,
   extra?: Record<string, unknown>,
 ): Json {
-  return {
-    mode: s.mode,
-    imageDataUrl: s.imageDataUrl,
-    underlayOpacityPct: s.underlayOpacityPct,
-    threshold: s.threshold,
-    darkIsFilled: s.darkIsFilled,
-    cropRect: s.cropRect,
-    appliedCrop: s.appliedCrop,
-    panX: s.panX,
-    panY: s.panY,
-    imageZoom: s.imageZoom,
-    positionLocked: s.positionLocked,
-    ...extra,
-  } as Json;
+  if (!s.imageDataUrl && s.mode === "none") {
+    return serializeImageDocument({ images: [], activeImageId: null }, extra);
+  }
+  const layer = createImageLayer(s);
+  return serializeImageDocument({ images: [layer], activeImageId: layer.id }, extra);
 }
