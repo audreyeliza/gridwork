@@ -16,6 +16,7 @@ import {
 } from "@/lib/galleryHelpers";
 import { fetchProfilesByUserIds } from "@/lib/profileHelpers";
 import { getSupabaseBrowserClient, resetSupabaseBrowserClient } from "@/lib/supabase";
+import * as Sentry from "@sentry/nextjs";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -200,7 +201,10 @@ export function HopperZone({
       pageSize: PAGE_SIZE,
     }).then(async ({ data, total: t, error }) => {
       if (cancelled) return;
-      if (error) console.error(error);
+      if (error) {
+        console.error(error);
+        Sentry.captureException(error);
+      }
       setPatterns(data);
       setTotal(t);
       setPage(0);
@@ -247,7 +251,10 @@ export function HopperZone({
       page: nextPage,
       pageSize: PAGE_SIZE,
     });
-    if (error) console.error(error);
+    if (error) {
+      console.error(error);
+      Sentry.captureException(error);
+    }
     setPatterns((prev) => [...prev, ...data]);
     setPage(nextPage);
     setLoadingMore(false);
@@ -282,6 +289,7 @@ export function HopperZone({
       const { error } = await togglePatternLike(supabase, patternId);
       if (error) {
         console.error(error);
+        Sentry.captureException(error);
         setLikedIds((prev) => {
           const next = new Set(prev);
           if (currentlyLiked) next.add(patternId);
@@ -312,6 +320,7 @@ export function HopperZone({
       setCopying(null);
       if (error || !newPatternId) {
         console.error(error ?? "No pattern ID returned");
+        Sentry.captureException(error ?? new Error("copyPublicPattern: no pattern ID returned"));
         return;
       }
       setPatterns((prev) =>

@@ -1,6 +1,7 @@
 "use client";
 
 import { AuthModal } from "@/components/AuthModal";
+import * as Sentry from "@sentry/nextjs";
 import { useNavAuth } from "@/components/NavAuthProvider";
 import { PatternGalleryCard } from "@/components/PatternGalleryCard";
 import { MachineKeyboardBar } from "@/components/machine/MachineKeyboardBar";
@@ -120,14 +121,20 @@ function UserProfilePage() {
     void (async () => {
       const { data: profile, error: profileError } = await fetchProfileByDisplayName(supabase, displayname);
       if (cancelled) return;
-      if (profileError) console.error(profileError);
+      if (profileError) {
+        console.error(profileError);
+        Sentry.captureException(profileError);
+      }
       if (!profile) {
         setPageState({ status: "not_found" });
         return;
       }
       const { data: patterns, error: patternsError } = await fetchPublicPatternsByUserId(supabase, profile.user_id);
       if (cancelled) return;
-      if (patternsError) console.error(patternsError);
+      if (patternsError) {
+        console.error(patternsError);
+        Sentry.captureException(patternsError);
+      }
       setPageState({
         status: "loaded",
         displayName: profile.display_name,
@@ -195,6 +202,7 @@ function UserProfilePage() {
       const { error } = await togglePatternLike(supabase, patternId);
       if (error) {
         console.error(error);
+        Sentry.captureException(error);
         setLikedIds((prev) => {
           const next = new Set(prev);
           if (currentlyLiked) next.add(patternId);
@@ -219,6 +227,7 @@ function UserProfilePage() {
       setCopying(null);
       if (error || !newPatternId) {
         console.error(error ?? "No pattern ID returned");
+        Sentry.captureException(error ?? new Error("copyPublicPattern: no pattern ID returned"));
         return;
       }
       const pattern =

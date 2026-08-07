@@ -25,6 +25,7 @@ import {
 import { manilaHex } from "@/lib/manilaStock";
 import { createUntitledPattern } from "@/lib/patternHelpers";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
+import * as Sentry from "@sentry/nextjs";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -155,11 +156,13 @@ export function MachineShell() {
       const { data, error } = await createUntitledPattern(supabase, user.id);
       if (error || !data?.id) {
         console.error(error);
+        Sentry.captureException(error ?? new Error("createUntitledPattern: no pattern ID returned"));
         return;
       }
       openProgram(data.id);
     } catch (e) {
       console.error(e);
+      Sentry.captureException(e);
     } finally {
       setProgramming(false);
     }
@@ -218,11 +221,13 @@ export function MachineShell() {
       const { newPatternId, error } = await copyPublicPattern(client, preview.pattern.id);
       if (error || !newPatternId) {
         console.error(error);
+        Sentry.captureException(error ?? new Error("copyPublicPattern: no pattern ID returned"));
         return;
       }
       openProgram(newPatternId);
     } catch (e) {
       console.error(e);
+      Sentry.captureException(e);
     } finally {
       setProgramming(false);
     }
@@ -258,6 +263,7 @@ export function MachineShell() {
       const { error } = await togglePatternLike(client, patternIdToLike);
       if (error) {
         console.error(error);
+        Sentry.captureException(error);
         setLikedIds((prev) => {
           const next = new Set(prev);
           if (currentlyLiked) next.add(patternIdToLike);
@@ -279,6 +285,7 @@ export function MachineShell() {
       }
     } catch (e) {
       console.error(e);
+      Sentry.captureException(e);
     }
   }, [preview, user, likedIds, pushSync]);
 
@@ -294,6 +301,7 @@ export function MachineShell() {
       const { newPatternId, error } = await copyPublicPattern(client, preview.pattern.id);
       if (error || !newPatternId) {
         console.error(error ?? "No pattern ID returned");
+        Sentry.captureException(error ?? new Error("copyPublicPattern: no pattern ID returned"));
         return;
       }
       const nextCopies = preview.pattern.copies_count + 1;
@@ -303,6 +311,7 @@ export function MachineShell() {
       openProgram(newPatternId);
     } catch (e) {
       console.error(e);
+      Sentry.captureException(e);
     } finally {
       setCopying(false);
     }

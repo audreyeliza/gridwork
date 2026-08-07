@@ -62,6 +62,7 @@ import {
   type ManilaStockId,
 } from "@/lib/manilaStock";
 import { getSupabaseBrowserClient, resetSupabaseBrowserClient } from "@/lib/supabase";
+import * as Sentry from "@sentry/nextjs";
 import type { Session, SupabaseClient, User } from "@supabase/supabase-js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -334,6 +335,7 @@ export function EditorWorkspace({
     setPatternsLoading(false);
     if (error) {
       console.error(error);
+      Sentry.captureException(error);
       setPatterns([]);
       return;
     }
@@ -498,6 +500,7 @@ export function EditorWorkspace({
       });
       if (error) {
         console.error(error);
+        Sentry.captureException(error);
         return;
       }
       await loadPatterns(supabase, user.id);
@@ -654,7 +657,10 @@ export function EditorWorkspace({
         thumbnail: pattern.thumbnail ?? null,
         is_public: pattern.is_public,
       });
-      if (error) console.error(error);
+      if (error) {
+        console.error(error);
+        Sentry.captureException(error);
+      }
     },
     [supabase, user, patterns],
   );
@@ -668,6 +674,7 @@ export function EditorWorkspace({
       const { error } = await deletePattern(supabase, id, user.id);
       if (error) {
         console.error(error);
+        Sentry.captureException(error);
         // Reload on failure to restore the list
         await loadPatterns(supabase, user.id);
       }
@@ -730,6 +737,7 @@ export function EditorWorkspace({
       const { error } = await setPatternPublic(supabase, id, user.id, isPublic);
       if (error) {
         console.error(error);
+        Sentry.captureException(error);
         setPatterns((prev) => prev.map((p) => (p.id === id ? { ...p, is_public: !isPublic } : p)));
       }
     },
@@ -751,7 +759,10 @@ export function EditorWorkspace({
       image_settings: serializeImageDocument(imageDocument, { manila_stock: manilaStock }),
       thumbnail: thumbnail || null,
     });
-    if (error) console.error(error);
+    if (error) {
+      console.error(error);
+      Sentry.captureException(error);
+    }
   }, [supabase, user, selectedPatternId, activePattern, gridW, gridH, cells, yarnSettings, progress, imageDocument, manilaStock]);
 
   const [saveIndicator, setSaveIndicator] = useState<"idle" | "pending" | "saving" | "saved">("idle");
