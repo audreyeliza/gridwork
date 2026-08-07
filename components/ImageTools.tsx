@@ -1,7 +1,7 @@
 "use client";
 
 import { GridCanvas } from "@/components/GridCanvas";
-import type { GridTool } from "@/components/GridCanvas";
+import { OperatorCardHeader } from "@/components/OperatorCardHeader";
 import { createPortal } from "react-dom";
 import {
   drawImageWithTransform,
@@ -13,14 +13,20 @@ import {
 } from "@/lib/imageCanvasUtils";
 import {
   compressImageToDataUrl,
+  createImageLayer,
+  defaultImageLayerName,
   loadImageFromDataUrl,
+  type PatternImageDocument,
+  type PatternImageLayer,
   type PatternImageSettings,
 } from "@/lib/imageSettings";
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { DEFAULT_MANILA_STOCK, manilaHex } from "@/lib/manilaStock";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type MutableRefObject } from "react";
 
 export type ImageReferenceMode = "none" | "underlay" | "convert";
 
 import type { PatternProgressState } from "@/lib/progressData";
+import type { GridUnderlayLayer } from "@/components/GridCanvas";
 
 export type ImageToolsProps = {
   gridWidth: number;
@@ -30,7 +36,6 @@ export type ImageToolsProps = {
   onApplyConvertedGrid: (next: boolean[][]) => void;
   onBestFitGrid?: (w: number, h: number) => void;
   onImageLoad?: (naturalWidth: number, naturalHeight: number) => void;
-  onCropExpandedChange?: (expanded: boolean) => void;
   onGridFullscreenChange?: (fullscreen: boolean) => void;
   onUndo?: () => void;
   onRedo?: () => void;
@@ -40,22 +45,27 @@ export type ImageToolsProps = {
   className?: string;
   progress?: PatternProgressState;
   onToggleRowComplete?: (row: number) => void;
-  /** Saved image settings from the DB — applied when imageSettingsLoadKey changes. */
-  savedImageSettings?: PatternImageSettings | null;
-  /** Changing this key triggers a full reinit from savedImageSettings. */
+  /** Saved multi-image document from the DB — applied when imageSettingsLoadKey changes. */
+  savedImageDocument?: PatternImageDocument | null;
+  /** Changing this key triggers a full reinit from savedImageDocument. */
   imageSettingsLoadKey?: string;
-  /** Called whenever any image setting changes (for autosave). */
-  onImageSettingsChange?: (s: PatternImageSettings) => void;
+  /** Called whenever the image document changes (for autosave). */
+  onImageDocumentChange?: (doc: PatternImageDocument) => void;
   /** When set, image controls are portaled into this element instead of rendered inline. */
   sidePanelTarget?: HTMLElement | null;
-  /** External draw tool override — passed through to GridCanvas. */
-  toolOverride?: GridTool;
-  onToolOverrideChange?: (tool: GridTool) => void;
+  /** When true, grid cells cannot be painted. */
+  editLocked?: boolean;
+  /** Manila card stock fill for the grid. */
+  paperColor?: string;
+  hideFullscreenEntry?: boolean;
+  enterFullscreenRef?: MutableRefObject<(() => void) | null>;
+  /** Parent control bar can call fit / zoom in / zoom out. */
+  zoomApiRef?: MutableRefObject<{ fit: () => void; zoomIn: () => void; zoomOut: () => void } | null>;
 };
 
 const MAX_BEST_FIT_CELLS = 80;
-const PREVIEW_W = 280;
-const PREVIEW_H = 200;
+const PREVIEW_W = 304;
+const PREVIEW_H = 216;
 const HANDLE_HALF = 8;
 const HANDLE_SIZE = 8;
 const FULL_CROP: CropRect = { x: 0, y: 0, w: 1, h: 1 };
@@ -68,6 +78,8 @@ type CropDragState = {
   startCanvasX: number;
   startCanvasY: number;
   startCrop: CropRect;
+  startPanX: number;
+  startPanY: number;
   fitX: number;
   fitY: number;
   fitW: number;
@@ -89,25 +101,6 @@ function bestFitDimensions(img: HTMLImageElement, scale: number): { w: number; h
   w = Math.min(200, Math.max(5, w));
   h = Math.min(200, Math.max(5, h));
   return { w, h };
-}
-
-function getContainLayout(
-  imgW: number,
-  imgH: number,
-  cw: number,
-  ch: number,
-): { fitX: number; fitY: number; fitW: number; fitH: number } {
-  const ar = imgW / imgH;
-  const dr = cw / ch;
-  if (ar > dr) {
-    const fitW = cw;
-    const fitH = cw / ar;
-    return { fitX: 0, fitY: (ch - fitH) / 2, fitW, fitH };
-  } else {
-    const fitH = ch;
-    const fitW = ch * ar;
-    return { fitX: (cw - fitW) / 2, fitY: 0, fitW, fitH };
-  }
 }
 
 type HandlePositions = Record<Exclude<CropHandle, "move" | null>, { x: number; y: number }>;
@@ -160,6 +153,7 @@ function hitTestHandles(
   return null;
 }
 
+/** Free-aspect crop resize / move. */
 function applyHandleDrag(
   handle: Exclude<CropHandle, null>,
   startCrop: CropRect,
@@ -269,6 +263,8 @@ function drawCropCanvas(
   panX: number,
   panY: number,
   imageZoom: number,
+  gridWidth: number,
+  gridHeight: number,
 ): void {
   canvas.width = canvasW;
   canvas.height = canvasH;
@@ -311,14 +307,22 @@ function drawCropCanvas(
   ctx.fillRect(0, cy, cx, ch);
   ctx.fillRect(cx + cw, cy, canvasW - cx - cw, ch);
 
-  // Rule of thirds
-  ctx.strokeStyle = "rgba(255,255,255,0.7)";
-  ctx.lineWidth = 1.5;
+  // Light grid mesh inside crop matching pattern aspect
+  ctx.strokeStyle = "rgba(255,255,255,0.22)";
+  ctx.lineWidth = 1;
+  const cols = Math.min(gridWidth, 24);
+  const rows = Math.min(gridHeight, 24);
   ctx.beginPath();
-  ctx.moveTo(cx + cw / 3, cy); ctx.lineTo(cx + cw / 3, cy + ch);
-  ctx.moveTo(cx + (2 * cw) / 3, cy); ctx.lineTo(cx + (2 * cw) / 3, cy + ch);
-  ctx.moveTo(cx, cy + ch / 3); ctx.lineTo(cx + cw, cy + ch / 3);
-  ctx.moveTo(cx, cy + (2 * ch) / 3); ctx.lineTo(cx + cw, cy + (2 * ch) / 3);
+  for (let i = 1; i < cols; i++) {
+    const gx = cx + (cw * i) / cols;
+    ctx.moveTo(gx, cy);
+    ctx.lineTo(gx, cy + ch);
+  }
+  for (let j = 1; j < rows; j++) {
+    const gy = cy + (ch * j) / rows;
+    ctx.moveTo(cx, gy);
+    ctx.lineTo(cx + cw, gy);
+  }
   ctx.stroke();
 
   // Crop border
@@ -337,23 +341,19 @@ function drawCropCanvas(
     ctx.strokeRect(pos.x - HANDLE_SIZE / 2, pos.y - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE);
   }
 
-  // Dimensions overlay while dragging
-  if (isDragging) {
-    const wPct = Math.round(cr.w * 100);
-    const hPct = Math.round(cr.h * 100);
-    const text = `${wPct}% × ${hPct}%`;
-    ctx.font = "bold 11px system-ui, sans-serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    const tx = cx + cw / 2;
-    const ty = cy + ch / 2;
-    const metrics = ctx.measureText(text);
-    const pw = metrics.width + 10;
-    ctx.fillStyle = "rgba(0,0,0,0.55)";
-    ctx.fillRect(tx - pw / 2, ty - 9, pw, 18);
-    ctx.fillStyle = "#fff";
-    ctx.fillText(text, tx, ty);
-  }
+  // Grid size overlay (cells), always visible
+  const text = `${gridWidth} × ${gridHeight}`;
+  ctx.font = "bold 11px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const tx = cx + cw / 2;
+  const ty = cy + ch / 2;
+  const metrics = ctx.measureText(text);
+  const pw = metrics.width + 12;
+  ctx.fillStyle = isDragging ? "rgba(0,0,0,0.65)" : "rgba(0,0,0,0.45)";
+  ctx.fillRect(tx - pw / 2, ty - 9, pw, 18);
+  ctx.fillStyle = "#fff";
+  ctx.fillText(text, tx, ty);
 }
 
 export function ImageTools({
@@ -364,7 +364,6 @@ export function ImageTools({
   onApplyConvertedGrid,
   onBestFitGrid,
   onImageLoad,
-  onCropExpandedChange,
   onGridFullscreenChange,
   onUndo,
   onRedo,
@@ -374,18 +373,29 @@ export function ImageTools({
   className,
   progress,
   onToggleRowComplete,
-  savedImageSettings,
+  savedImageDocument,
   imageSettingsLoadKey,
-  onImageSettingsChange,
+  onImageDocumentChange,
   sidePanelTarget,
-  toolOverride,
-  onToolOverrideChange,
+  editLocked = false,
+  paperColor = "#E8E2D0",
+  hideFullscreenEntry = false,
+  enterFullscreenRef,
+  zoomApiRef,
 }: ImageToolsProps) {
   const fileInputId = useId();
   const fileRef = useRef<HTMLInputElement>(null);
   const cropCanvasRef = useRef<HTMLCanvasElement>(null);
   const expandedCropCanvasRef = useRef<HTMLCanvasElement>(null);
   const cropDragRef = useRef<CropDragState | null>(null);
+
+  const [layers, setLayers] = useState<PatternImageLayer[]>([]);
+  const [activeLayerId, setActiveLayerId] = useState<string | null>(null);
+  const [layerImages, setLayerImages] = useState<Record<string, HTMLImageElement>>({});
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
 
   const [mode, setMode] = useState<ImageReferenceMode>("none");
   const [image, setImage] = useState<HTMLImageElement | null>(null);
@@ -404,13 +414,15 @@ export function ImageTools({
   const [panY, setPanY] = useState(0);
   const [positionLocked, setPositionLocked] = useState(false);
   const [cropExpanded, setCropExpanded] = useState(false);
-  const [expandedSize, setExpandedSize] = useState({ w: 700, h: 400 });
+  const [expandedSize, setExpandedSize] = useState({ w: 640, h: 400 });
 
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
   const [imageZoom, setImageZoom] = useState(1);
+  /** View-only zoom for crop canvases — does not affect grid underlay/convert. */
+  const [cropViewZoom, setCropViewZoom] = useState(1);
   const pinchRef = useRef<{ dist: number } | null>(null);
-  /** When true, the image-change effect skips its state reset (used when loading from saved settings). */
   const skipImageResetRef = useRef(false);
+  const suppressReportRef = useRef(false);
 
   const thresholdRef = useRef(threshold);
   const darkIsFilledRef = useRef(darkIsFilled);
@@ -424,8 +436,7 @@ export function ImageTools({
   useEffect(() => { panXRef.current = panX; }, [panX]);
   useEffect(() => { panYRef.current = panY; }, [panY]);
 
-  // When source image changes, reset working image and all crop/pan state.
-  // Skip when restoring from saved settings (skipImageResetRef prevents overwriting restored state).
+  // When source image changes, reset working image and crop/pan state.
   useEffect(() => {
     if (skipImageResetRef.current) {
       skipImageResetRef.current = false;
@@ -439,36 +450,123 @@ export function ImageTools({
     setPositionLocked(false);
     setCropExpanded(false);
     setImageZoom(1);
+    setCropViewZoom(1);
   }, [image]);
 
-  // Compute expanded canvas size from viewport when modal opens
   useEffect(() => {
     if (!cropExpanded) return;
-    const narrow = window.innerWidth < 768;
-    const padding = 96;
-    const w = narrow
-      ? window.innerWidth - 32
-      : Math.min(Math.round(window.innerWidth * 0.8) - 48, 900);
-    const h = Math.min(Math.round(w * (PREVIEW_H / PREVIEW_W)), Math.round(window.innerHeight * 0.8) - padding);
-    setExpandedSize({ w, h });
+    setCropViewZoom(1);
+    const padding = 120;
+    const w = Math.min(Math.round(window.innerWidth * 0.72) - 48, 720);
+    const h = Math.min(Math.round(w * (PREVIEW_H / PREVIEW_W)), Math.round(window.innerHeight * 0.55) - padding);
+    setExpandedSize({ w: Math.max(280, w), h: Math.max(180, h) });
   }, [cropExpanded]);
 
-  // Notify parent when crop fullscreen state changes
-  useEffect(() => {
-    onCropExpandedChange?.(cropExpanded);
-  }, [cropExpanded, onCropExpandedChange]);
-
-  // Draw normal crop preview canvas
   useEffect(() => {
     if (!cropCanvasRef.current || !workingImage || cropExpanded) return;
-    drawCropCanvas(cropCanvasRef.current, PREVIEW_W, PREVIEW_H, workingImage, cropRect, isDragging, panX, panY, imageZoom);
-  }, [workingImage, cropRect, isDragging, panX, panY, imageZoom, cropExpanded]);
+    drawCropCanvas(
+      cropCanvasRef.current,
+      PREVIEW_W,
+      PREVIEW_H,
+      workingImage,
+      cropRect,
+      isDragging,
+      0,
+      0,
+      cropViewZoom,
+      gridWidth,
+      gridHeight,
+    );
+  }, [workingImage, cropRect, isDragging, cropViewZoom, cropExpanded, gridWidth, gridHeight]);
 
-  // Draw expanded crop canvas
   useEffect(() => {
     if (!expandedCropCanvasRef.current || !workingImage || !cropExpanded) return;
-    drawCropCanvas(expandedCropCanvasRef.current, expandedSize.w, expandedSize.h, workingImage, cropRect, isDragging, panX, panY, imageZoom);
-  }, [workingImage, cropRect, isDragging, panX, panY, imageZoom, cropExpanded, expandedSize]);
+    drawCropCanvas(
+      expandedCropCanvasRef.current,
+      expandedSize.w,
+      expandedSize.h,
+      workingImage,
+      cropRect,
+      isDragging,
+      0,
+      0,
+      cropViewZoom,
+      gridWidth,
+      gridHeight,
+    );
+  }, [workingImage, cropRect, isDragging, cropViewZoom, cropExpanded, expandedSize, gridWidth, gridHeight]);
+
+  const applyLayerToEditor = useCallback((layer: PatternImageLayer | null) => {
+    suppressReportRef.current = true;
+    setMode(layer?.mode ?? "none");
+    setUnderlayOpacityPct(layer?.underlayOpacityPct ?? 65);
+    setThreshold(layer?.threshold ?? 140);
+    setDarkIsFilled(layer?.darkIsFilled ?? true);
+    setCropRect(layer?.cropRect ?? FULL_CROP);
+    setAppliedCrop(layer?.appliedCrop ?? null);
+    setPanX(layer?.panX ?? 0);
+    setPanY(layer?.panY ?? 0);
+    setImageZoom(layer?.imageZoom ?? 1);
+    setPositionLocked(layer?.positionLocked ?? false);
+    setCropViewZoom(1);
+    setCropExpanded(false);
+
+    if (layer?.imageDataUrl) {
+      setImageDataUrl(layer.imageDataUrl);
+      loadImageFromDataUrl(layer.imageDataUrl)
+        .then((img) => {
+          skipImageResetRef.current = true;
+          setImage(img);
+          setWorkingImage(img);
+          setLayerImages((prev) => ({ ...prev, [layer.id]: img }));
+        })
+        .catch(() => {
+          setImage(null);
+          setWorkingImage(null);
+          setImageDataUrl(null);
+        })
+        .finally(() => {
+          window.setTimeout(() => {
+            suppressReportRef.current = false;
+          }, 0);
+        });
+    } else {
+      setImage(null);
+      setWorkingImage(null);
+      setImageDataUrl(null);
+      window.setTimeout(() => {
+        suppressReportRef.current = false;
+      }, 0);
+    }
+  }, []);
+
+  const currentSettings = useCallback((): PatternImageSettings => ({
+    mode,
+    imageDataUrl,
+    underlayOpacityPct,
+    threshold,
+    darkIsFilled,
+    cropRect,
+    appliedCrop,
+    panX,
+    panY,
+    imageZoom,
+    positionLocked,
+  }), [mode, imageDataUrl, underlayOpacityPct, threshold, darkIsFilled, cropRect, appliedCrop, panX, panY, imageZoom, positionLocked]);
+
+  const buildDocument = useCallback((): PatternImageDocument => {
+    const settings = currentSettings();
+    const images = layers.map((layer) =>
+      layer.id === activeLayerId
+        ? { ...layer, ...settings }
+        : layer,
+    );
+    // If active id is missing from layers but we have an image, keep a layer
+    if (activeLayerId && !images.some((l) => l.id === activeLayerId) && settings.imageDataUrl) {
+      images.push(createImageLayer({ id: activeLayerId, ...settings }));
+    }
+    return { images, activeImageId: activeLayerId };
+  }, [layers, activeLayerId, currentSettings]);
 
   // Auto-apply conversion when pan changes in convert mode (reconnects pan → convert mapping)
   useEffect(() => {
@@ -484,55 +582,91 @@ export function ImageTools({
   // Reinitialize all image state when the load key changes (new pattern loaded from DB).
   useEffect(() => {
     if (!imageSettingsLoadKey) return;
-    const s = savedImageSettings;
-    setMode(s?.mode ?? "none");
-    setUnderlayOpacityPct(s?.underlayOpacityPct ?? 65);
-    setThreshold(s?.threshold ?? 140);
-    setDarkIsFilled(s?.darkIsFilled ?? true);
-    setCropRect(s?.cropRect ?? FULL_CROP);
-    setAppliedCrop(s?.appliedCrop ?? null);
-    setPanX(s?.panX ?? 0);
-    setPanY(s?.panY ?? 0);
-    setImageZoom(s?.imageZoom ?? 1);
-    setPositionLocked(s?.positionLocked ?? false);
+    const doc = savedImageDocument ?? { images: [], activeImageId: null };
+    const nextLayers = doc.images.map((img) => ({ ...img }));
+    const nextActive = doc.activeImageId && nextLayers.some((l) => l.id === doc.activeImageId)
+      ? doc.activeImageId
+      : (nextLayers[0]?.id ?? null);
+    setLayers(nextLayers);
+    setActiveLayerId(nextActive);
+    setLayerImages({});
+    applyLayerToEditor(nextLayers.find((l) => l.id === nextActive) ?? null);
 
-    if (s?.imageDataUrl) {
-      setImageDataUrl(s.imageDataUrl);
-      loadImageFromDataUrl(s.imageDataUrl)
+    // Prefetch all layer images for stacked underlays
+    for (const layer of nextLayers) {
+      if (!layer.imageDataUrl) continue;
+      void loadImageFromDataUrl(layer.imageDataUrl)
         .then((img) => {
-          skipImageResetRef.current = true;
-          setImage(img);
-          setWorkingImage(img);
+          setLayerImages((prev) => ({ ...prev, [layer.id]: img }));
         })
-        .catch(() => {
-          setImage(null);
-          setWorkingImage(null);
-          setImageDataUrl(null);
-        });
-    } else {
-      setImage(null);
-      setWorkingImage(null);
-      setImageDataUrl(null);
+        .catch(() => {});
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [imageSettingsLoadKey]);
 
-  // Report current image settings to parent for autosave.
+  // Report current image document to parent for autosave.
   useEffect(() => {
-    onImageSettingsChange?.({
-      mode,
-      imageDataUrl,
-      underlayOpacityPct,
-      threshold,
-      darkIsFilled,
-      cropRect,
-      appliedCrop,
-      panX,
-      panY,
-      imageZoom,
-      positionLocked,
+    if (suppressReportRef.current) return;
+    onImageDocumentChange?.(buildDocument());
+  }, [mode, imageDataUrl, underlayOpacityPct, threshold, darkIsFilled, cropRect, appliedCrop, panX, panY, imageZoom, positionLocked, layers, activeLayerId, buildDocument, onImageDocumentChange]);
+
+  const selectLayer = useCallback((id: string) => {
+    if (id === activeLayerId) return;
+    const flushed = layers.map((layer) =>
+      layer.id === activeLayerId ? { ...layer, ...currentSettings() } : layer,
+    );
+    setLayers(flushed);
+    setActiveLayerId(id);
+    applyLayerToEditor(flushed.find((l) => l.id === id) ?? null);
+  }, [activeLayerId, layers, currentSettings, applyLayerToEditor]);
+
+  const removeActiveLayer = useCallback(() => {
+    if (!activeLayerId) return;
+    const remaining = layers.filter((l) => l.id !== activeLayerId);
+    setLayers(remaining);
+    setLayerImages((prev) => {
+      const next = { ...prev };
+      delete next[activeLayerId];
+      return next;
     });
-  }, [mode, imageDataUrl, underlayOpacityPct, threshold, darkIsFilled, cropRect, appliedCrop, panX, panY, imageZoom, positionLocked, onImageSettingsChange]);
+    const nextActive = remaining[remaining.length - 1]?.id ?? null;
+    setActiveLayerId(nextActive);
+    applyLayerToEditor(remaining.find((l) => l.id === nextActive) ?? null);
+    if (fileRef.current) fileRef.current.value = "";
+    setStatus(null);
+  }, [activeLayerId, layers, applyLayerToEditor]);
+
+  const toggleLayerVisible = useCallback((id: string) => {
+    setLayers((prev) => prev.map((l) => (l.id === id ? { ...l, visible: !l.visible } : l)));
+  }, []);
+
+  const commitRename = useCallback((id: string, raw: string, fallbackIndex: number) => {
+    const trimmed = raw.trim();
+    const nextName = trimmed || defaultImageLayerName(fallbackIndex);
+    setLayers((prev) => prev.map((l) => (l.id === id ? { ...l, name: nextName } : l)));
+    setRenamingId(null);
+    setRenameDraft("");
+  }, []);
+
+  const startRename = useCallback((layer: PatternImageLayer) => {
+    setRenamingId(layer.id);
+    setRenameDraft(layer.name);
+    selectLayer(layer.id);
+  }, [selectLayer]);
+
+  const reorderLayers = useCallback((fromId: string, toId: string) => {
+    if (fromId === toId) return;
+    setLayers((prev) => {
+      const from = prev.findIndex((l) => l.id === fromId);
+      const to = prev.findIndex((l) => l.id === toId);
+      if (from < 0 || to < 0 || from === to) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      if (!moved) return prev;
+      next.splice(to, 0, moved);
+      return next;
+    });
+  }, []);
 
   const handleGridFullscreenChange = useCallback((fs: boolean) => {
     setGridFullscreen(fs);
@@ -540,11 +674,8 @@ export function ImageTools({
   }, [onGridFullscreenChange]);
 
   const clearImage = useCallback(() => {
-    setImage(null);
-    setImageDataUrl(null);
-    setStatus(null);
-    if (fileRef.current) fileRef.current.value = "";
-  }, []);
+    removeActiveLayer();
+  }, [removeActiveLayer]);
 
   const onPickFile = useCallback(
     async (file: File | null) => {
@@ -557,18 +688,42 @@ export function ImageTools({
       try {
         const img = await loadImageFromFile(file);
         const dataUrl = await compressImageToDataUrl(img);
+        const flushed = layers.map((layer) =>
+          layer.id === activeLayerId ? { ...layer, ...currentSettings() } : layer,
+        );
+        const newLayer = createImageLayer({
+          mode: "underlay",
+          imageDataUrl: dataUrl,
+          threshold: otsuThreshold(img),
+          name: defaultImageLayerName(flushed.length),
+        });
+        const nextLayers = [...flushed, newLayer];
+        setLayers(nextLayers);
+        setActiveLayerId(newLayer.id);
+        setLayerImages((prev) => ({ ...prev, [newLayer.id]: img }));
+        skipImageResetRef.current = true;
         setImage(img);
+        setWorkingImage(img);
         setImageDataUrl(dataUrl);
+        setMode("underlay");
         setThreshold(otsuThreshold(img));
+        setUnderlayOpacityPct(65);
+        setDarkIsFilled(true);
+        setCropRect(FULL_CROP);
+        setAppliedCrop(null);
+        setPanX(0);
+        setPanY(0);
+        setImageZoom(1);
+        setPositionLocked(false);
+        setCropViewZoom(1);
         onImageLoad?.(img.naturalWidth, img.naturalHeight);
         const dims = bestFitDimensions(img, 1.0);
         onBestFitGrid?.(dims.w, dims.h);
-        if (mode === "none") setMode("underlay");
       } catch {
         setStatus("Could not load that image.");
       }
     },
-    [onBestFitGrid, onImageLoad, mode],
+    [onBestFitGrid, onImageLoad, layers, activeLayerId, currentSettings],
   );
 
   const handleTransform = useCallback(
@@ -578,8 +733,11 @@ export function ImageTools({
       const dataUrl = await compressImageToDataUrl(newImg);
       setWorkingImage(newImg);
       setImageDataUrl(dataUrl);
+      if (activeLayerId) {
+        setLayerImages((prev) => ({ ...prev, [activeLayerId]: newImg }));
+      }
     },
-    [workingImage],
+    [workingImage, activeLayerId],
   );
 
   const applyConversion = useCallback(() => {
@@ -604,16 +762,43 @@ export function ImageTools({
         cropRect, panXRef.current / 100, panYRef.current / 100, imageZoom,
       );
       onApplyConvertedGrid(next);
-      setStatus("Crop applied and grid updated.");
+      setStatus("Applied.");
+    } else {
+      setStatus(null);
     }
   }, [cropRect, mode, workingImage, gridWidth, gridHeight, imageZoom, onApplyConvertedGrid]);
+
+  const closeCropCard = useCallback(() => {
+    applyCrop();
+    setCropExpanded(false);
+  }, [applyCrop]);
+
+  useEffect(() => {
+    if (sidePanelTarget || !cropExpanded) return;
+    applyCrop();
+    setCropExpanded(false);
+  }, [sidePanelTarget, cropExpanded, applyCrop]);
 
   const resetCrop = useCallback(() => {
     setCropRect(FULL_CROP);
     setAppliedCrop(null);
+    setPanX(0);
+    setPanY(0);
+    setImageZoom(1);
+    setCropViewZoom(1);
   }, []);
 
-  // Pointer handlers — use bounding rect for dimensions so they work on both normal and expanded canvas
+  useEffect(() => {
+    if (!cropExpanded) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      closeCropCard();
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [cropExpanded, closeCropCard]);
+
   const onCropPointerDown = useCallback(
     (e: React.PointerEvent<HTMLCanvasElement>) => {
       if (!workingImage || positionLocked) return;
@@ -628,9 +813,9 @@ export function ImageTools({
         canvasW,
         canvasH,
         null,
-        panX / 100,
-        panY / 100,
-        imageZoom,
+        0,
+        0,
+        cropViewZoom,
       );
       const handle = hitTestHandles(px, py, cropRect, fitX, fitY, fitW, fitH);
       if (!handle) return;
@@ -639,6 +824,8 @@ export function ImageTools({
         startCanvasX: px,
         startCanvasY: py,
         startCrop: { ...cropRect },
+        startPanX: 0,
+        startPanY: 0,
         fitX,
         fitY,
         fitW,
@@ -647,7 +834,7 @@ export function ImageTools({
       setIsDragging(true);
       e.currentTarget.setPointerCapture(e.pointerId);
     },
-    [workingImage, positionLocked, cropRect, panX, panY, imageZoom],
+    [workingImage, positionLocked, cropRect, cropViewZoom],
   );
 
   const onCropPointerMove = useCallback(
@@ -660,8 +847,17 @@ export function ImageTools({
       const py = e.clientY - rect.top;
 
       if (cropDragRef.current) {
-        const { handle, startCanvasX, startCanvasY, startCrop, fitW, fitH } = cropDragRef.current;
-        setCropRect(applyHandleDrag(handle, startCrop, px - startCanvasX, py - startCanvasY, fitW, fitH));
+        const drag = cropDragRef.current;
+        setCropRect(
+          applyHandleDrag(
+            drag.handle,
+            drag.startCrop,
+            px - drag.startCanvasX,
+            py - drag.startCanvasY,
+            drag.fitW,
+            drag.fitH,
+          ),
+        );
         return;
       }
 
@@ -671,13 +867,13 @@ export function ImageTools({
         canvasW,
         canvasH,
         null,
-        panX / 100,
-        panY / 100,
-        imageZoom,
+        0,
+        0,
+        cropViewZoom,
       );
       setHoverHandle(hitTestHandles(px, py, cropRect, fitX, fitY, fitW, fitH));
     },
-    [workingImage, cropRect, panX, panY, imageZoom],
+    [workingImage, cropRect, cropViewZoom],
   );
 
   const onCropPointerUp = useCallback(() => {
@@ -685,23 +881,35 @@ export function ImageTools({
     setIsDragging(false);
   }, []);
 
-  // Non-passive wheel listener for scroll-to-zoom on the normal crop canvas
-  useEffect(() => {
-    const el = cropCanvasRef.current;
-    if (!el || !workingImage) return;
+  const attachCropWheel = useCallback((el: HTMLCanvasElement | null) => {
+    if (!el) return () => {};
     const handler = (e: WheelEvent) => {
+      if (positionLocked) return;
+      if (!(e.ctrlKey || e.metaKey)) return;
       e.preventDefault();
       const delta = e.deltaY > 0 ? -0.1 : 0.1;
-      setImageZoom((z) => Math.min(4, Math.max(0.5, Math.round((z + delta) * 10) / 10)));
+      setCropViewZoom((z) => Math.min(4, Math.max(0.5, Math.round((z + delta) * 10) / 10)));
     };
     el.addEventListener("wheel", handler, { passive: false });
     return () => el.removeEventListener("wheel", handler);
-  }, [workingImage]);
+  }, [positionLocked]);
 
-  // Pinch-to-zoom on the normal crop canvas
   useEffect(() => {
-    const el = cropCanvasRef.current;
-    if (!el || !workingImage) return;
+    if (!workingImage) return;
+    const cleanA = attachCropWheel(cropCanvasRef.current);
+    const cleanB = attachCropWheel(expandedCropCanvasRef.current);
+    return () => {
+      cleanA();
+      cleanB();
+    };
+  }, [workingImage, cropExpanded, expandedSize, attachCropWheel]);
+
+  useEffect(() => {
+    const els = [cropCanvasRef.current, expandedCropCanvasRef.current].filter(
+      (el): el is HTMLCanvasElement => Boolean(el),
+    );
+    if (!workingImage || els.length === 0) return;
+
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 2) {
         pinchRef.current = {
@@ -713,7 +921,7 @@ export function ImageTools({
       }
     };
     const onTouchMove = (e: TouchEvent) => {
-      if (e.touches.length !== 2 || !pinchRef.current) return;
+      if (e.touches.length !== 2 || !pinchRef.current || positionLocked) return;
       e.preventDefault();
       const dist = Math.hypot(
         e.touches[0].clientX - e.touches[1].clientX,
@@ -721,25 +929,73 @@ export function ImageTools({
       );
       const ratio = dist / pinchRef.current.dist;
       pinchRef.current = { dist };
-      setImageZoom((z) => Math.min(4, Math.max(0.5, Math.round(z * ratio * 10) / 10)));
+      setCropViewZoom((z) => Math.min(4, Math.max(0.5, Math.round(z * ratio * 10) / 10)));
     };
     const onTouchEnd = () => { pinchRef.current = null; };
-    el.addEventListener("touchstart", onTouchStart, { passive: true });
-    el.addEventListener("touchmove", onTouchMove, { passive: false });
-    el.addEventListener("touchend", onTouchEnd);
-    return () => {
-      el.removeEventListener("touchstart", onTouchStart);
-      el.removeEventListener("touchmove", onTouchMove);
-      el.removeEventListener("touchend", onTouchEnd);
-    };
-  }, [workingImage]);
 
-  const underlayOpacity = Math.min(100, Math.max(0, underlayOpacityPct)) / 100;
-  const activeCrop = appliedCrop;
+    for (const el of els) {
+      el.addEventListener("touchstart", onTouchStart, { passive: true });
+      el.addEventListener("touchmove", onTouchMove, { passive: false });
+      el.addEventListener("touchend", onTouchEnd);
+    }
+    return () => {
+      for (const el of els) {
+        el.removeEventListener("touchstart", onTouchStart);
+        el.removeEventListener("touchmove", onTouchMove);
+        el.removeEventListener("touchend", onTouchEnd);
+      }
+    };
+  }, [workingImage, positionLocked, cropExpanded, expandedSize]);
+
+  const stackedUnderlays = useMemo((): GridUnderlayLayer[] => {
+    const docLayers = layers.map((layer) =>
+      layer.id === activeLayerId
+        ? { ...layer, ...currentSettings() }
+        : layer,
+    );
+    const result: GridUnderlayLayer[] = [];
+    for (const layer of docLayers) {
+      if (!layer.visible || layer.mode !== "underlay" || !layer.imageDataUrl) continue;
+      const img =
+        layer.id === activeLayerId && workingImage
+          ? workingImage
+          : layerImages[layer.id];
+      if (!img) continue;
+      result.push({
+        image: img,
+        opacity: Math.min(100, Math.max(0, layer.underlayOpacityPct)) / 100,
+        crop: layer.appliedCrop,
+        panX: layer.panX / 100,
+        panY: layer.panY / 100,
+        zoom: layer.imageZoom,
+      });
+    }
+    return result;
+  }, [layers, activeLayerId, currentSettings, workingImage, layerImages]);
+
+  // Keep active layer image map in sync when working pixels change (e.g. transform).
+  useEffect(() => {
+    if (!activeLayerId || !workingImage) return;
+    setLayerImages((prev) =>
+      prev[activeLayerId] === workingImage ? prev : { ...prev, [activeLayerId]: workingImage },
+    );
+  }, [activeLayerId, workingImage]);
   const cropCursor = getCropCursor(isDragging ? (cropDragRef.current?.handle ?? null) : hoverHandle);
 
-  const cropCanvasJSX = (ref: React.RefObject<HTMLCanvasElement | null>, w: number, h: number) => (
-    <div style={{ width: w, height: h, overflow: "hidden", borderRadius: 12, border: "1px solid rgba(61,42,30,0.12)", flexShrink: 0 }}>
+  const cropCanvasJSX = (
+    ref: React.RefObject<HTMLCanvasElement | null>,
+    w: number,
+    h: number,
+  ) => (
+    <div
+      className="overflow-hidden border"
+      style={{
+        width: w,
+        height: h,
+        borderColor: "var(--print-ink-faint)",
+        flexShrink: 0,
+      }}
+    >
       <canvas
         ref={ref}
         width={w}
@@ -747,184 +1003,268 @@ export function ImageTools({
         onPointerDown={onCropPointerDown}
         onPointerMove={onCropPointerMove}
         onPointerUp={onCropPointerUp}
-        className={`${positionLocked ? "cursor-not-allowed" : cropCursor}`}
+        className={positionLocked ? "cursor-not-allowed" : cropCursor}
         style={{
           width: w,
           height: h,
           display: "block",
-          borderRadius: 12,
         }}
       />
     </div>
   );
 
-  const controlsPanel = !gridFullscreen ? (
-    <div className="relative z-30 flex shrink-0 flex-col gap-3 rounded-xl p-4" style={{ background: "#FBF7EF", border: "1px solid rgba(61,42,30,0.10)" }}>
-
-      {sidePanelTarget && (
-        <div className="mb-1">
-          <div className="font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-muted mb-1">Reference image</div>
-          <div className="font-serif text-[20px] font-bold leading-none tracking-[-0.01em] text-text-strong">Import & convert</div>
-        </div>
-      )}
-
-      {/* Upload row */}
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-semibold text-stone-700">Reference image</span>
-        <input
-          ref={fileRef}
-          id={fileInputId}
-          type="file"
-          accept="image/*"
-          className="sr-only"
-          onChange={(e) => void onPickFile(e.target.files?.[0] ?? null)}
-        />
-        <label
-          htmlFor={fileInputId}
-          className="cursor-pointer rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-medium text-rose-800 hover:bg-rose-100"
+  const sliderRow = (
+    label: string,
+    value: number,
+    display: string,
+    props: {
+      min: number;
+      max: number;
+      step: number;
+      disabled?: boolean;
+      onChange: (n: number) => void;
+      onReset?: () => void;
+      showReset?: boolean;
+    },
+  ) => (
+    <div className="flex items-center gap-2 border-b py-2" style={{ borderColor: "var(--print-ink-faint)" }}>
+      <span className="w-16 shrink-0 font-mono text-[10px] font-bold tracking-[0.12em] uppercase punch-print-ink">
+        {label}
+      </span>
+      <input
+        type="range"
+        min={props.min}
+        max={props.max}
+        step={props.step}
+        value={value}
+        disabled={props.disabled}
+        onChange={(e) => props.onChange(Number(e.target.value))}
+        className="min-w-0 flex-1 disabled:opacity-40"
+      />
+      <span className="w-9 shrink-0 text-right font-mono text-[10px] tabular-nums punch-print-faint">
+        {display}
+      </span>
+      {props.showReset && props.onReset ? (
+        <button
+          type="button"
+          onClick={props.onReset}
+          className="font-mono text-[9px] font-bold uppercase punch-print-faint hover:opacity-70"
+          title="Reset"
         >
-          Upload…
-        </label>
-        {image ? (
-          <button
-            type="button"
-            onClick={clearImage}
-            className="text-xs font-medium text-stone-500 underline decoration-rose-200 hover:text-rose-700"
+          Reset
+        </button>
+      ) : (
+        <span className="w-8" aria-hidden />
+      )}
+    </div>
+  );
+
+  const controlsPanel = !gridFullscreen ? (
+    <div className="relative z-30 flex shrink-0 flex-col gap-5 overflow-y-auto p-0">
+      <div className="border-b pb-4" style={{ borderColor: "var(--print-ink-faint)" }}>
+        <div className="flex flex-wrap items-center gap-3">
+          <input
+            ref={fileRef}
+            id={fileInputId}
+            type="file"
+            accept="image/*"
+            className="sr-only"
+            onChange={(e) => void onPickFile(e.target.files?.[0] ?? null)}
+          />
+          <label
+            htmlFor={fileInputId}
+            className="cursor-pointer font-mono text-[11px] font-bold tracking-[0.08em] uppercase punch-print-ink hover:underline hover:decoration-[var(--print-ink)]/40 hover:underline-offset-2 hover:opacity-70"
           >
-            Clear image
-          </button>
+            {layers.length > 0 ? "Add image…" : "Upload…"}
+          </label>
+          {workingImage ? (
+            <button
+              type="button"
+              onClick={clearImage}
+              className="font-mono text-[11px] font-bold tracking-[0.06em] uppercase punch-print-faint hover:underline hover:decoration-[var(--print-ink-faint)] hover:opacity-70"
+            >
+              Remove
+            </button>
+          ) : null}
+        </div>
+        {layers.length > 0 ? (
+          <div className="mt-3 flex flex-col gap-1.5">
+            <p className="font-mono text-[10px] font-bold tracking-[0.12em] uppercase punch-print-ink">
+              Images
+            </p>
+            {layers.map((layer, index) => (
+              <div
+                key={layer.id}
+                draggable={renamingId !== layer.id}
+                onDragStart={(e) => {
+                  setDragId(layer.id);
+                  e.dataTransfer.effectAllowed = "move";
+                  e.dataTransfer.setData("text/plain", layer.id);
+                }}
+                onDragEnd={() => {
+                  setDragId(null);
+                  setDragOverId(null);
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                  if (dragOverId !== layer.id) setDragOverId(layer.id);
+                }}
+                onDragLeave={() => {
+                  if (dragOverId === layer.id) setDragOverId(null);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const fromId = e.dataTransfer.getData("text/plain") || dragId;
+                  if (fromId) reorderLayers(fromId, layer.id);
+                  setDragId(null);
+                  setDragOverId(null);
+                }}
+                className={`flex items-center gap-2 py-0.5 ${
+                  dragOverId === layer.id && dragId !== layer.id
+                    ? "border-t border-[var(--print-ink)]"
+                    : ""
+                } ${dragId === layer.id ? "opacity-50" : ""}`}
+              >
+                <span
+                  className="shrink-0 cursor-grab select-none font-mono text-[10px] punch-print-faint active:cursor-grabbing"
+                  title="Drag to reorder"
+                  aria-hidden
+                >
+                  ⋮⋮
+                </span>
+                {renamingId === layer.id ? (
+                  <input
+                    autoFocus
+                    type="text"
+                    value={renameDraft}
+                    onChange={(e) => setRenameDraft(e.target.value)}
+                    onBlur={() => commitRename(layer.id, renameDraft, index)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        commitRename(layer.id, renameDraft, index);
+                      } else if (e.key === "Escape") {
+                        setRenamingId(null);
+                        setRenameDraft("");
+                      }
+                    }}
+                    className="min-w-0 flex-1 border-b border-[var(--print-ink)] bg-transparent font-mono text-[11px] font-bold tracking-[0.06em] uppercase punch-print-ink focus:outline-none"
+                    aria-label="Rename image"
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => selectLayer(layer.id)}
+                    onDoubleClick={() => startRename(layer)}
+                    title="Double-click to rename"
+                    className={`min-w-0 flex-1 truncate text-left font-mono text-[11px] font-bold tracking-[0.06em] uppercase ${
+                      layer.id === activeLayerId ? "punch-print-ink" : "punch-print-faint hover:opacity-70"
+                    }`}
+                  >
+                    {layer.name || defaultImageLayerName(index)}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => toggleLayerVisible(layer.id)}
+                  className="font-mono text-[9px] font-bold uppercase punch-print-faint hover:opacity-70"
+                  title={layer.visible ? "Hide" : "Show"}
+                >
+                  {layer.visible ? "Hide" : "Show"}
+                </button>
+              </div>
+            ))}
+            <p className="mt-1 font-mono text-[9px] leading-relaxed punch-print-faint">
+              Drag to change which sits on top. Double-click a name to rename.
+            </p>
+          </div>
         ) : null}
       </div>
 
-      {/* Image section */}
       {workingImage ? (
-        <div className="flex flex-col gap-2">
-          {/* Crop header */}
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[11px] text-stone-500">Crop</span>
-            <button
-              type="button"
-              onClick={() => setCropExpanded(true)}
-              title="Expand crop preview"
-              className="rounded-full border border-gray-300 px-2 py-0.5 text-[11px] font-medium text-gray-700 hover:bg-pink-50"
-            >
-              ⤢
-            </button>
-            <button
-              type="button"
-              onClick={applyCrop}
-              disabled={positionLocked}
-              className="rounded-full bg-brand px-2.5 py-0.5 text-[11px] font-medium text-white shadow-sm transition-colors disabled:opacity-50 hover:bg-brand-dark"
-            >
-              Apply Crop
-            </button>
-            <button
-              type="button"
-              onClick={resetCrop}
-              disabled={positionLocked}
-              className="rounded-full border border-gray-300 px-2.5 py-0.5 text-[11px] font-medium text-gray-700 transition-colors disabled:opacity-40 hover:bg-pink-50"
-            >
-              Reset
-            </button>
-            {appliedCrop && (
-              <span className="text-[11px] text-stone-400">
-                Applied {Math.round(appliedCrop.w * 100)}%×{Math.round(appliedCrop.h * 100)}%
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={() => setPositionLocked((p) => !p)}
-              title={positionLocked ? "Unlock position" : "Lock position — freeze crop and pan"}
-              className={`ml-auto rounded-md border border-gray-300 bg-white/80 p-1.5 transition-colors hover:bg-pink-50 ${
-                positionLocked ? "text-brand" : "text-gray-400"
-              }`}
-            >
-              {positionLocked ? (
-                <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="2" y="7" width="12" height="8" rx="1.5" />
-                  <path d="M5 7V5a3 3 0 016 0v2" />
-                </svg>
-              ) : (
-                <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="2" y="7" width="12" height="8" rx="1.5" />
-                  <path d="M5 7V5a3 3 0 016 0V2" />
-                </svg>
-              )}
-            </button>
-          </div>
-
-          {/* Normal crop canvas (hidden when expanded modal is open) */}
-          {!cropExpanded && (
-            <div className="flex flex-col gap-1.5">
-              {cropCanvasJSX(cropCanvasRef, PREVIEW_W, PREVIEW_H)}
+        <div className="flex flex-col gap-3 border-b pb-4" style={{ borderColor: "var(--print-ink-faint)" }}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="font-mono text-[10px] font-bold tracking-[0.12em] uppercase punch-print-ink">
+              Crop
             </div>
-          )}
-
-          {/* Zoom + pan controls */}
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center gap-2">
-              <span className="w-16 text-[11px] text-stone-500">Zoom</span>
-              <input
-                type="range"
-                min={50}
-                max={400}
-                step={10}
-                value={Math.round(imageZoom * 100)}
+            <div className="flex flex-wrap items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => setCropExpanded(true)}
+                className="font-mono text-[10px] font-bold tracking-[0.08em] uppercase punch-print-faint hover:underline hover:underline-offset-2 hover:opacity-70"
+              >
+                Expand
+              </button>
+              <button
+                type="button"
+                onClick={applyCrop}
                 disabled={positionLocked}
-                onChange={(e) => setImageZoom(Number(e.target.value) / 100)}
-                className="flex-1 disabled:opacity-40"
-              />
-              <span className="w-8 text-right tabular-nums text-[11px] text-stone-500">{Math.round(imageZoom * 100)}%</span>
-              {imageZoom !== 1 && !positionLocked && (
-                <button type="button" onClick={() => setImageZoom(1)} className="text-[10px] text-stone-400 hover:text-stone-600">↩</button>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-16 text-[11px] text-stone-500">X offset</span>
-              <input
-                type="range"
-                min={-50}
-                max={50}
-                step={1}
-                value={panX}
+                className="font-mono text-[10px] font-bold tracking-[0.08em] uppercase punch-print-ink hover:underline hover:underline-offset-2 hover:opacity-70 disabled:opacity-40"
+              >
+                Apply
+              </button>
+              <button
+                type="button"
+                onClick={resetCrop}
                 disabled={positionLocked}
-                onChange={(e) => setPanX(Number(e.target.value))}
-                className="flex-1 disabled:opacity-40"
-              />
-              <span className="w-8 text-right tabular-nums text-[11px] text-stone-500">{panX > 0 ? `+${panX}` : panX}%</span>
-              {panX !== 0 && !positionLocked && (
-                <button type="button" onClick={() => setPanX(0)} className="text-[10px] text-stone-400 hover:text-stone-600">↩</button>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-16 text-[11px] text-stone-500">Y offset</span>
-              <input
-                type="range"
-                min={-50}
-                max={50}
-                step={1}
-                value={panY}
-                disabled={positionLocked}
-                onChange={(e) => setPanY(Number(e.target.value))}
-                className="flex-1 disabled:opacity-40"
-              />
-              <span className="w-8 text-right tabular-nums text-[11px] text-stone-500">{panY > 0 ? `+${panY}` : panY}%</span>
-              {panY !== 0 && !positionLocked && (
-                <button type="button" onClick={() => setPanY(0)} className="text-[10px] text-stone-400 hover:text-stone-600">↩</button>
-              )}
+                className="font-mono text-[10px] font-bold tracking-[0.08em] uppercase punch-print-faint hover:underline hover:underline-offset-2 hover:opacity-70 disabled:opacity-40"
+              >
+                Reset
+              </button>
+              <button
+                type="button"
+                onClick={() => setPositionLocked((p) => !p)}
+                title={positionLocked ? "Unlock position" : "Lock position"}
+                className={`font-mono text-[10px] font-bold tracking-[0.08em] uppercase hover:underline hover:underline-offset-2 hover:opacity-70 ${
+                  positionLocked ? "punch-print-ink" : "punch-print-faint"
+                }`}
+              >
+                {positionLocked ? "Locked" : "Lock"}
+              </button>
             </div>
           </div>
-
-          {/* Transform controls */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[11px] text-stone-500">Transform</span>
+          {!cropExpanded && cropCanvasJSX(cropCanvasRef, PREVIEW_W, PREVIEW_H)}
+          <div className="flex flex-col">
+            {sliderRow("Zoom", Math.round(imageZoom * 100), `${Math.round(imageZoom * 100)}%`, {
+              min: 50,
+              max: 400,
+              step: 10,
+              disabled: positionLocked,
+              onChange: (n) => setImageZoom(n / 100),
+              onReset: () => setImageZoom(1),
+              showReset: imageZoom !== 1 && !positionLocked,
+            })}
+            {sliderRow("X offset", panX, panX > 0 ? `+${panX}%` : `${panX}%`, {
+              min: -50,
+              max: 50,
+              step: 1,
+              disabled: positionLocked,
+              onChange: setPanX,
+              onReset: () => setPanX(0),
+              showReset: panX !== 0 && !positionLocked,
+            })}
+            {sliderRow("Y offset", panY, panY > 0 ? `+${panY}%` : `${panY}%`, {
+              min: -50,
+              max: 50,
+              step: 1,
+              disabled: positionLocked,
+              onChange: setPanY,
+              onReset: () => setPanY(0),
+              showReset: panY !== 0 && !positionLocked,
+            })}
+          </div>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-1">
+            <span className="font-mono text-[10px] font-bold tracking-[0.12em] uppercase punch-print-ink">
+              Transform
+            </span>
             {(["flipH", "flipV", "rotateLeft", "rotateRight"] as TransformType[]).map((type) => (
               <button
                 key={type}
                 type="button"
                 onClick={() => void handleTransform(type)}
                 disabled={positionLocked}
-                className="rounded-full border border-gray-300 bg-white px-2 py-0.5 text-[11px] font-medium text-gray-700 transition-colors hover:bg-pink-50 hover:text-gray-900 disabled:opacity-40"
+                className="font-mono text-[10px] font-bold tracking-[0.06em] uppercase punch-print-faint hover:underline hover:underline-offset-2 hover:opacity-70 disabled:opacity-40"
               >
                 {type === "flipH" ? "Flip H" : type === "flipV" ? "Flip V" : type === "rotateLeft" ? "↺ 90°" : "↻ 90°"}
               </button>
@@ -933,165 +1273,184 @@ export function ImageTools({
         </div>
       ) : null}
 
-      {/* Mode selector */}
-      <div className="flex flex-wrap gap-2">
-        {(
-          [
-            ["underlay", "Underlay"],
-            ["convert", "Auto-convert"],
-          ] as const
-        ).map(([m, label]) => (
-          <button
-            key={m}
-            type="button"
-            onClick={() => setMode(m)}
-            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors duration-150 ${
-              mode === m
-                ? "border-transparent bg-brand text-white shadow-sm"
-                : "border border-gray-300 bg-white text-gray-700 hover:bg-pink-50 hover:text-gray-900"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {mode === "underlay" && workingImage ? (
-        <label className="flex max-w-xs flex-col gap-1 text-xs text-stone-600">
-          Underlay opacity ({underlayOpacityPct}%)
-          <input
-            type="range"
-            min={0}
-            max={100}
-            value={underlayOpacityPct}
-            onChange={(e) => setUnderlayOpacityPct(Number(e.target.value))}
-          />
-        </label>
-      ) : null}
-
-      {mode === "convert" && workingImage ? (
-        <div className="flex max-w-md flex-col gap-2">
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs text-stone-600">
-                Threshold (dark pixels become blocks)
+      {workingImage ? (
+        <div className="flex flex-col gap-3">
+          <div className="font-mono text-[10px] font-bold tracking-[0.12em] uppercase punch-print-ink">
+            Use
+          </div>
+          <div className="flex items-center gap-2" role="group" aria-label="Image use mode">
+            {(
+              [
+                ["underlay", "Reference"],
+                ["convert", "Auto-convert"],
+              ] as const
+            ).map(([m, label], i) => (
+              <span key={m} className="flex items-center gap-2">
+                {i > 0 && (
+                  <span className="font-mono text-[10px] punch-print-faint" aria-hidden>
+                    ·
+                  </span>
+                )}
+                <button
+                  type="button"
+                  aria-pressed={mode === m}
+                  onClick={() => setMode(m)}
+                  className={`font-mono text-[11px] font-bold tracking-[0.1em] uppercase transition-opacity hover:underline hover:underline-offset-4 hover:opacity-80 ${
+                    mode === m ? "punch-print-ink" : "punch-print-faint"
+                  }`}
+                >
+                  {label}
+                </button>
               </span>
-              <div className="flex shrink-0 items-center gap-1.5">
-                <div className="inline-flex rounded-full border border-stone-200 bg-white p-0.5">
+            ))}
+          </div>
+
+          {mode === "underlay" ? (
+            <div className="flex flex-col gap-2 pt-1">
+              <p className="font-mono text-[9px] leading-relaxed punch-print-faint">
+                Shows behind the grid so you can trace.
+              </p>
+              {sliderRow("Opacity", underlayOpacityPct, `${underlayOpacityPct}%`, {
+                min: 0,
+                max: 100,
+                step: 1,
+                onChange: setUnderlayOpacityPct,
+              })}
+            </div>
+          ) : null}
+
+          {mode === "convert" ? (
+            <div className="flex flex-col gap-2 pt-1">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-mono text-[10px] font-bold tracking-[0.12em] uppercase punch-print-ink">
+                  Threshold
+                </span>
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
+                    aria-pressed={darkIsFilled}
                     onClick={() => setDarkIsFilled(true)}
-                    className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors duration-150 ${
-                      darkIsFilled ? "bg-brand text-white shadow-sm" : "text-gray-700 hover:bg-pink-50"
+                    className={`font-mono text-[10px] font-bold tracking-[0.08em] uppercase hover:underline hover:underline-offset-2 hover:opacity-70 ${
+                      darkIsFilled ? "punch-print-ink" : "punch-print-faint"
                     }`}
                   >
                     Dark fills
                   </button>
+                  <span className="font-mono text-[10px] punch-print-faint" aria-hidden>
+                    ·
+                  </span>
                   <button
                     type="button"
+                    aria-pressed={!darkIsFilled}
                     onClick={() => setDarkIsFilled(false)}
-                    className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors duration-150 ${
-                      !darkIsFilled ? "bg-brand text-white shadow-sm" : "text-gray-700 hover:bg-pink-50"
+                    className={`font-mono text-[10px] font-bold tracking-[0.08em] uppercase hover:underline hover:underline-offset-2 hover:opacity-70 ${
+                      !darkIsFilled ? "punch-print-ink" : "punch-print-faint"
                     }`}
                   >
                     Light fills
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => { if (workingImage) setThreshold(otsuThreshold(workingImage)); }}
+                    className="font-mono text-[10px] font-bold tracking-[0.08em] uppercase punch-print-faint hover:underline hover:underline-offset-2 hover:opacity-70"
+                  >
+                    Suggest
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => { if (workingImage) setThreshold(otsuThreshold(workingImage)); }}
-                  className="rounded-full border border-accent/30 bg-accent/8 px-2.5 py-0.5 text-[11px] font-medium text-accent hover:bg-accent/15"
-                >
-                  Suggest
-                </button>
               </div>
+              {sliderRow("Level", threshold, String(threshold), {
+                min: 0,
+                max: 255,
+                step: 1,
+                onChange: setThreshold,
+              })}
+              <button
+                type="button"
+                onClick={applyConversion}
+                className="mt-1 font-mono text-[10px] font-bold tracking-[0.08em] uppercase punch-print-ink hover:underline hover:underline-offset-2 hover:opacity-70"
+              >
+                Apply to grid
+              </button>
             </div>
-            <input
-              type="range"
-              min={0}
-              max={255}
-              value={threshold}
-              onChange={(e) => setThreshold(Number(e.target.value))}
-            />
-            <span className="tabular-nums text-xs text-stone-500">{threshold}</span>
-          </div>
-          <button
-            type="button"
-            onClick={applyConversion}
-            className="w-fit rounded-full bg-brand px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-brand-dark"
-          >
-            Apply to grid
-          </button>
-          <p className="text-[11px] leading-snug text-stone-500">
-            Converts to grayscale + threshold. Undo available.
-          </p>
+          ) : null}
         </div>
       ) : null}
 
-      {status ? <p className="text-xs text-amber-800">{status}</p> : null}
+      {status ? (
+        <p className="font-mono text-[11px] punch-print-ink">{status}</p>
+      ) : null}
     </div>
   ) : null;
 
   return (
-    <div className={`flex flex-col gap-3 ${className ?? ""}`}>
-      {/* Expanded crop modal */}
-      {cropExpanded && workingImage && (
-        <div
-          className="fixed inset-0 z-50 flex flex-col bg-white md:items-center md:justify-center md:bg-black/60 md:backdrop-blur-sm"
-          onClick={(e) => { if (e.target === e.currentTarget) setCropExpanded(false); }}
-        >
-          <div className="flex flex-1 flex-col rounded-none bg-white shadow-2xl md:max-w-[95vw] md:flex-none md:rounded-2xl md:gap-3 md:p-6">
-            {/* Header: sticky bar on narrow, inline on desktop */}
-            <div className="flex shrink-0 items-center justify-between gap-4 border-b border-stone-200 px-4 py-3 md:border-b-0 md:px-0 md:py-0">
-              <span className="text-sm font-semibold text-stone-800">Crop image</span>
-              <div className="flex items-center gap-2">
+      <div className={`flex min-h-0 flex-1 flex-col ${className ?? ""}`}>
+      {sidePanelTarget && controlsPanel && createPortal(controlsPanel, sidePanelTarget)}
+
+      {cropExpanded &&
+        workingImage &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div className="fixed inset-0 z-[130] flex items-center justify-center p-4">
+            <button
+              type="button"
+              className="absolute inset-0 bg-recess/70"
+              aria-label="Close crop"
+              onClick={closeCropCard}
+            />
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Crop image"
+              onPointerDown={(e) => e.stopPropagation()}
+              className="punch-card relative z-10 flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden px-6 py-5"
+              style={{
+                ["--manila-stock" as string]: manilaHex(DEFAULT_MANILA_STOCK),
+                background: manilaHex(DEFAULT_MANILA_STOCK),
+              }}
+            >
+              <OperatorCardHeader className="shrink-0" title="Crop card" colLabel="JOB CROP" />
+              <div className="mt-4 flex shrink-0 flex-wrap items-center gap-3">
                 <button
                   type="button"
                   onClick={applyCrop}
                   disabled={positionLocked}
-                  className="rounded-full bg-brand px-2.5 py-0.5 text-[11px] font-medium text-white shadow-sm hover:bg-brand-dark disabled:opacity-50"
+                  className="font-mono text-[10px] font-bold tracking-[0.08em] uppercase punch-print-ink hover:underline hover:underline-offset-2 hover:opacity-70 disabled:opacity-40"
                 >
-                  Apply Crop
+                  Apply
                 </button>
                 <button
                   type="button"
                   onClick={resetCrop}
                   disabled={positionLocked}
-                  className="rounded-full border border-gray-300 px-2.5 py-0.5 text-[11px] font-medium text-gray-700 hover:bg-pink-50 disabled:opacity-40"
+                  className="font-mono text-[10px] font-bold tracking-[0.08em] uppercase punch-print-faint hover:underline hover:underline-offset-2 hover:opacity-70 disabled:opacity-40"
                 >
                   Reset
                 </button>
+              </div>
+              <div className="mt-4 flex min-h-0 flex-1 items-center justify-center overflow-hidden">
+                {cropCanvasJSX(expandedCropCanvasRef, expandedSize.w, expandedSize.h)}
+              </div>
+              <div className="mt-auto flex shrink-0 items-center justify-end pt-4">
                 <button
                   type="button"
-                  onClick={() => setCropExpanded(false)}
-                  className="rounded-full border border-gray-300 bg-white px-2.5 py-0.5 text-[11px] font-medium text-gray-700 hover:bg-stone-50"
+                  onClick={closeCropCard}
+                  className="punch-print text-[11px] opacity-70"
                 >
-                  Collapse ↙
+                  Close
                 </button>
               </div>
             </div>
-            {/* Canvas: fills remaining viewport on narrow, inline on desktop */}
-            <div className="flex flex-1 items-center justify-center overflow-auto p-4 md:flex-none md:p-0">
-              {cropCanvasJSX(expandedCropCanvasRef, expandedSize.w, expandedSize.h)}
-            </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
 
-      {sidePanelTarget && controlsPanel && createPortal(controlsPanel, sidePanelTarget)}
-
-      <div className="relative z-0 flex min-h-[320px] flex-1 flex-col">
+      <div className="relative z-0 flex min-h-0 flex-1 flex-col">
         <GridCanvas
           gridWidth={gridWidth}
           gridHeight={gridHeight}
           cells={cells}
           onCommit={onCommit}
-          underlayImage={mode === "underlay" ? workingImage : null}
-          underlayOpacity={underlayOpacity}
-          underlayCrop={activeCrop}
-          underlayPanX={panX / 100}
-          underlayPanY={panY / 100}
-          underlayZoom={imageZoom}
+          underlays={stackedUnderlays}
           rowComplete={progress?.rowComplete}
           currentRow={progress?.currentRow}
           onToggleRowComplete={onToggleRowComplete}
@@ -1101,8 +1460,11 @@ export function ImageTools({
           canUndo={canUndo}
           canRedo={canRedo}
           onStepRow={onStepRow}
-          toolOverride={toolOverride}
-          onToolOverrideChange={onToolOverrideChange}
+          editLocked={editLocked}
+          paperColor={paperColor}
+          hideFullscreenEntry={hideFullscreenEntry}
+          enterFullscreenRef={enterFullscreenRef}
+          zoomApiRef={zoomApiRef}
           className="min-h-0"
         />
       </div>

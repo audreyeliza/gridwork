@@ -14,7 +14,7 @@ export default function AppGradientInner() {
         uFrequency={3.5}
         uAmplitude={0}
         color1="#F9A87A"
-        color2="#F0569A"
+        color2="#E889B0"
         color3="#9B6FD4"
         positionX={0}
         positionY={0}

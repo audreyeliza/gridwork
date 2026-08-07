@@ -3,17 +3,17 @@
 import Link from "next/link";
 import { useEffect } from "react";
 import type { User } from "@supabase/supabase-js";
+import { CrochetMark } from "@/components/CrochetMark";
 
 export type MobileMenuPage = "home" | "learn" | "gallery" | "editor" | "profile";
 
 type NavItem = { label: string; href: string; page: MobileMenuPage; requiresAuth?: boolean };
 
 const NAV_ITEMS: NavItem[] = [
-  { label: "Home",    href: "/",        page: "home"    },
-  { label: "Learn",   href: "/learn",   page: "learn"   },
-  { label: "Gallery", href: "/gallery", page: "gallery" },
-  { label: "Editor",  href: "/editor",  page: "editor"  },
-  { label: "Profile", href: "/profile", page: "profile", requiresAuth: true },
+  { label: "Hopper", href: "/?zone=hopper", page: "gallery" },
+  { label: "Manual", href: "/?zone=primer", page: "home" },
+  { label: "Program", href: "/?zone=reader", page: "editor" },
+  { label: "Maker", href: "/?zone=maker", page: "profile", requiresAuth: true },
 ];
 
 type Props = {
@@ -23,30 +23,11 @@ type Props = {
   user: User | null;
   userDisplayName?: string | null;
   userAvatarUrl?: string | null;
+  profileLoading?: boolean;
   onLogin: () => void;
   onLogout: () => void;
   loginButtonId?: string;
 };
-
-function CrochetMark({ size = 20 }: { size?: number }) {
-  const cells = [
-    [0,1,0,1,0],
-    [1,1,1,1,1],
-    [1,1,1,1,1],
-    [0,1,1,1,0],
-    [0,0,1,0,0],
-  ];
-  const n = cells[0].length;
-  const cell = (size - n) / n;
-  const rx = Math.max(0.5, cell * 0.28);
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true" style={{ flexShrink: 0 }}>
-      {cells.map((row, y) => row.map((on, x) =>
-        on ? <rect key={`${x}-${y}`} x={x*(cell+1)+0.5} y={y*(cell+1)+0.5} width={cell} height={cell} rx={rx} fill="#fff"/> : null
-      ))}
-    </svg>
-  );
-}
 
 export function MobileMenuOverlay({
   open,
@@ -55,6 +36,7 @@ export function MobileMenuOverlay({
   user,
   userDisplayName,
   userAvatarUrl,
+  profileLoading = false,
   onLogin,
   onLogout,
   loginButtonId,
@@ -70,42 +52,31 @@ export function MobileMenuOverlay({
 
   if (!open) return null;
 
-  const visibleItems = NAV_ITEMS.filter(item => !item.requiresAuth || user);
-  const avatarLetter = userDisplayName?.[0]?.toUpperCase() ?? user?.email?.[0]?.toUpperCase() ?? "?";
-  const displayLabel = userDisplayName ? `@${userDisplayName}` : (user?.email ?? "");
+  const visibleItems = NAV_ITEMS.filter((item) => !item.requiresAuth || user);
+  const avatarLetter =
+    userDisplayName?.[0]?.toUpperCase() ??
+    (profileLoading ? "?" : user?.email?.[0]?.toUpperCase()) ??
+    "?";
+  const displayLabel = userDisplayName
+    ? `@${userDisplayName}`
+    : profileLoading
+      ? ""
+      : (user?.email ?? "");
 
   return (
-    <div
-      className="fixed inset-0 z-50 overflow-y-auto"
-      style={{ background: "linear-gradient(135deg, #F9A87A 0%, #F0569A 50%, #9B6FD4 100%)" }}
-    >
-      {/* Top nav bar */}
-      <div className="flex h-[68px] items-center justify-between px-[18px]">
-        <span
-          className="inline-flex items-center gap-2 font-serif text-xl font-bold leading-none tracking-[-0.01em] text-white"
-          style={{ textShadow: "0 1px 2px rgba(0,0,0,0.15)" }}
-        >
-          <CrochetMark size={20} />
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-chassis">
+      <div className="flex h-[60px] items-center justify-between border-b border-chassis-dark px-4">
+        <span className="inline-flex items-center gap-2 font-mono text-lg font-bold tracking-[0.06em] text-card uppercase">
+          <CrochetMark size={22} variant="onChassis" />
           Gridwork
         </span>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close menu"
-          className="inline-flex h-[38px] w-[38px] items-center justify-center rounded-xl border border-white/40 bg-white/20 text-white backdrop-blur-sm"
-        >
-          <svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-            <path d="M4 4l8 8M12 4l-8 8" />
-          </svg>
+        <button type="button" onClick={onClose} aria-label="Close menu" className="punch-key text-[10px]">
+          Close
         </button>
       </div>
 
-      {/* Menu body */}
-      <div className="px-7 pt-8">
-        <div
-          className="mb-[18px] font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-white/85"
-          style={{ textShadow: "0 1px 2px rgba(0,0,0,0.15)" }}
-        >
+      <div className="px-6 pt-8">
+        <div className="mb-4 font-mono text-[10px] font-bold tracking-[0.18em] text-chassis-light uppercase">
           Menu
         </div>
 
@@ -118,74 +89,38 @@ export function MobileMenuOverlay({
               className="flex items-center justify-between"
               style={{
                 padding: "14px 0",
-                borderBottom: isLast ? "none" : "1px solid rgba(255,255,255,0.22)",
+                borderBottom: isLast ? "none" : "1px solid rgba(74,78,85,0.6)",
               }}
             >
               <Link
                 href={item.href}
                 onClick={onClose}
-                className="inline-flex items-center text-white no-underline"
-                style={{
-                  gap: 14,
-                  fontFamily: "var(--font-lora), Georgia, serif",
-                  fontWeight: 700,
-                  fontSize: "clamp(26px,8vw,34px)",
-                  letterSpacing: "-0.02em",
-                  textShadow: "0 1px 2px rgba(0,0,0,0.18)",
-                  lineHeight: 1,
-                }}
+                className={`font-mono text-[28px] font-bold tracking-[-0.02em] no-underline ${
+                  isActive ? "text-card" : "text-card/70"
+                }`}
               >
-                {isActive && (
-                  <span
-                    className="inline-block shrink-0 rounded-full bg-white"
-                    style={{ width: 9, height: 9, boxShadow: "0 0 0 4px rgba(255,255,255,0.18)" }}
-                  />
-                )}
                 {item.label}
               </Link>
               {isActive && (
-                <span
-                  className="inline-flex shrink-0 items-center gap-1.5"
-                >
-                  <span className="inline-block size-2 rounded-full bg-white/80" />
-                  <span
-                    className="hidden font-mono text-[10px] font-bold text-white sm:inline"
-                    style={{ letterSpacing: "0.10em", opacity: 0.85, textShadow: "0 1px 2px rgba(0,0,0,0.18)" }}
-                  >
-                    HERE
-                  </span>
+                <span className="font-mono text-[10px] font-bold tracking-[0.14em] text-key-blue uppercase">
+                  Here
                 </span>
               )}
             </div>
           );
         })}
 
-        {/* User card */}
-        <div className="mt-[30px]">
+        <div className="mt-8">
           {user ? (
             <button
               type="button"
-              onClick={() => { onLogout(); onClose(); }}
-              className="flex w-full cursor-pointer items-center gap-3 text-left"
-              style={{
-                background: "rgba(255,255,255,0.18)",
-                border: "1px solid rgba(255,255,255,0.35)",
-                borderRadius: 14,
-                padding: "12px 14px",
-                backdropFilter: "blur(14px)",
-                boxShadow: "0 6px 24px rgba(40,20,30,0.18)",
+              onClick={() => {
+                onLogout();
+                onClose();
               }}
+              className="flex w-full cursor-pointer items-center gap-3 border border-chassis-dark bg-chassis-dark/50 px-3 py-3 text-left"
             >
-              <span
-                className="inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full text-white"
-                style={{
-                  width: 38, height: 38,
-                  background: userAvatarUrl ? undefined : "linear-gradient(135deg, #F9A87A 0%, #F0569A 50%, #9B6FD4 100%)",
-                  fontFamily: "var(--font-lora), Georgia, serif",
-                  fontWeight: 700, fontSize: 17, lineHeight: 1,
-                  border: "2px solid rgba(255,255,255,0.7)",
-                }}
-              >
+              <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-key-blue text-sm font-bold text-white">
                 {userAvatarUrl ? (
                   <img src={userAvatarUrl} alt="" className="h-full w-full object-cover" />
                 ) : (
@@ -193,48 +128,27 @@ export function MobileMenuOverlay({
                 )}
               </span>
               <div className="min-w-0 flex-1">
-                <div
-                  className="truncate text-white"
-                  style={{
-                    fontFamily: "var(--font-lora), Georgia, serif",
-                    fontWeight: 700, fontSize: 17,
-                    textShadow: "0 1px 2px rgba(0,0,0,0.18)",
-                  }}
-                >
-                  {displayLabel}
+                <div className="truncate font-mono text-sm font-bold text-card">
+                  {displayLabel || (
+                    <span className="inline-block h-3.5 w-20 animate-pulse rounded bg-card/20" aria-hidden="true" />
+                  )}
                 </div>
-                <div
-                  className="text-white/85"
-                  style={{
-                    fontFamily: "var(--font-nunito), sans-serif",
-                    fontWeight: 600, fontSize: 12,
-                    textShadow: "0 1px 2px rgba(0,0,0,0.18)",
-                  }}
-                >
+                <div className="font-mono text-[10px] tracking-[0.1em] text-chassis-light uppercase">
                   Tap to log out
                 </div>
               </div>
-              <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
-                <path d="M6 2H3a1 1 0 00-1 1v10a1 1 0 001 1h3M11 11l3-3-3-3M14 8H6" />
-              </svg>
             </button>
           ) : (
             <button
               id={loginButtonId}
               type="button"
-              onClick={() => { onLogin(); onClose(); }}
-              className="flex w-full cursor-pointer items-center justify-center gap-2 text-[#FBF7EF]"
-              style={{
-                background: "#A8466F",
-                border: "none",
-                borderRadius: 14,
-                padding: "14px",
-                boxShadow: "0 6px 24px rgba(168,70,111,0.35)",
-                fontFamily: "var(--font-nunito), sans-serif",
-                fontWeight: 700, fontSize: 15,
+              onClick={() => {
+                onLogin();
+                onClose();
               }}
+              className="punch-key punch-key-blue w-full min-h-[44px]"
             >
-              Log in to save patterns
+              Log in
             </button>
           )}
         </div>

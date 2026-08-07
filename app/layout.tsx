@@ -1,28 +1,20 @@
 import type { Metadata } from "next";
-import { Lora, Nunito, JetBrains_Mono } from "next/font/google";
+import { IBM_Plex_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-import { AppGradient } from "@/components/AppGradient";
+import { NavAuthProvider } from "@/components/NavAuthProvider";
 import { SiteFooter } from "@/components/SiteFooter";
 
-const lora = Lora({
-  variable: "--font-lora",
+const ibmPlexSans = IBM_Plex_Sans({
+  variable: "--font-ibm-plex-sans",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
-  style: ["normal", "italic"],
-  display: "swap",
-});
-
-const nunito = Nunito({
-  variable: "--font-nunito",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
   display: "swap",
 });
 
 const jetbrainsMono = JetBrains_Mono({
   variable: "--font-jetbrains-mono",
   subsets: ["latin"],
-  weight: ["400", "500"],
+  weight: ["400", "500", "700"],
   display: "swap",
 });
 
@@ -39,12 +31,13 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${lora.variable} ${nunito.variable} ${jetbrainsMono.variable} h-full antialiased`}
+      className={`${ibmPlexSans.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
-      <body className="flex min-h-screen flex-col overflow-x-hidden">
-        <AppGradient className="fixed inset-0 -z-10" />
-        {children}
-        <SiteFooter />
+      <body className="flex min-h-screen flex-col overflow-x-hidden bg-paper text-ink">
+        <NavAuthProvider>
+          {children}
+          <SiteFooter />
+        </NavAuthProvider>
       </body>
     </html>
   );

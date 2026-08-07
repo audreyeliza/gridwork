@@ -51,7 +51,7 @@ export default function PrintPatternPage() {
         setPattern(data);
         setStatus("ready");
         if (typeof document !== "undefined") {
-          document.title = `Print — ${data.name}`;
+          document.title = data.name;
         }
       } catch {
         if (!cancelled) {
@@ -83,7 +83,7 @@ export default function PrintPatternPage() {
   }, [pattern]);
 
   return (
-    <div id="print-root" className="mx-auto max-w-5xl p-6 print:p-4 print:max-w-none">
+    <div id="print-root" className="mx-auto max-w-5xl p-6 print:p-0 print:max-w-none">
       <p className="no-print mb-4 text-sm text-zinc-600">
         Opening the print dialog… Use your browser’s print dialog to save as PDF if needed.
       </p>
@@ -96,10 +96,10 @@ export default function PrintPatternPage() {
       ) : null}
 
       {status === "ready" && view ? (
-        <div className="flex flex-col gap-6 print:gap-4">
+        <div className="flex flex-col gap-4 print:gap-3">
           <header className="pb-1">
             <h1 className="text-xl font-semibold tracking-tight text-zinc-900 print:text-black">{view.name}</h1>
-            <p className="mt-1 text-sm text-zinc-600 print:text-zinc-700">
+            <p className="mt-1 text-sm text-zinc-600 print:text-black">
               Grid {view.w}×{view.h} · Yarn: {view.yarn.weight.replaceAll("_", " ")} · Hook: {view.yarn.hookSize}
               {" · "}
               {(view.yarn.customGaugeStitchesPerInch ?? 0) > 0
@@ -110,17 +110,13 @@ export default function PrintPatternPage() {
             </p>
           </header>
 
-          <section className="break-inside-avoid" style={{ pageBreakInside: "avoid" }}>
-            <div style={{ maxWidth: "100%", overflowX: "auto" }}>
-              <PrintGridSvg
-                gridWidth={view.w}
-                gridHeight={view.h}
-                cells={view.cells}
-                rowComplete={view.progress.rowComplete}
-                currentRow={view.progress.currentRow}
-                cellPx={12}
-              />
-            </div>
+          <section className="break-inside-avoid print-grid-fit" style={{ pageBreakInside: "avoid" }}>
+            <PrintGridSvg
+              gridWidth={view.w}
+              gridHeight={view.h}
+              cells={view.cells}
+              rowComplete={view.progress.rowComplete}
+            />
           </section>
         </div>
       ) : null}

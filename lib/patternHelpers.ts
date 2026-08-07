@@ -1,4 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { createEmptyGrid, serializeGridCells } from "@/lib/gridFormat";
+import { defaultProgressState, serializeProgressData } from "@/lib/progressData";
+import { DEFAULT_PATTERN_YARN_SETTINGS, serializePatternYarnSettings } from "@/lib/yarnSettings";
+import { DEFAULT_PATTERN_IMAGE_DOCUMENT, serializeImageDocument } from "@/lib/imageSettings";
+import { DEFAULT_MANILA_STOCK } from "@/lib/manilaStock";
 
 /** JSON column values from Postgres (matches typical Supabase typing). */
 export type Json =
@@ -86,4 +91,24 @@ export async function deletePattern(
     .eq("user_id", userId);
 
   return { error: error as Error | null };
+}
+
+/** Create a blank Untitled 10×40 pattern for the given user. */
+export async function createUntitledPattern(
+  supabase: SupabaseClient,
+  userId: string,
+  extras?: Partial<Pick<PatternUpsert, "image_settings" | "yarn_settings" | "progress_data" | "name">>,
+): Promise<{ data: Pattern | null; error: Error | null }> {
+  return upsertPattern(supabase, {
+    user_id: userId,
+    name: extras?.name ?? "Untitled",
+    grid_data: serializeGridCells(createEmptyGrid(10, 40)),
+    grid_width: 10,
+    grid_height: 40,
+    progress_data: extras?.progress_data ?? serializeProgressData(defaultProgressState(40)),
+    yarn_settings: extras?.yarn_settings ?? serializePatternYarnSettings(DEFAULT_PATTERN_YARN_SETTINGS),
+    image_settings:
+      extras?.image_settings ??
+      serializeImageDocument(DEFAULT_PATTERN_IMAGE_DOCUMENT, { manila_stock: DEFAULT_MANILA_STOCK }),
+  });
 }

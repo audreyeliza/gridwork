@@ -1,23 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
-  <!-- row 0: two bumps at x=1 and x=3 -->
-  <rect x="6.9" y="0.5" width="5.4" height="5.4" rx="1.5" fill="#A8466F"/>
-  <rect x="19.7" y="0.5" width="5.4" height="5.4" rx="1.5" fill="#A8466F"/>
-  <!-- row 1: full width -->
-  <rect x="0.5" y="6.9" width="5.4" height="5.4" rx="1.5" fill="#A8466F"/>
-  <rect x="6.9" y="6.9" width="5.4" height="5.4" rx="1.5" fill="#A8466F"/>
-  <rect x="13.3" y="6.9" width="5.4" height="5.4" rx="1.5" fill="#A8466F"/>
-  <rect x="19.7" y="6.9" width="5.4" height="5.4" rx="1.5" fill="#A8466F"/>
-  <rect x="26.1" y="6.9" width="5.4" height="5.4" rx="1.5" fill="#A8466F"/>
-  <!-- row 2: full width -->
-  <rect x="0.5" y="13.3" width="5.4" height="5.4" rx="1.5" fill="#A8466F"/>
-  <rect x="6.9" y="13.3" width="5.4" height="5.4" rx="1.5" fill="#A8466F"/>
-  <rect x="13.3" y="13.3" width="5.4" height="5.4" rx="1.5" fill="#A8466F"/>
-  <rect x="19.7" y="13.3" width="5.4" height="5.4" rx="1.5" fill="#A8466F"/>
-  <rect x="26.1" y="13.3" width="5.4" height="5.4" rx="1.5" fill="#A8466F"/>
-  <!-- row 3: narrowing -->
-  <rect x="6.9" y="19.7" width="5.4" height="5.4" rx="1.5" fill="#A8466F"/>
-  <rect x="13.3" y="19.7" width="5.4" height="5.4" rx="1.5" fill="#A8466F"/>
-  <rect x="19.7" y="19.7" width="5.4" height="5.4" rx="1.5" fill="#A8466F"/>
-  <!-- row 4: tip -->
-  <rect x="13.3" y="26.1" width="5.4" height="5.4" rx="1.5" fill="#A8466F"/>
+  <!-- Square card; cut corner is silhouette only — no gray fill triangle -->
+  <path d="M7.6 1 H31 V31 H1 V7.6 Z" fill="#F2EDD3" stroke="#D6CCA8" stroke-width="1"/>
+  <!-- Sparse G — square holes -->
+  <rect x="11.73" y="4.48" width="3.71" height="3.71" rx="0.58" fill="#2C2C2C"/>
+  <rect x="16.56" y="4.48" width="3.71" height="3.71" rx="0.58" fill="#2C2C2C"/>
+  <rect x="6.90" y="9.31" width="3.71" height="3.71" rx="0.58" fill="#2C2C2C"/>
+  <rect x="6.90" y="14.14" width="3.71" height="3.71" rx="0.58" fill="#2C2C2C"/>
+  <rect x="16.56" y="14.14" width="3.71" height="3.71" rx="0.58" fill="#2C2C2C"/>
+  <rect x="21.39" y="14.14" width="3.71" height="3.71" rx="0.58" fill="#2C2C2C"/>
+  <rect x="6.90" y="18.98" width="3.71" height="3.71" rx="0.58" fill="#2C2C2C"/>
+  <rect x="21.39" y="18.98" width="3.71" height="3.71" rx="0.58" fill="#2C2C2C"/>
+  <rect x="11.73" y="23.81" width="3.71" height="3.71" rx="0.58" fill="#2C2C2C"/>
+  <rect x="16.56" y="23.81" width="3.71" height="3.71" rx="0.58" fill="#2C2C2C"/>
 </svg>

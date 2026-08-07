@@ -1,74 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getSupabaseBrowserClient, resetSupabaseBrowserClient } from "@/lib/supabase";
-import type { SupabaseClient, User } from "@supabase/supabase-js";
+import { useState } from "react";
 import { AuthModal } from "@/components/AuthModal";
 import { MobileMenuOverlay } from "@/components/MobileMenuOverlay";
-import { fetchProfile } from "@/lib/profileHelpers";
+import { resolveNavInitial, useNavAuth } from "@/components/NavAuthProvider";
 
+/** @deprecated Prefer NavUserSection — kept for any stray imports. */
 export function LearnMobileMenu() {
+  const { supabase, user, displayName, avatarUrl, profileLoading, signOut } = useNavAuth();
   const [open, setOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
-  const [supabase, setSupabase] = useState<SupabaseClient | null>(null);
-  const [user, setUser] = useState<User | null>(null);
-  const [displayName, setDisplayName] = useState<string | null>(null);
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    const run = (attempt: number) => {
-      if (cancelled) return;
-      let client: SupabaseClient;
-      try {
-        client = getSupabaseBrowserClient();
-      } catch {
-        if (attempt < 1 && !cancelled) {
-          resetSupabaseBrowserClient();
-          setTimeout(() => run(attempt + 1), 50);
-        }
-        return;
-      }
-      if (cancelled) return;
-      setSupabase(client);
-      void client.auth.getSession().then(({ data: { session } }) => {
-        if (!cancelled) setUser(session?.user ?? null);
-      });
-      const { data: { subscription } } = client.auth.onAuthStateChange((_event, session) => {
-        if (!cancelled) setUser(session?.user ?? null);
-      });
-      return () => subscription.unsubscribe();
-    };
-    const cleanup = run(0);
-    return () => {
-      cancelled = true;
-      cleanup?.();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!supabase || !user) {
-      setDisplayName(null);
-      setAvatarUrl(null);
-      return;
-    }
-    let cancelled = false;
-    void fetchProfile(supabase, user.id).then(({ data }) => {
-      if (!cancelled) {
-        setDisplayName(data?.display_name ?? null);
-        setAvatarUrl(data?.avatar_url ?? null);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [supabase, user]);
-
-  const handleLogout = async () => {
-    if (!supabase) return;
-    await supabase.auth.signOut();
-    setOpen(false);
-  };
+  const initial = resolveNavInitial(user, displayName, profileLoading);
 
   return (
     <>
@@ -77,7 +19,7 @@ export function LearnMobileMenu() {
           <span
             className="inline-flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full text-[13px] font-bold text-white"
             style={{
-              background: avatarUrl ? undefined : "linear-gradient(135deg, #F9A87A 0%, #F0569A 50%, #9B6FD4 100%)",
+              background: avatarUrl ? undefined : "#5B7EC9",
               border: "1.5px solid rgba(255,255,255,0.55)",
             }}
             aria-hidden="true"
@@ -85,7 +27,7 @@ export function LearnMobileMenu() {
             {avatarUrl ? (
               <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
             ) : (
-              (displayName ?? user.email ?? "?").charAt(0).toUpperCase()
+              initial
             )}
           </span>
         ) : null}
@@ -105,8 +47,9 @@ export function LearnMobileMenu() {
         user={user}
         userDisplayName={displayName}
         userAvatarUrl={avatarUrl}
+        profileLoading={profileLoading}
         onLogin={() => setAuthModalOpen(true)}
-        onLogout={() => void handleLogout()}
+        onLogout={() => void signOut().then(() => setOpen(false))}
       />
       <AuthModal
         key={authModalOpen ? "auth-open" : "auth-closed"}

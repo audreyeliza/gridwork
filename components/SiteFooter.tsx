@@ -1,20 +1,44 @@
 "use client";
 
+import { CrochetMark } from "@/components/CrochetMark";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 export function SiteFooter() {
   const pathname = usePathname();
-  if (pathname === "/editor" || pathname.startsWith("/print")) return null;
+  if (
+    pathname === "/" ||
+    pathname === "/editor" ||
+    pathname.startsWith("/print") ||
+    pathname === "/privacy" ||
+    pathname === "/terms" ||
+    pathname.startsWith("/u/")
+  ) {
+    return null;
+  }
 
   return (
-    <footer className="flex items-center justify-between py-4 px-8">
-      <span className="font-sans text-xs text-white/40">© 2026 Gridwork</span>
-      <nav className="flex items-center gap-5">
-        <Link href="/privacy" className="font-sans text-xs text-white/40 transition-colors hover:text-white/70">
+    <footer
+      className="punch-metal relative mt-auto flex items-center justify-between border-t-2 border-chassis-dark px-6 py-3.5 md:px-8"
+      style={{ background: "#8A8F96" }}
+    >
+      <div className="relative z-[2] flex items-center gap-2.5">
+        <CrochetMark size={18} variant="onChassis" />
+        <span className="font-mono text-[10px] font-bold tracking-[0.12em] text-card uppercase">
+          © 2026 Gridwork
+        </span>
+      </div>
+      <nav className="relative z-[2] flex items-center gap-5">
+        <Link
+          href="/privacy"
+          className="font-mono text-[10px] font-bold tracking-[0.12em] text-card/80 uppercase transition-colors hover:text-card"
+        >
           Privacy
         </Link>
-        <Link href="/terms" className="font-sans text-xs text-white/40 transition-colors hover:text-white/70">
+        <Link
+          href="/terms"
+          className="font-mono text-[10px] font-bold tracking-[0.12em] text-card/80 uppercase transition-colors hover:text-card"
+        >
           Terms
         </Link>
       </nav>
