@@ -1177,8 +1177,8 @@ export function EditorWorkspace({
                 <div
                   className="punch-card flex w-full max-w-sm flex-col px-6 py-5"
                   style={{
-                    ["--manila-stock" as string]: paperColor,
-                    background: paperColor,
+                    ["--manila-stock" as string]: manilaHex(DEFAULT_MANILA_STOCK),
+                    background: manilaHex(DEFAULT_MANILA_STOCK),
                   }}
                 >
                   <OperatorCardHeader title="Program card" colLabel="JOB PROG" />
