@@ -2,6 +2,7 @@
 
 import { OperatorCardHeader } from "@/components/OperatorCardHeader";
 import { checkDisplayNameAvailable, upsertProfile } from "@/lib/profileHelpers";
+import * as Sentry from "@sentry/nextjs";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
@@ -88,6 +89,7 @@ export function DisplayNameModal({
     setSaving(false);
     if (error) {
       console.error(error);
+      Sentry.captureException(error);
       return;
     }
     onSaved(name.trim());

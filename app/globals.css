@@ -1291,3 +1291,22 @@ input[type="search"]::-webkit-search-decoration {
     max-height: calc(100vh - 45mm);
   }
 }
+
+/* Boot/loading dots: sparse hole row that pulses in sequence, like a card being read. */
+.punch-loading-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  background: var(--hole);
+  animation: punch-loading-pulse 1.2s ease-in-out infinite;
+}
+@keyframes punch-loading-pulse {
+  0%,
+  80%,
+  100% {
+    opacity: 0.18;
+  }
+  40% {
+    opacity: 1;
+  }
+}

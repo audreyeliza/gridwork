@@ -18,9 +18,29 @@ const jetbrainsMono = JetBrains_Mono({
   display: "swap",
 });
 
+const SITE_URL = "https://gridwork-seven.vercel.app";
+const TITLE = "Gridwork";
+const DESCRIPTION = "Design filet crochet patterns in your browser";
+
 export const metadata: Metadata = {
-  title: "Gridwork",
-  description: "Design filet crochet patterns in your browser",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: TITLE,
+    template: `%s · ${TITLE}`,
+  },
+  description: DESCRIPTION,
+  openGraph: {
+    title: TITLE,
+    description: DESCRIPTION,
+    url: SITE_URL,
+    siteName: TITLE,
+    type: "website",
+  },
+  twitter: {
+    card: "summary",
+    title: TITLE,
+    description: DESCRIPTION,
+  },
 };
 
 export default function RootLayout({
