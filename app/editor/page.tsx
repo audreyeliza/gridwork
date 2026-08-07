@@ -1,11 +1,18 @@
 import { redirect } from "next/navigation";
 
-type Props = { searchParams?: Promise<{ pattern?: string }> };
+type Props = { searchParams?: Promise<Record<string, string | string[] | undefined>> };
+
+function toQuery(sp: Record<string, string | string[] | undefined>): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(sp)) {
+    if (typeof value === "string" && value) params.set(key, value);
+    else if (Array.isArray(value) && value[0]) params.set(key, value[0]);
+  }
+  return params.toString();
+}
 
 export default async function EditorRedirect({ searchParams }: Props) {
   const sp = searchParams ? await searchParams : {};
-  if (sp.pattern) {
-    redirect(`/?zone=reader&pattern=${encodeURIComponent(sp.pattern)}`);
-  }
-  redirect("/?zone=reader");
+  const qs = toQuery(sp);
+  redirect(qs ? `/program?${qs}` : "/program");
 }

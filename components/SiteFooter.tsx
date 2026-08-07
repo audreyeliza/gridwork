@@ -8,7 +8,11 @@ export function SiteFooter() {
   const pathname = usePathname();
   if (
     pathname === "/" ||
+    pathname === "/program" ||
     pathname === "/editor" ||
+    pathname === "/hopper" ||
+    pathname === "/gallery" ||
+    pathname === "/profile" ||
     pathname.startsWith("/print") ||
     pathname === "/privacy" ||
     pathname === "/terms" ||

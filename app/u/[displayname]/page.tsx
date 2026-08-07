@@ -58,8 +58,8 @@ function UserProfilePage() {
   const { user } = useNavAuth();
   const returnQ = searchParams.get("q")?.trim() ?? "";
   const hopperBackHref = returnQ
-    ? `/?zone=hopper&q=${encodeURIComponent(returnQ)}`
-    : "/?zone=hopper";
+    ? `/hopper?q=${encodeURIComponent(returnQ)}`
+    : "/hopper";
 
   const [supabaseInit, setSupabaseInit] = useState<SupabaseInit>(() => ({
     supabase: null,
@@ -228,7 +228,7 @@ function UserProfilePage() {
       if (pattern) {
         patchPattern(patternId, { copies_count: pattern.copies_count + 1 });
       }
-      router.push(`/?zone=reader&pattern=${newPatternId}`);
+      router.push(`/program?pattern=${newPatternId}`);
     },
     [user, supabase, pageState, patchPattern, router],
   );

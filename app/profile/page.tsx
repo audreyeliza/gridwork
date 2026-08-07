@@ -1,5 +1,7 @@
-import { redirect } from "next/navigation";
+"use client";
 
-export default function ProfileRedirect() {
-  redirect("/?zone=maker");
+import { MachineShellPage } from "@/components/machine/MachineShellPage";
+
+export default function ProfilePage() {
+  return <MachineShellPage />;
 }
