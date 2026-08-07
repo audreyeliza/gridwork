@@ -52,6 +52,7 @@ import { setPatternPublic } from "@/lib/galleryHelpers";
 import { fetchProfile, upsertProfile } from "@/lib/profileHelpers";
 import { generateGridThumbnail } from "@/lib/thumbnailUtils";
 import {
+  contrastManilaHex,
   DEFAULT_MANILA_STOCK,
   loadManilaStock,
   manilaHex,
@@ -220,7 +221,8 @@ export function EditorWorkspace({
   const [gridFullscreen, setGridFullscreen] = useState(false);
   const enterFullscreenRef = useRef<(() => void) | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [toolsPanel, setToolsPanel] = useState<null | "yarn" | "import">(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [yarnOpen, setYarnOpen] = useState(false);
   const [isRenamingTitle, setIsRenamingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const [draftTitle, setDraftTitle] = useState("Untitled");
@@ -259,15 +261,22 @@ export function EditorWorkspace({
   }, []);
 
   useEffect(() => {
-    if (!toolsPanel) return;
+    if (!importOpen && !yarnOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setToolsPanel(null);
+      if (e.key !== "Escape") return;
+      if (yarnOpen) setYarnOpen(false);
+      else setImportOpen(false);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [toolsPanel]);
+  }, [importOpen, yarnOpen]);
+
+  useEffect(() => {
+    if (!importOpen) setImportPanelEl(null);
+  }, [importOpen]);
 
   const paperColor = manilaHex(manilaStock);
+  const contrastPaper = contrastManilaHex(manilaStock);
 
   const activePattern = useMemo(
     () => patterns.find((p) => p.id === selectedPatternId) ?? null,
@@ -410,7 +419,10 @@ export function EditorWorkspace({
       setImageDocument({ images: [], activeImageId: null });
       setImageSettingsLoadKey((tutorialOpen ? "tutorial-" : "empty-") + Date.now());
       setDraftTitle("Untitled");
-      if (!tutorialOpen) setToolsPanel(null);
+      if (!tutorialOpen) {
+        setImportOpen(false);
+        setYarnOpen(false);
+      }
       window.setTimeout(() => { isLoadingRef.current = false; }, 0);
     }, 0);
     return () => {
@@ -925,7 +937,8 @@ export function EditorWorkspace({
             )}
           </div>
 
-          <div className="flex min-w-0 flex-wrap items-end gap-4">
+          <div className="flex min-w-0 flex-wrap items-end justify-between gap-4">
+            <div className="flex min-w-0 flex-wrap items-end gap-4">
             <RotaryKnob
               label="Stock"
               value={manilaStock}
@@ -1033,22 +1046,21 @@ export function EditorWorkspace({
                 type="button"
                 onClick={() => {
                   if (!showProgramSurface) return;
-                  setToolsPanel((p) => (p === "import" ? null : "import"));
+                  setImportOpen((p) => !p);
                 }}
                 disabled={!showProgramSurface}
                 className={`punch-lamp punch-lamp-red !min-h-[32px] !px-2.5 text-[9px] self-end mb-0.5 ${
-                  toolsPanel === "import" ? "is-lit" : ""
+                  importOpen ? "is-lit" : ""
                 }`}
-                title={toolsPanel === "import" ? "Close import" : "Import reference image"}
-                aria-pressed={toolsPanel === "import"}
+                title={importOpen ? "Close import" : "Import reference image"}
+                aria-pressed={importOpen}
               >
                 Import
               </button>
             </div>
+            </div>
 
-            <div className="min-w-0 flex-1" />
-
-            <div className="flex flex-wrap items-center gap-2 pb-0.5">
+            <div className="flex flex-wrap items-center gap-2 pb-0.5 self-end">
               <button
                 type="button"
                 disabled={!canUndo || editLocked}
@@ -1092,9 +1104,12 @@ export function EditorWorkspace({
               )}
               <button
                 type="button"
-                onClick={() => setToolsPanel("yarn")}
-                className="punch-lamp punch-lamp-red !min-h-[32px] !px-2.5 text-[9px]"
+                onClick={() => setYarnOpen((p) => !p)}
+                className={`punch-lamp punch-lamp-red !min-h-[32px] !px-2.5 text-[9px] ${
+                  yarnOpen ? "is-lit" : ""
+                }`}
                 title="Yarn estimate"
+                aria-pressed={yarnOpen}
               >
                 Yarn
               </button>
@@ -1154,7 +1169,7 @@ export function EditorWorkspace({
 
           <div
             className={`flex min-h-0 min-w-0 flex-1 ${
-              toolsPanel === "import" ? "flex-col md:flex-row" : "flex-col"
+              importOpen ? "flex-col md:flex-row" : "flex-col"
             }`}
           >
           <main
@@ -1182,7 +1197,7 @@ export function EditorWorkspace({
                     New program
                   </h2>
                   <p className="mt-2 font-mono text-[11px] leading-relaxed punch-print-faint">
-                    Create a new card, open one from your deck, or copy a public pattern from the gallery.
+                    Filet basics → Manual. Console tour → ?. Or start below.
                   </p>
                   <div className="mt-5 flex flex-col gap-3">
                     <button
@@ -1200,7 +1215,7 @@ export function EditorWorkspace({
                       {creatingProgram
                         ? "Creating…"
                         : user
-                          ? "New program →"
+                          ? "New →"
                           : "Sign in to create →"}
                     </button>
                     <button
@@ -1214,14 +1229,14 @@ export function EditorWorkspace({
                       }}
                       className="punch-print text-left text-[12px] tracking-[0.1em]"
                     >
-                      {user ? "Open from your cards →" : "Sign in to open cards →"}
+                      {user ? "Open from Deck →" : "Sign in for Deck →"}
                     </button>
                     <button
                       type="button"
                       onClick={() => onRequestHopper?.()}
                       className="punch-print text-left text-[12px] tracking-[0.1em]"
                     >
-                      Copy from gallery →
+                      Copy from Hopper →
                     </button>
                   </div>
                 </div>
@@ -1248,7 +1263,7 @@ export function EditorWorkspace({
                       savedImageDocument={imageDocument}
                       imageSettingsLoadKey={imageSettingsLoadKey}
                       onImageDocumentChange={handleImageDocumentChange}
-                      sidePanelTarget={toolsPanel === "import" ? importPanelEl : null}
+                      sidePanelTarget={importOpen ? importPanelEl : null}
                       editLocked={editLocked}
                       paperColor={paperColor}
                       hideFullscreenEntry
@@ -1276,7 +1291,7 @@ export function EditorWorkspace({
                           className="h-full transition-all"
                           style={{
                             width: `${completedPct}%`,
-                            background: `color-mix(in srgb, ${paperColor} 82%, #0A0A0A 18%)`,
+                            background: contrastPaper,
                           }}
                         />
                       </div>
@@ -1340,7 +1355,7 @@ export function EditorWorkspace({
             )}
           </main>
 
-          {toolsPanel === "import" && showProgramSurface && (
+          {importOpen && showProgramSurface && (
             <aside className="flex w-full shrink-0 flex-col border-t-2 border-chassis-dark md:w-[min(480px,44%)] md:border-l-2 md:border-t-0">
               <div className="steel-tray flex h-full min-h-[260px] flex-col !rounded-none !border-0" style={{ minHeight: "100%" }}>
                 <div className="relative z-[2] mb-2 flex items-center gap-2">
@@ -1399,7 +1414,7 @@ export function EditorWorkspace({
 
       <TutorialSpotlight open={tutorialOpen} onOpenChange={setTutorialOpen} />
 
-      {toolsPanel === "yarn" &&
+      {yarnOpen &&
         typeof document !== "undefined" &&
         createPortal(
           <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
@@ -1407,7 +1422,7 @@ export function EditorWorkspace({
               type="button"
               className="absolute inset-0 bg-recess/70"
               aria-label="Close panel"
-              onClick={() => setToolsPanel(null)}
+              onClick={() => setYarnOpen(false)}
             />
             <div
               role="dialog"
@@ -1434,7 +1449,7 @@ export function EditorWorkspace({
               <div className="mt-auto flex shrink-0 items-center justify-end pt-4">
                 <button
                   type="button"
-                  onClick={() => setToolsPanel(null)}
+                  onClick={() => setYarnOpen(false)}
                   className="punch-print text-[11px] opacity-70"
                 >
                   Close

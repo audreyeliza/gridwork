@@ -346,7 +346,7 @@ export function GridCanvas({
         const hx = 0;
         const hy = offsetY + cr * cell;
         const hw = offsetX + gridWpx;
-        ctx.fillStyle = hexWithAlpha(contrastManilaHexFromPaper(paperColor || "#E8E2D0"), 0.4);
+        ctx.fillStyle = hexWithAlpha(contrastManilaHexFromPaper(paperColor || "#E8E2D0"), 0.55);
         ctx.fillRect(hx, hy, hw, cell);
       }
     });

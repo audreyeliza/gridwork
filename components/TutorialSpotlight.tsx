@@ -48,7 +48,7 @@ const LOGIN_STEP: StepDef = {
 const SAVE_STEP: StepDef = {
   targetId: "tutorial-save",
   title: "Save your card",
-  body: "Save keeps this program. Autosave runs once it’s stored.",
+  body: "Save stores this pattern. Autosave follows.",
 };
 
 type Rect = { x: number; y: number; w: number; h: number };
@@ -215,10 +215,7 @@ export function TutorialSpotlight({ open, onOpenChange }: TutorialSpotlightProps
           ))}
         </div>
 
-        <p className="mt-3 font-mono text-[9px] font-bold tracking-[0.14em] uppercase punch-print-faint">
-          Step {step + 1} of {steps.length}
-        </p>
-        <h2 className="mt-0.5 font-mono text-[14px] font-bold tracking-[0.06em] uppercase punch-print-ink">
+        <h2 className="mt-3 font-mono text-[14px] font-bold tracking-[0.06em] uppercase punch-print-ink">
           {current.title}
         </h2>
         <p className="mt-2 font-mono text-[11px] leading-relaxed punch-print-ink opacity-80">
@@ -227,7 +224,7 @@ export function TutorialSpotlight({ open, onOpenChange }: TutorialSpotlightProps
 
         {isLastStep && (
           <p className="mt-2 font-mono text-[10px] leading-relaxed punch-print-faint">
-            Restart anytime with ? on the console.
+            Restart anytime with ? on Program.
           </p>
         )}
 

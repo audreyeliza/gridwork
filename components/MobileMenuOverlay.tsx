@@ -11,7 +11,7 @@ type NavItem = { label: string; href: string; page: MobileMenuPage; requiresAuth
 
 const NAV_ITEMS: NavItem[] = [
   { label: "Hopper", href: "/?zone=hopper", page: "gallery" },
-  { label: "Primer", href: "/?zone=primer", page: "home" },
+  { label: "Manual", href: "/?zone=primer", page: "home" },
   { label: "Program", href: "/?zone=reader", page: "editor" },
   { label: "Maker", href: "/?zone=maker", page: "profile", requiresAuth: true },
 ];

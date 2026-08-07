@@ -39,4 +39,9 @@ export const PRIMER_SECTIONS = [
     title: "Reading the grid",
     body: "Start bottom-left, work right. Each turn flips your travel direction; the chart stays put. Work up row by row.",
   },
+  {
+    id: "console",
+    title: "Console tour",
+    body: "New to Program? Use Go to tutorial at the bottom right.",
+  },
 ] as const;

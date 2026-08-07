@@ -33,14 +33,14 @@ export function manilaHex(id: ManilaStockId): string {
   return MANILA_STOCKS.find((s) => s.id === id)?.hex ?? MANILA_STOCKS[0].hex;
 }
 
-/** Contrasting stock for row highlight — each paper maps to a unique partner. */
+/** Contrasting stock for row highlight — reciprocal opposite pairs. */
 const CONTRAST_STOCK: Record<ManilaStockId, ManilaStockId> = {
   manila: "blue",
+  blue: "manila",
   yellow: "brown",
+  brown: "yellow",
   green: "red",
-  blue: "yellow",
-  brown: "green",
-  red: "manila",
+  red: "green",
 };
 
 export function contrastManilaHex(id: ManilaStockId): string {

@@ -79,7 +79,7 @@ export function MakerZone({ onProgramCard, onNewProgram, onPreviewCard, previewI
         <p className="font-mono text-[11px] font-bold tracking-[0.14em] text-chassis-light uppercase">
           Deck
         </p>
-        <p className="font-mono text-sm text-card">Log in on the keyboard bar to load your cards.</p>
+        <p className="font-mono text-sm text-card">Log in on the keyboard to load your Deck.</p>
       </div>
     );
   }
@@ -145,7 +145,7 @@ export function MakerZone({ onProgramCard, onNewProgram, onPreviewCard, previewI
           <p className="relative z-[2] mb-3 pl-2 font-mono text-[10px] font-medium tracking-[0.08em] uppercase" style={{ color: "#0A0A0A" }}>
             {deckCount === 0
               ? tab === "mine"
-                ? "No cards yet. Hit NEW."
+                ? "No cards yet. Hit New."
                 : "No liked cards yet."
               : `${deckCount} pattern${deckCount === 1 ? "" : "s"}`}
           </p>

@@ -423,7 +423,7 @@ export function HopperZone({
                 {total === 0
                   ? activeSearch
                     ? `No patterns found for "${activeSearch}".`
-                    : "No public patterns yet. Share yours from the editor!"
+                    : "No public patterns yet. Share yours from Program."
                   : `${total} pattern${total === 1 ? "" : "s"}`}
               </p>
             )}

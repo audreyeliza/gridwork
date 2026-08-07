@@ -4,12 +4,7 @@ import { CrochetMark } from "@/components/CrochetMark";
 import { PRIMER_SECTIONS } from "@/lib/primerContent";
 import { useEffect, useState, type TransitionEvent } from "react";
 
-/**
- * Two-leaf IBM manual: cover overview → open spread (4 steps left, 4 right).
- * CSS 3D cover flip with two-sided leaf and under-spread reveal.
- */
 type PrimerZoneProps = {
-  /** Navigate to Program and start the interactive console tour. */
   onStartTutorial?: () => void;
 };
 
@@ -17,9 +12,8 @@ export function PrimerZone({ onStartTutorial }: PrimerZoneProps) {
   const [open, setOpen] = useState(false);
   const [flipping, setFlipping] = useState(false);
   const left = PRIMER_SECTIONS.slice(0, 4);
-  const right = PRIMER_SECTIONS.slice(4, 8);
+  const right = PRIMER_SECTIONS.slice(4);
 
-  // Safety net if transitionend is skipped (reduced motion, tab switch)
   useEffect(() => {
     if (!flipping) return;
     const reduced =
@@ -46,24 +40,24 @@ export function PrimerZone({ onStartTutorial }: PrimerZoneProps) {
       <div
         className={`book-stage relative w-full max-w-5xl lg:max-w-6xl${open ? " is-open" : ""}${flipping ? " is-flipping" : ""}`}
       >
-        {/* Instruction spread — always under the cover leaf */}
         <div
           className="book-spread absolute inset-0 flex flex-col border border-[#3A3E44] bg-white"
           style={{ background: "#ffffff", minHeight: "min(78vh, 680px)" }}
           aria-hidden={!open}
         >
           <div className="book-spread-shade" aria-hidden />
+          <div className="book-spread-gutter" aria-hidden />
           <div className="flex items-center justify-between border-b border-[#D6DCE4] bg-[#2F5F9E] px-5 py-3">
             <span className="font-mono text-[10px] font-bold tracking-[0.14em] text-white uppercase">
-              Operator menu
+              Manual
             </span>
             <span className="font-mono text-[9px] font-bold tracking-[0.1em] text-white/70 uppercase">
               Gridwork
             </span>
           </div>
           <div className="grid min-h-0 flex-1 md:grid-cols-2">
-            <div className="flex min-h-0 flex-col border-b border-[#D6DCE4] md:border-b-0">
-              <div className="flex flex-1 flex-col gap-5 overflow-hidden bg-white px-5 py-5 md:px-6">
+            <div className="flex min-h-0 flex-col border-b border-[#D6DCE4] md:border-b-0 md:border-r md:border-[#E2E6EC]">
+              <div className="flex flex-1 flex-col gap-4 overflow-y-auto bg-white px-5 py-5 md:px-6">
                 {left.map((s, i) => (
                   <section key={s.id} className="min-h-0">
                     <div className="mb-1 flex items-baseline gap-2">
@@ -79,7 +73,7 @@ export function PrimerZone({ onStartTutorial }: PrimerZoneProps) {
             </div>
 
             <div className="flex min-h-0 flex-col">
-              <div className="flex flex-1 flex-col gap-5 overflow-hidden bg-white px-5 py-5 md:px-6">
+              <div className="flex flex-1 flex-col gap-4 overflow-y-auto bg-white px-5 py-5 md:px-6">
                 {right.map((s, i) => (
                   <section key={s.id} className="min-h-0">
                     <div className="mb-1 flex items-baseline gap-2">
@@ -115,7 +109,6 @@ export function PrimerZone({ onStartTutorial }: PrimerZoneProps) {
           </div>
         </div>
 
-        {/* Two-sided cover leaf */}
         <div
           className="book-leaf absolute inset-0 origin-left"
           onTransitionEnd={onLeafTransitionEnd}
@@ -125,22 +118,20 @@ export function PrimerZone({ onStartTutorial }: PrimerZoneProps) {
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="m-0 font-mono text-[10px] font-bold tracking-[0.22em] text-white/65 uppercase">
-                    Gridwork · Operator manual
+                    Gridwork · Manual
                   </p>
                   <h1 className="mt-4 m-0 font-mono text-[clamp(32px,5.5vw,52px)] font-bold leading-[1.05] tracking-[-0.02em] text-white">
                     Punch cards
                     <br />
                     for filet crochet.
                   </h1>
-                  <p className="mt-4 max-w-[42ch] font-sans text-[17px] leading-relaxed text-white/85">
-                    Design mesh patterns on manila stock and stitch them by hand.
-                    Use <span className="font-semibold text-white">Hopper</span> on the
-                    keyboard to browse community cards. Use{" "}
-                    <span className="font-semibold text-white">Program</span> to punch a
-                    new pattern.
+                  <p className="mt-5 max-w-[40ch] font-sans text-[16px] leading-relaxed text-white/85">
+                    New to filet crochet? Open this <span className="font-semibold text-white">Manual</span>.
+                    New to the console? Go to <span className="font-semibold text-white">Program</span>, then{" "}
+                    <span className="font-semibold text-white">?</span> for the tutorial.
                   </p>
                 </div>
-                <CrochetMark size={40} variant="onChassis" />
+                <CrochetMark size={72} variant="onChassis" />
               </div>
             </div>
             <div className="flex items-center justify-end border-t border-white/20 bg-white book-footer px-8 md:px-12">
@@ -164,8 +155,7 @@ export function PrimerZone({ onStartTutorial }: PrimerZoneProps) {
               </p>
               <div className="mt-6 h-px w-16 bg-[#2F5F9E]/35" />
               <p className="mt-6 max-w-[36ch] font-sans text-[15px] leading-relaxed text-[#4A4E55]">
-                Operator notes. Keep this leaf closed when feeding punch cards into the
-                hopper.
+                Filet basics on the left. Mesh, rows, and the console tour on the right.
               </p>
             </div>
             <div className="book-footer flex items-center border-t border-[#D6DCE4]/80 px-8 md:px-12">

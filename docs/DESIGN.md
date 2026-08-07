@@ -78,3 +78,14 @@ Keyboard lamps: Manual / Hopper / Program / Profile (or Log in) — unchanged.
 ## Manila stock
 
 Card paper colors for pattern grids/thumbs: [`lib/manilaStock.ts`](../lib/manilaStock.ts). Empty cells remap to the chosen stock so the grid matches the frame.
+
+Row highlight and Tracker progress use a reciprocal opposite per stock:
+
+| Stock | Opposite |
+|-------|----------|
+| White | Blue |
+| Blue | White |
+| Yellow | Brown |
+| Brown | Yellow |
+| Green | Red |
+| Red | Green |

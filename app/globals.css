@@ -298,8 +298,8 @@ button.punch-key-blue:hover:not(:disabled),
   flex-wrap: wrap;
   align-items: center;
   gap: 0.6rem;
-  /* Shared face height across Card program / hopper / deck */
-  min-height: 8rem;
+  /* Shared face height across Program / hopper / deck */
+  min-height: 10.5rem;
   flex-shrink: 0;
   padding: 0.85rem 1rem;
   background:
@@ -726,16 +726,20 @@ button.punch-lamp:disabled,
   z-index: 1;
   pointer-events: none;
   transform: translateZ(0);
-  box-shadow: 4px 8px 0 rgba(74, 78, 85, 0.15);
+  box-shadow:
+    0 2px 4px rgba(40, 44, 50, 0.08),
+    0 12px 28px rgba(40, 44, 50, 0.18),
+    0 1px 0 rgba(255, 255, 255, 0.4) inset;
   transition: border-color 0.35s ease, box-shadow 0.35s ease;
 }
 .book-stage.is-open .book-spread {
   pointer-events: auto;
-  /* Soften left hairline so it doesn't double against the flap hinge */
   border-left-color: transparent;
   box-shadow:
-    4px 8px 0 rgba(74, 78, 85, 0.15),
-    inset 3px 0 10px rgba(40, 44, 50, 0.07);
+    0 4px 8px rgba(40, 44, 50, 0.1),
+    0 18px 40px rgba(40, 44, 50, 0.22),
+    inset 8px 0 18px rgba(40, 44, 50, 0.08),
+    inset -6px 0 14px rgba(40, 44, 50, 0.04);
 }
 .book-stage.is-flipping .book-spread {
   pointer-events: none;
@@ -747,9 +751,9 @@ button.punch-lamp:disabled,
   z-index: 4;
   background: linear-gradient(
     90deg,
-    rgba(40, 44, 50, 0.42) 0%,
-    rgba(40, 44, 50, 0.18) 28%,
-    rgba(40, 44, 50, 0.06) 58%,
+    rgba(40, 44, 50, 0.5) 0%,
+    rgba(40, 44, 50, 0.22) 26%,
+    rgba(40, 44, 50, 0.08) 55%,
     transparent 100%
   );
   opacity: 0;
@@ -757,8 +761,8 @@ button.punch-lamp:disabled,
   transform-origin: left center;
 }
 .book-stage.is-open:not(.is-flipping) .book-spread-shade {
-  opacity: 0.55;
-  transform: scaleX(0.14);
+  opacity: 0.72;
+  transform: scaleX(0.16);
 }
 .book-stage.is-flipping.is-open .book-spread-shade {
   animation: book-shade-open 1.15s cubic-bezier(0.33, 0.02, 0.18, 1) forwards;
@@ -772,27 +776,50 @@ button.punch-lamp:disabled,
     transform: scaleX(1);
   }
   42% {
-    opacity: 0.92;
+    opacity: 0.95;
     transform: scaleX(0.94);
   }
   100% {
-    opacity: 0.55;
-    transform: scaleX(0.14);
+    opacity: 0.72;
+    transform: scaleX(0.16);
   }
 }
 @keyframes book-shade-close {
   0% {
-    opacity: 0.55;
-    transform: scaleX(0.14);
+    opacity: 0.72;
+    transform: scaleX(0.16);
   }
   48% {
-    opacity: 0.92;
+    opacity: 0.95;
     transform: scaleX(0.94);
   }
   100% {
     opacity: 0;
     transform: scaleX(1);
   }
+}
+.book-spread-gutter {
+  pointer-events: none;
+  position: absolute;
+  top: 48px;
+  bottom: 52px;
+  left: 50%;
+  z-index: 3;
+  width: 18px;
+  margin-left: -9px;
+  opacity: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(40, 44, 50, 0.06) 28%,
+    rgba(40, 44, 50, 0.16) 50%,
+    rgba(40, 44, 50, 0.06) 72%,
+    transparent 100%
+  );
+  transition: opacity 0.35s ease;
+}
+.book-stage.is-open .book-spread-gutter {
+  opacity: 1;
 }
 
 .book-leaf {
@@ -803,7 +830,6 @@ button.punch-lamp:disabled,
   will-change: transform;
 }
 .book-stage.is-open .book-leaf {
-  /* Foreshorten the open flap; keep hinge in-plane so footers meet */
   transform: rotateY(-150deg);
   z-index: 2;
 }
@@ -824,7 +850,9 @@ button.punch-lamp:disabled,
 }
 .book-leaf-front {
   background: #2f5f9e;
-  box-shadow: 6px 10px 0 rgba(74, 78, 85, 0.2);
+  box-shadow:
+    0 4px 10px rgba(40, 44, 50, 0.18),
+    0 14px 32px rgba(40, 44, 50, 0.22);
   transform: rotateY(0deg) translateZ(0.5px);
   filter: brightness(1);
   transition: filter 1.15s cubic-bezier(0.33, 0.02, 0.18, 1);
@@ -833,7 +861,6 @@ button.punch-lamp:disabled,
   filter: brightness(0.68);
 }
 .book-leaf-back {
-  /* Light at free edge → cooler AO toward hinge (local right when open) */
   background:
     linear-gradient(
       90deg,
@@ -889,14 +916,13 @@ button.punch-lamp:disabled,
     transparent 100%
   );
 }
-/* Stock thickness on the free edge of the open inside flap */
 .book-leaf-thickness {
   pointer-events: none;
   position: absolute;
   top: 0;
   bottom: 0;
   left: 0;
-  width: 3px;
+  width: 5px;
   opacity: 0;
   background: linear-gradient(
     180deg,
@@ -904,11 +930,19 @@ button.punch-lamp:disabled,
     #9aa1aa 45%,
     #b8bec6 100%
   );
-  box-shadow: 1px 0 0 rgba(255, 255, 255, 0.35);
+  box-shadow:
+    1px 0 0 rgba(255, 255, 255, 0.35),
+    2px 0 0 rgba(40, 44, 50, 0.12);
   transition: opacity 0.35s ease;
 }
 .book-stage.is-open .book-leaf-thickness {
   opacity: 1;
+}
+
+@media (max-width: 767px) {
+  .book-spread-gutter {
+    display: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
