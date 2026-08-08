@@ -57,6 +57,25 @@ type SyncTick = {
   liked: boolean;
 };
 
+const LAST_PATTERN_KEY = "gridwork:last-pattern";
+
+function readLastPatternId(): string | null {
+  try {
+    return sessionStorage.getItem(LAST_PATTERN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeLastPatternId(id: string | null) {
+  try {
+    if (id) sessionStorage.setItem(LAST_PATTERN_KEY, id);
+    else sessionStorage.removeItem(LAST_PATTERN_KEY);
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
 export function MachineShell() {
   const router = useRouter();
   const pathname = usePathname();
@@ -73,6 +92,35 @@ export function MachineShell() {
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
   const [syncTick, setSyncTick] = useState<SyncTick | null>(null);
   const [, setSyncSeq] = useState(0);
+  const [lastProgramId, setLastProgramId] = useState<string | null>(() => patternId);
+
+  const rememberProgramId = useCallback((id: string | null) => {
+    if (id) {
+      setLastProgramId(id);
+      writeLastPatternId(id);
+    }
+  }, []);
+
+  // Seed last program from sessionStorage after mount (SSR-safe).
+  useEffect(() => {
+    if (patternId) {
+      rememberProgramId(patternId);
+      return;
+    }
+    const stored = readLastPatternId();
+    if (stored) setLastProgramId(stored);
+  }, [patternId, rememberProgramId]);
+
+  // Strip stale ?pattern= from non-program zones (old bookmarks / prior preserve behavior).
+  useEffect(() => {
+    if (zone === "program") return;
+    const stale = searchParams.get("pattern");
+    if (!stale) return;
+    rememberProgramId(stale);
+    router.replace(buildZoneHref(zone, { preserve: searchParams, pattern: null }), {
+      scroll: false,
+    });
+  }, [zone, searchParams, router, rememberProgramId]);
 
   // Legacy bookmarks: /?zone=maker|primer|reader → /profile|/|/program.
   useEffect(() => {
@@ -80,6 +128,8 @@ export function MachineShell() {
     if (!legacy) return;
     const params = new URLSearchParams(searchParams.toString());
     params.delete("zone");
+    // Don't carry pattern onto non-program legacy redirects.
+    if (legacy !== "program") params.delete("pattern");
     const qs = params.toString();
     const href = qs ? `${pathForZone(legacy)}?${qs}` : pathForZone(legacy);
     router.replace(href, { scroll: false });
@@ -103,7 +153,10 @@ export function MachineShell() {
   const setZone = useCallback(
     (next: MachineZone) => {
       setPreview(null);
-      router.replace(buildZoneHref(next, { preserve: searchParams }), { scroll: false });
+      router.replace(
+        buildZoneHref(next, { preserve: searchParams, pattern: null }),
+        { scroll: false },
+      );
     },
     [router, searchParams],
   );
@@ -111,6 +164,7 @@ export function MachineShell() {
   const openProgram = useCallback(
     (id: string | null, opts?: { tutorial?: boolean }) => {
       setPreview(null);
+      rememberProgramId(id);
       router.replace(
         buildZoneHref("program", {
           pattern: id,
@@ -121,12 +175,14 @@ export function MachineShell() {
         { scroll: false },
       );
     },
-    [router, searchParams],
+    [router, searchParams, rememberProgramId],
   );
 
-  /** Update ?pattern on the current path without forcing Program (avoids nav races). */
+  /** Update ?pattern on Program only (avoids nav races; keeps other zones clean). */
   const syncPatternInUrl = useCallback(
     (id: string | null) => {
+      if (zone !== "program") return;
+      rememberProgramId(id);
       const params = new URLSearchParams(searchParams.toString());
       params.delete("zone");
       if (id) params.set("pattern", id);
@@ -134,7 +190,7 @@ export function MachineShell() {
       const qs = params.toString();
       router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
     },
-    [router, pathname, searchParams],
+    [router, pathname, searchParams, zone, rememberProgramId],
   );
 
   const handlePatternIdChange = useCallback(
@@ -170,8 +226,8 @@ export function MachineShell() {
   }, [user, supabase, openProgram]);
 
   const startTutorialFromManual = useCallback(() => {
-    openProgram(patternId, { tutorial: true });
-  }, [openProgram, patternId]);
+    openProgram(patternId ?? lastProgramId, { tutorial: true });
+  }, [openProgram, patternId, lastProgramId]);
 
   const clearTutorialParam = useCallback(() => {
     if (searchParams.get("tutorial") !== "1") return;
@@ -533,7 +589,7 @@ export function MachineShell() {
         onSelectZone={(id) => {
           if (id === "program") {
             if (zone === "program") return;
-            openProgram(patternId);
+            openProgram(patternId ?? lastProgramId);
           } else {
             setZone(id);
           }

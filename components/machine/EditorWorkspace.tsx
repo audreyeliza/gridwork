@@ -995,7 +995,7 @@ export function EditorWorkspace({
                   setImportOpen((p) => !p);
                 }}
                 disabled={!showProgramSurface}
-                className={`punch-lamp punch-lamp-red !min-h-[32px] !px-2.5 text-[9px] self-end mb-0.5 ${
+                className={`punch-lamp punch-lamp-amber !min-h-[32px] !px-2.5 text-[9px] self-end mb-0.5 ${
                   importOpen ? "is-lit" : ""
                 }`}
                 title={importOpen ? "Close import" : "Import reference image"}
@@ -1025,6 +1025,17 @@ export function EditorWorkspace({
               >
                 Redo
               </button>
+              <button
+                type="button"
+                onClick={() => setYarnOpen((p) => !p)}
+                className={`punch-lamp punch-lamp-amber !min-h-[32px] !px-2.5 text-[9px] ${
+                  yarnOpen ? "is-lit" : ""
+                }`}
+                title="Yarn estimate"
+                aria-pressed={yarnOpen}
+              >
+                Yarn
+              </button>
               {user && (
                 <button
                   id="tutorial-save"
@@ -1049,17 +1060,6 @@ export function EditorWorkspace({
                 </button>
               )}
               <button
-                type="button"
-                onClick={() => setYarnOpen((p) => !p)}
-                className={`punch-lamp punch-lamp-red !min-h-[32px] !px-2.5 text-[9px] ${
-                  yarnOpen ? "is-lit" : ""
-                }`}
-                title="Yarn estimate"
-                aria-pressed={yarnOpen}
-              >
-                Yarn
-              </button>
-              <button
                 id="tutorial-print"
                 type="button"
                 disabled={!selectedPatternId}
@@ -1083,6 +1083,24 @@ export function EditorWorkspace({
               >
                 ?
               </button>
+              <FlipSwitch
+                topLabel="Private"
+                bottomLabel="Public"
+                on={activePattern?.is_public ?? false}
+                orientation="vertical"
+                disabled={!user || !selectedPatternId || !activePattern}
+                onClick={() => {
+                  if (!selectedPatternId || !activePattern) return;
+                  void handleTogglePublic(selectedPatternId, !activePattern.is_public);
+                }}
+                title={
+                  !user || !selectedPatternId || !activePattern
+                    ? "Open a program to set visibility"
+                    : activePattern.is_public
+                      ? "Make private"
+                      : "Make public"
+                }
+              />
             </div>
           </div>
         </div>
@@ -1198,7 +1216,10 @@ export function EditorWorkspace({
                       onApplyConvertedGrid={handleApplyConvertedGrid}
                       onBestFitGrid={handleBestFitGrid}
                       onImageLoad={handleImageLoad}
-                      onGridFullscreenChange={setGridFullscreen}
+                      onGridFullscreenChange={(fs) => {
+                        setGridFullscreen(fs);
+                        if (fs) setImportOpen(false);
+                      }}
                       progress={progress}
                       onToggleRowComplete={handleToggleRowComplete}
                       savedImageDocument={imageDocument}
