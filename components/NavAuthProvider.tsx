@@ -104,6 +104,7 @@ export function NavAuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!supabase || !user) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clears profile state on logout; must react to auth changes
       setDisplayName(null);
       setAvatarUrl(null);
       setProfileLoading(false);

@@ -17,6 +17,7 @@ export function ManilaThumbnail({ src, alt = "", stockId, style, ...rest }: Prop
 
   useEffect(() => {
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- shows the raw src immediately, avoiding a stale thumbnail while the remap resolves
     setDisplaySrc(src);
     void remanilaThumbnail(src, paper).then((next) => {
       if (!cancelled) setDisplaySrc(next);

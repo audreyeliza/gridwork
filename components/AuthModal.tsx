@@ -33,6 +33,7 @@ export function AuthModal({
 
   useEffect(() => {
     if (!open) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- resets modal state each time it opens
     setMode(initialMode);
     setError(null);
     setConfirmation(null);

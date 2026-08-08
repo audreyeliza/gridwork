@@ -1,11 +1,9 @@
+import { clamp } from "@/lib/mathUtils";
+
 export const LABEL_SIZE = 28;
 export const ROW_TRACKER_SIDEBAR_PX = 44;
 export const MIN_CELL = 10;
 export const MAX_CELL = 32;
-
-function clamp(n: number, lo: number, hi: number): number {
-  return Math.min(hi, Math.max(lo, n));
-}
 
 export type GridCanvasLayoutOptions = {
   /** Extra width (px) reserved left of the grid for row tracker (checkbox + label). */

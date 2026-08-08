@@ -43,6 +43,7 @@ export function DisplayNameModal({
 
   useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- resets modal state each time it opens
       setName("");
       setLocalError(null);
       setAvailability("idle");

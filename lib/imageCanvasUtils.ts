@@ -1,6 +1,5 @@
 export type CropRect = { x: number; y: number; w: number; h: number };
 
-/** Draw image scaled with CSS-like `object-fit: contain` into the destination rect. */
 export function getCanvasImageSize(img: CanvasImageSource): { w: number; h: number } {
   if (typeof ImageBitmap !== "undefined" && img instanceof ImageBitmap) {
     return { w: img.width, h: img.height };
@@ -10,17 +9,6 @@ export function getCanvasImageSize(img: CanvasImageSource): { w: number; h: numb
   }
   const im = img as HTMLImageElement;
   return { w: im.naturalWidth || im.width || 0, h: im.naturalHeight || im.height || 0 };
-}
-
-export function drawImageContain(
-  ctx: CanvasRenderingContext2D,
-  img: CanvasImageSource,
-  dx: number,
-  dy: number,
-  dWidth: number,
-  dHeight: number,
-): void {
-  drawImageWithTransform(ctx, img, dx, dy, dWidth, dHeight, null, 0, 0);
 }
 
 export type ImageTransformLayout = {
@@ -47,8 +35,6 @@ export function getImageTransformLayout(
   const iw = Math.max(1, imgW);
   const ih = Math.max(1, imgH);
 
-  const sx = crop ? crop.x * iw : 0;
-  const sy = crop ? crop.y * ih : 0;
   const sw = crop ? Math.max(1, crop.w * iw) : iw;
   const sh = crop ? Math.max(1, crop.h * ih) : ih;
 

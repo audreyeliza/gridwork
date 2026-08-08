@@ -37,11 +37,6 @@ export type ImageToolsProps = {
   onBestFitGrid?: (w: number, h: number) => void;
   onImageLoad?: (naturalWidth: number, naturalHeight: number) => void;
   onGridFullscreenChange?: (fullscreen: boolean) => void;
-  onUndo?: () => void;
-  onRedo?: () => void;
-  canUndo?: boolean;
-  canRedo?: boolean;
-  onStepRow?: (delta: number) => void;
   className?: string;
   progress?: PatternProgressState;
   onToggleRowComplete?: (row: number) => void;
@@ -356,6 +351,53 @@ function drawCropCanvas(
   ctx.fillText(text, tx, ty);
 }
 
+function CropCanvas({
+  canvasRef,
+  w,
+  h,
+  positionLocked,
+  cropCursor,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+}: {
+  canvasRef: React.RefObject<HTMLCanvasElement | null>;
+  w: number;
+  h: number;
+  positionLocked: boolean;
+  cropCursor: string;
+  onPointerDown: (e: React.PointerEvent<HTMLCanvasElement>) => void;
+  onPointerMove: (e: React.PointerEvent<HTMLCanvasElement>) => void;
+  onPointerUp: () => void;
+}) {
+  return (
+    <div
+      className="overflow-hidden border"
+      style={{
+        width: w,
+        height: h,
+        borderColor: "var(--print-ink-faint)",
+        flexShrink: 0,
+      }}
+    >
+      <canvas
+        ref={canvasRef}
+        width={w}
+        height={h}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        className={positionLocked ? "cursor-not-allowed" : cropCursor}
+        style={{
+          width: w,
+          height: h,
+          display: "block",
+        }}
+      />
+    </div>
+  );
+}
+
 export function ImageTools({
   gridWidth,
   gridHeight,
@@ -365,11 +407,6 @@ export function ImageTools({
   onBestFitGrid,
   onImageLoad,
   onGridFullscreenChange,
-  onUndo,
-  onRedo,
-  canUndo,
-  canRedo,
-  onStepRow,
   className,
   progress,
   onToggleRowComplete,
@@ -410,6 +447,7 @@ export function ImageTools({
   const [appliedCrop, setAppliedCrop] = useState<CropRect | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [hoverHandle, setHoverHandle] = useState<CropHandle>(null);
+  const [dragHandle, setDragHandle] = useState<CropHandle>(null);
   const [panX, setPanX] = useState(0);
   const [panY, setPanY] = useState(0);
   const [positionLocked, setPositionLocked] = useState(false);
@@ -455,6 +493,7 @@ export function ImageTools({
 
   useEffect(() => {
     if (!cropExpanded) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- resets crop view state each time the crop panel expands
     setCropViewZoom(1);
     const padding = 120;
     const w = Math.min(Math.round(window.innerWidth * 0.72) - 48, 720);
@@ -587,6 +626,7 @@ export function ImageTools({
     const nextActive = doc.activeImageId && nextLayers.some((l) => l.id === doc.activeImageId)
       ? doc.activeImageId
       : (nextLayers[0]?.id ?? null);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reinitializes editor state when a new document loads
     setLayers(nextLayers);
     setActiveLayerId(nextActive);
     setLayerImages({});
@@ -775,6 +815,7 @@ export function ImageTools({
 
   useEffect(() => {
     if (sidePanelTarget || !cropExpanded) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- auto-applies the pending crop when the side panel is closed
     applyCrop();
     setCropExpanded(false);
   }, [sidePanelTarget, cropExpanded, applyCrop]);
@@ -832,6 +873,7 @@ export function ImageTools({
         fitH,
       };
       setIsDragging(true);
+      setDragHandle(handle);
       e.currentTarget.setPointerCapture(e.pointerId);
     },
     [workingImage, positionLocked, cropRect, cropViewZoom],
@@ -879,6 +921,7 @@ export function ImageTools({
   const onCropPointerUp = useCallback(() => {
     cropDragRef.current = null;
     setIsDragging(false);
+    setDragHandle(null);
   }, []);
 
   const attachCropWheel = useCallback((el: HTMLCanvasElement | null) => {
@@ -976,42 +1019,13 @@ export function ImageTools({
   // Keep active layer image map in sync when working pixels change (e.g. transform).
   useEffect(() => {
     if (!activeLayerId || !workingImage) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs the layer image cache with the active layer's pixels
     setLayerImages((prev) =>
       prev[activeLayerId] === workingImage ? prev : { ...prev, [activeLayerId]: workingImage },
     );
   }, [activeLayerId, workingImage]);
-  const cropCursor = getCropCursor(isDragging ? (cropDragRef.current?.handle ?? null) : hoverHandle);
 
-  const cropCanvasJSX = (
-    ref: React.RefObject<HTMLCanvasElement | null>,
-    w: number,
-    h: number,
-  ) => (
-    <div
-      className="overflow-hidden border"
-      style={{
-        width: w,
-        height: h,
-        borderColor: "var(--print-ink-faint)",
-        flexShrink: 0,
-      }}
-    >
-      <canvas
-        ref={ref}
-        width={w}
-        height={h}
-        onPointerDown={onCropPointerDown}
-        onPointerMove={onCropPointerMove}
-        onPointerUp={onCropPointerUp}
-        className={positionLocked ? "cursor-not-allowed" : cropCursor}
-        style={{
-          width: w,
-          height: h,
-          display: "block",
-        }}
-      />
-    </div>
-  );
+  const cropCursor = getCropCursor(isDragging ? dragHandle : hoverHandle);
 
   const sliderRow = (
     label: string,
@@ -1224,7 +1238,18 @@ export function ImageTools({
               </button>
             </div>
           </div>
-          {!cropExpanded && cropCanvasJSX(cropCanvasRef, PREVIEW_W, PREVIEW_H)}
+          {!cropExpanded && (
+            <CropCanvas
+              canvasRef={cropCanvasRef}
+              w={PREVIEW_W}
+              h={PREVIEW_H}
+              positionLocked={positionLocked}
+              cropCursor={cropCursor}
+              onPointerDown={onCropPointerDown}
+              onPointerMove={onCropPointerMove}
+              onPointerUp={onCropPointerUp}
+            />
+          )}
           <div className="flex flex-col">
             {sliderRow("Zoom", Math.round(imageZoom * 100), `${Math.round(imageZoom * 100)}%`, {
               min: 50,
@@ -1428,7 +1453,16 @@ export function ImageTools({
                 </button>
               </div>
               <div className="mt-4 flex min-h-0 flex-1 items-center justify-center overflow-hidden">
-                {cropCanvasJSX(expandedCropCanvasRef, expandedSize.w, expandedSize.h)}
+                <CropCanvas
+                  canvasRef={expandedCropCanvasRef}
+                  w={expandedSize.w}
+                  h={expandedSize.h}
+                  positionLocked={positionLocked}
+                  cropCursor={cropCursor}
+                  onPointerDown={onCropPointerDown}
+                  onPointerMove={onCropPointerMove}
+                  onPointerUp={onCropPointerUp}
+                />
               </div>
               <div className="mt-auto flex shrink-0 items-center justify-end pt-4">
                 <button
@@ -1455,11 +1489,6 @@ export function ImageTools({
           currentRow={progress?.currentRow}
           onToggleRowComplete={onToggleRowComplete}
           onFullscreenChange={handleGridFullscreenChange}
-          onUndo={onUndo}
-          onRedo={onRedo}
-          canUndo={canUndo}
-          canRedo={canRedo}
-          onStepRow={onStepRow}
           editLocked={editLocked}
           paperColor={paperColor}
           hideFullscreenEntry={hideFullscreenEntry}
