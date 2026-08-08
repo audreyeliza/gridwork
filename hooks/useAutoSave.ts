@@ -13,18 +13,68 @@ export type UseAutoSaveOptions = {
 
 /**
  * Debounced save: schedules `onSave` when `dirtyKey` changes, after `delayMs` of quiet time.
+ * Flushes immediately on unmount, page hide, or tab backgrounding so zone switches do not
+ * drop pending edits. DirtyKey reschedules only reset the timer (normal debounce).
  */
 export function useAutoSave({ enabled, delayMs = 2000, dirtyKey, onSave }: UseAutoSaveOptions): void {
   const onSaveRef = useRef(onSave);
+  const pendingRef = useRef(false);
+  const timerRef = useRef<number | undefined>(undefined);
+
   useEffect(() => {
     onSaveRef.current = onSave;
   }, [onSave]);
 
+  // Debounce: reschedule on dirtyKey; clear timer without flushing.
   useEffect(() => {
-    if (!enabled) return;
-    const id = window.setTimeout(() => {
+    if (!enabled) {
+      if (timerRef.current !== undefined) {
+        window.clearTimeout(timerRef.current);
+        timerRef.current = undefined;
+      }
+      return;
+    }
+
+    pendingRef.current = true;
+    timerRef.current = window.setTimeout(() => {
+      timerRef.current = undefined;
+      pendingRef.current = false;
       void onSaveRef.current();
     }, delayMs);
-    return () => window.clearTimeout(id);
+
+    return () => {
+      if (timerRef.current !== undefined) {
+        window.clearTimeout(timerRef.current);
+        timerRef.current = undefined;
+      }
+    };
   }, [enabled, delayMs, dirtyKey]);
+
+  // Flush on leave: unmount, disable, tab hide, or pagehide.
+  useEffect(() => {
+    if (!enabled) return;
+
+    const flushPending = () => {
+      if (timerRef.current !== undefined) {
+        window.clearTimeout(timerRef.current);
+        timerRef.current = undefined;
+      }
+      if (!pendingRef.current) return;
+      pendingRef.current = false;
+      void onSaveRef.current();
+    };
+
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") flushPending();
+    };
+
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", flushPending);
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", flushPending);
+      flushPending();
+    };
+  }, [enabled]);
 }

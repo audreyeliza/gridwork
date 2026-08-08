@@ -3,9 +3,11 @@
 import { MakerHopperCard } from "@/components/machine/MakerHopperCard";
 import { RotaryKnob } from "@/components/machine/RotaryKnob";
 import { useNavAuth } from "@/components/NavAuthProvider";
+import { ProfileEditModal } from "@/components/ProfileEditModal";
 import { fetchUserLikedPatterns, type GalleryPattern } from "@/lib/galleryHelpers";
 import { parseManilaStockFromSettings } from "@/lib/manilaStock";
 import { fetchPatternsForUser, type Pattern } from "@/lib/patternHelpers";
+import { fetchProfilesByUserIds } from "@/lib/profileHelpers";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
 import { useCallback, useEffect, useState } from "react";
 
@@ -43,12 +45,44 @@ function formatEditedLabel(updatedAt: string, visibility?: "Public" | "Private")
   return visibility ? `${visibility} · ${edited}` : edited;
 }
 
+type DeckTab = "all" | "public" | "private" | "liked";
+
+const DECK_OPTIONS = [
+  { value: "all" as const, label: "All" },
+  { value: "public" as const, label: "Public" },
+  { value: "private" as const, label: "Private" },
+  { value: "liked" as const, label: "Liked" },
+];
+
+function emptyDeckMessage(tab: DeckTab): string {
+  switch (tab) {
+    case "all":
+      return "No cards yet. Hit New.";
+    case "public":
+      return "No public cards yet.";
+    case "private":
+      return "No private cards yet.";
+    case "liked":
+      return "No liked cards yet.";
+  }
+}
+
 export function MakerZone({ onNewProgram, onPreviewCard, previewId = null, creating = false }: Props) {
-  const { user, displayName, avatarUrl, signOut } = useNavAuth();
-  const [tab, setTab] = useState<"mine" | "liked">("mine");
+  const {
+    user,
+    displayName,
+    avatarUrl,
+    supabase,
+    setDisplayName,
+    setAvatarUrl,
+    signOut,
+  } = useNavAuth();
+  const [tab, setTab] = useState<DeckTab>("all");
   const [mine, setMine] = useState<Pattern[]>([]);
   const [liked, setLiked] = useState<GalleryPattern[]>([]);
+  const [likedDisplayNames, setLikedDisplayNames] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(false);
+  const [profileEditOpen, setProfileEditOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -65,6 +99,9 @@ export function MakerZone({ onNewProgram, onPreviewCard, previewId = null, creat
     ]);
     setMine(patterns ?? []);
     setLiked(likedPatterns ?? []);
+    const uniqueIds = [...new Set((likedPatterns ?? []).map((p) => p.user_id))];
+    const names = await fetchProfilesByUserIds(supabase, uniqueIds);
+    setLikedDisplayNames(names);
     setLoading(false);
   }, [user]);
 
@@ -85,7 +122,16 @@ export function MakerZone({ onNewProgram, onPreviewCard, previewId = null, creat
   }
 
   const makerTag = displayName ? `@${displayName}` : "You";
-  const deckCount = tab === "mine" ? mine.length : liked.length;
+  const ownedForTab =
+    tab === "public"
+      ? mine.filter((p) => p.is_public)
+      : tab === "private"
+        ? mine.filter((p) => !p.is_public)
+        : tab === "all"
+          ? mine
+          : [];
+  const showLiked = tab === "liked";
+  const deckCount = showLiked ? liked.length : ownedForTab.length;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -94,27 +140,36 @@ export function MakerZone({ onNewProgram, onPreviewCard, previewId = null, creat
           Deck
         </span>
         <div className="flex min-w-0 flex-wrap items-center gap-4">
-          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-key-blue font-mono text-sm font-bold text-white">
+          <button
+            type="button"
+            onClick={() => setProfileEditOpen(true)}
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-key-blue font-mono text-sm font-bold text-white"
+            title="Edit profile"
+            aria-label="Edit profile"
+          >
             {avatarUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
             ) : (
               (displayName ?? user.email ?? "?").charAt(0).toUpperCase()
             )}
-          </span>
-          <h1 className="min-w-0 truncate font-mono text-[13px] font-bold tracking-[0.06em] uppercase" style={{ color: "#0A0A0A" }}>
+          </button>
+          <button
+            type="button"
+            onClick={() => setProfileEditOpen(true)}
+            className="min-w-0 truncate text-left font-mono text-[13px] font-bold tracking-[0.06em] uppercase"
+            style={{ color: "#0A0A0A" }}
+            title="Edit profile"
+          >
             {makerTag}
-          </h1>
+          </button>
 
           <div className="min-w-0 flex-1" />
 
           <RotaryKnob
             label="Deck"
             value={tab}
-            options={[
-              { value: "mine" as const, label: "Mine" },
-              { value: "liked" as const, label: "Liked" },
-            ]}
+            options={DECK_OPTIONS}
             onChange={setTab}
             accent="#0A0A0A"
             pointer="#FFFFFF"
@@ -144,19 +199,38 @@ export function MakerZone({ onNewProgram, onPreviewCard, previewId = null, creat
         {!loading && (
           <p className="relative z-[2] mb-3 pl-2 font-mono text-[10px] font-medium tracking-[0.08em] uppercase" style={{ color: "#0A0A0A" }}>
             {deckCount === 0
-              ? tab === "mine"
-                ? "No cards yet. Hit New."
-                : "No liked cards yet."
+              ? emptyDeckMessage(tab)
               : `${deckCount} pattern${deckCount === 1 ? "" : "s"}`}
           </p>
         )}
         {loading ? (
           <p className="py-16 text-center font-mono text-sm text-chassis-light">Loading…</p>
-        ) : (tab === "mine" ? mine : liked).length === 0 ? null : (
+        ) : deckCount === 0 ? null : (
           <div className="hopper-bay pl-6">
             <div className="relative z-[2] grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-              {tab === "mine"
-                ? mine.map((p) => {
+              {showLiked
+                ? liked.map((p) => {
+                    const makerName = likedDisplayNames.get(p.user_id);
+                    const makerTagForCard = makerName ? `@${makerName}` : null;
+                    return (
+                      <MakerHopperCard
+                        key={p.id}
+                        name={p.name}
+                        thumbnail={p.thumbnail}
+                        gridWidth={p.grid_width}
+                        gridHeight={p.grid_height}
+                        statusLabel={makerTagForCard}
+                        likesCount={p.likes_count}
+                        copiesCount={p.copies_count}
+                        manilaStock={p.manila_stock}
+                        active={previewId === p.id}
+                        onClick={() =>
+                          onPreviewCard(p, makerTagForCard ?? `@${p.user_id.slice(0, 6)}`, false)
+                        }
+                      />
+                    );
+                  })
+                : ownedForTab.map((p) => {
                     const g = patternToGallery(p);
                     return (
                       <MakerHopperCard
@@ -176,26 +250,27 @@ export function MakerZone({ onNewProgram, onPreviewCard, previewId = null, creat
                         onClick={() => onPreviewCard(g, makerTag, true)}
                       />
                     );
-                  })
-                : liked.map((p) => (
-                    <MakerHopperCard
-                      key={p.id}
-                      name={p.name}
-                      thumbnail={p.thumbnail}
-                      gridWidth={p.grid_width}
-                      gridHeight={p.grid_height}
-                      statusLabel={formatEditedLabel(p.updated_at)}
-                      likesCount={p.likes_count}
-                      copiesCount={p.copies_count}
-                      manilaStock={p.manila_stock}
-                      active={previewId === p.id}
-                      onClick={() => onPreviewCard(p, `@${p.user_id.slice(0, 6)}`, false)}
-                    />
-                  ))}
+                  })}
             </div>
           </div>
         )}
       </div>
+
+      {supabase ? (
+        <ProfileEditModal
+          open={profileEditOpen}
+          userId={user.id}
+          supabase={supabase}
+          currentDisplayName={displayName}
+          currentAvatarUrl={avatarUrl}
+          onClose={() => setProfileEditOpen(false)}
+          onSaved={(nextName, nextAvatar) => {
+            setDisplayName(nextName);
+            setAvatarUrl(nextAvatar);
+            setProfileEditOpen(false);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
