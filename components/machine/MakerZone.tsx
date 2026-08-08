@@ -10,7 +10,6 @@ import { getSupabaseBrowserClient } from "@/lib/supabase";
 import { useCallback, useEffect, useState } from "react";
 
 type Props = {
-  onProgramCard: (patternId: string | null) => void;
   onNewProgram: () => void;
   onPreviewCard: (pattern: GalleryPattern, makerLabel: string, isOwn: boolean) => void;
   previewId?: string | null;
@@ -44,7 +43,7 @@ function formatEditedLabel(updatedAt: string, visibility?: "Public" | "Private")
   return visibility ? `${visibility} · ${edited}` : edited;
 }
 
-export function MakerZone({ onProgramCard, onNewProgram, onPreviewCard, previewId = null, creating = false }: Props) {
+export function MakerZone({ onNewProgram, onPreviewCard, previewId = null, creating = false }: Props) {
   const { user, displayName, avatarUrl, signOut } = useNavAuth();
   const [tab, setTab] = useState<"mine" | "liked">("mine");
   const [mine, setMine] = useState<Pattern[]>([]);
@@ -70,6 +69,7 @@ export function MakerZone({ onProgramCard, onNewProgram, onPreviewCard, previewI
   }, [user]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- resets loading state before the fetch inside load() starts
     void load();
   }, [load]);
 

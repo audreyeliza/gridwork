@@ -5,8 +5,6 @@
 
 import { DEFAULT_MANILA_STOCK, manilaHex, type ManilaStockId } from "@/lib/manilaStock";
 
-export const MANILA_STOCK = "#E8E2D0";
-export const MANILA_EDGE = "#E8E2D0";
 export const HOLE_INK = "#2C2C2C";
 
 /** Keep thumbnail edge the same sheet color as the paper fill. */

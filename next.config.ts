@@ -7,9 +7,11 @@ const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 // No nonce-based CSP here: several routes (/, /hopper, /learn, etc.) are statically
 // rendered, and nonces would force every page into dynamic rendering. `unsafe-inline`
 // on script/style is the documented Next.js fallback for apps that don't use nonces.
+// `unsafe-eval` is added in dev only: React/Turbopack use eval() for dev-mode debugging
+// (stack trace reconstruction, HMR); production never needs or gets it.
 const cspHeader = `
   default-src 'self';
-  script-src 'self' 'unsafe-inline';
+  script-src 'self' 'unsafe-inline'${process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : ""};
   style-src 'self' 'unsafe-inline';
   img-src 'self' blob: data: https:;
   font-src 'self' data:;

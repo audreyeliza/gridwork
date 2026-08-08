@@ -9,6 +9,7 @@ import {
 } from "@/lib/gridCanvasLayout";
 import { drawImageWithTransform, type CropRect } from "@/lib/imageCanvasUtils";
 import { contrastManilaHexFromPaper, hexWithAlpha } from "@/lib/manilaStock";
+import { clamp } from "@/lib/mathUtils";
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 
 export type GridUnderlayLayer = {
@@ -47,13 +48,6 @@ export type GridCanvasProps = {
   onToggleRowComplete?: (row: number) => void;
   /** Manila card stock fill for empty cells / paper. */
   paperColor?: string;
-  /** Optional undo/redo wired into the fullscreen toolbar. */
-  onUndo?: () => void;
-  onRedo?: () => void;
-  canUndo?: boolean;
-  canRedo?: boolean;
-  /** Step current row by +1 / -1 (fullscreen toolbar). */
-  onStepRow?: (delta: number) => void;
   /** Called when fullscreen state toggles. */
   onFullscreenChange?: (fullscreen: boolean) => void;
   /** Hide the in-toolbar Fullscreen entry (controls bar owns it). */
@@ -65,10 +59,6 @@ export type GridCanvasProps = {
   /** When true, grid cells cannot be painted. */
   editLocked?: boolean;
 };
-
-function clamp(n: number, lo: number, hi: number): number {
-  return Math.min(hi, Math.max(lo, n));
-}
 
 function fillMarginsOutsideGrid(
   ctx: CanvasRenderingContext2D,
@@ -156,11 +146,6 @@ export function GridCanvas({
   rowComplete,
   currentRow = 0,
   onToggleRowComplete,
-  onUndo,
-  onRedo,
-  canUndo,
-  canRedo,
-  onStepRow,
   onFullscreenChange,
   hideFullscreenEntry = false,
   enterFullscreenRef,
@@ -392,6 +377,7 @@ export function GridCanvas({
     onFullscreenChange?.(fullscreen);
     document.body.classList.toggle("gridwork-grid-fullscreen", fullscreen);
     if (fullscreen) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- resets zoom to fit each time fullscreen is entered
       setZoom("fit");
     }
     return () => {

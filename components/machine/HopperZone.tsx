@@ -15,28 +15,12 @@ import {
   type UserSearchResult,
 } from "@/lib/galleryHelpers";
 import { fetchProfilesByUserIds } from "@/lib/profileHelpers";
-import { getSupabaseBrowserClient, resetSupabaseBrowserClient } from "@/lib/supabase";
+import { useSupabaseInit } from "@/hooks/useSupabaseInit";
 import * as Sentry from "@sentry/nextjs";
-import type { SupabaseClient, User } from "@supabase/supabase-js";
+import type { User } from "@supabase/supabase-js";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-
-type SupabaseInit = {
-  supabase: SupabaseClient | null;
-  configError: string | null;
-};
-
-function initSupabaseClient(): SupabaseInit {
-  try {
-    return { supabase: getSupabaseBrowserClient(), configError: null };
-  } catch (e) {
-    return {
-      supabase: null,
-      configError: e instanceof Error ? e.message : "Supabase is not configured.",
-    };
-  }
-}
 
 const PAGE_SIZE = 24;
 
@@ -90,37 +74,7 @@ export function HopperZone({
   const searchParams = useSearchParams();
   const urlQ = searchParams.get("q")?.trim() ?? "";
 
-  const [supabaseInit, setSupabaseInit] = useState<SupabaseInit>(() => ({
-    supabase: null,
-    configError: null,
-  }));
-
-  useEffect(() => {
-    let cancelled = false;
-    let initialTimer: number | undefined;
-    let retryTimer: number | undefined;
-    const run = (attempt: number) => {
-      if (cancelled) return;
-      const next = initSupabaseClient();
-      if (cancelled) return;
-      setSupabaseInit(next);
-      const missing =
-        next.configError?.includes("Missing NEXT_PUBLIC_SUPABASE_URL") ||
-        next.configError?.includes("Missing NEXT_PUBLIC_SUPABASE_ANON_KEY");
-      if (missing && attempt < 1 && !cancelled) {
-        resetSupabaseBrowserClient();
-        retryTimer = window.setTimeout(() => run(attempt + 1), 50) as unknown as number;
-      }
-    };
-    initialTimer = window.setTimeout(() => run(0), 0) as unknown as number;
-    return () => {
-      cancelled = true;
-      if (initialTimer !== undefined) window.clearTimeout(initialTimer);
-      if (retryTimer !== undefined) window.clearTimeout(retryTimer);
-    };
-  }, []);
-
-  const { supabase, configError } = supabaseInit;
+  const { supabase, configError } = useSupabaseInit();
 
   const [user, setUser] = useState<User | null>(null);
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -155,6 +109,7 @@ export function HopperZone({
 
   useEffect(() => {
     const q = searchParams.get("q")?.trim() ?? "";
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs search state from the URL-derived param
     setSearchInput(q);
     setActiveSearch(q);
   }, [searchParams]);
@@ -166,6 +121,7 @@ export function HopperZone({
 
   useEffect(() => {
     if (!syncTick) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- merges a real-time like/copy count update from a sibling zone
     setPatterns((prev) =>
       prev.map((p) =>
         p.id === syncTick.patternId
@@ -191,6 +147,7 @@ export function HopperZone({
   useEffect(() => {
     if (!supabase) return;
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- resets loading state before the fetch below starts
     setLoading(true);
     setUserResults([]);
 
@@ -233,6 +190,7 @@ export function HopperZone({
 
   useEffect(() => {
     if (!supabase || !user) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clears liked state on logout; must react to auth changes
       setLikedIds(new Set());
       return;
     }

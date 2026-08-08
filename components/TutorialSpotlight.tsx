@@ -105,6 +105,7 @@ export function TutorialSpotlight({ open, onOpenChange }: TutorialSpotlightProps
   useEffect(() => {
     if (!open) return;
     const next = resolveSteps();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- resets tutorial state each time the tour opens
     setSteps(next);
     setStep(0);
   }, [open]);
@@ -128,6 +129,7 @@ export function TutorialSpotlight({ open, onOpenChange }: TutorialSpotlightProps
 
   useEffect(() => {
     if (!open || steps.length === 0) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- measures and polls the spotlight target's DOM position, an external system
     updateRect(step, steps);
     window.clearInterval(intervalRef.current);
     intervalRef.current = window.setInterval(() => updateRect(step, steps), 150);

@@ -15,27 +15,10 @@ import {
 } from "@/lib/galleryHelpers";
 import { manilaHex } from "@/lib/manilaStock";
 import { fetchProfileByDisplayName } from "@/lib/profileHelpers";
-import { getSupabaseBrowserClient, resetSupabaseBrowserClient } from "@/lib/supabase";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { useSupabaseInit } from "@/hooks/useSupabaseInit";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
-
-type SupabaseInit = {
-  supabase: SupabaseClient | null;
-  configError: string | null;
-};
-
-function initSupabaseClient(): SupabaseInit {
-  try {
-    return { supabase: getSupabaseBrowserClient(), configError: null };
-  } catch (e) {
-    return {
-      supabase: null,
-      configError: e instanceof Error ? e.message : "Supabase is not configured.",
-    };
-  }
-}
 
 type LoadedState = {
   status: "loaded";
@@ -62,37 +45,7 @@ function UserProfilePage() {
     ? `/hopper?q=${encodeURIComponent(returnQ)}`
     : "/hopper";
 
-  const [supabaseInit, setSupabaseInit] = useState<SupabaseInit>(() => ({
-    supabase: null,
-    configError: null,
-  }));
-
-  useEffect(() => {
-    let cancelled = false;
-    let initialTimer: number | undefined;
-    let retryTimer: number | undefined;
-    const run = (attempt: number) => {
-      if (cancelled) return;
-      const next = initSupabaseClient();
-      if (cancelled) return;
-      setSupabaseInit(next);
-      const missing =
-        next.configError?.includes("Missing NEXT_PUBLIC_SUPABASE_URL") ||
-        next.configError?.includes("Missing NEXT_PUBLIC_SUPABASE_ANON_KEY");
-      if (missing && attempt < 1 && !cancelled) {
-        resetSupabaseBrowserClient();
-        retryTimer = window.setTimeout(() => run(attempt + 1), 50) as unknown as number;
-      }
-    };
-    initialTimer = window.setTimeout(() => run(0), 0) as unknown as number;
-    return () => {
-      cancelled = true;
-      if (initialTimer !== undefined) window.clearTimeout(initialTimer);
-      if (retryTimer !== undefined) window.clearTimeout(retryTimer);
-    };
-  }, []);
-
-  const { supabase, configError } = supabaseInit;
+  const { supabase, configError } = useSupabaseInit();
   const [pageState, setPageState] = useState<PageState>({ status: "loading" });
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
@@ -115,6 +68,7 @@ function UserProfilePage() {
   useEffect(() => {
     if (!supabase || !displayname) return;
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- resets to loading before the fetch below starts
     setPageState({ status: "loading" });
     setPreviewId(null);
 
@@ -151,6 +105,7 @@ function UserProfilePage() {
 
   useEffect(() => {
     if (!supabase || !user) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clears liked state on logout; must react to auth changes
       setLikedIds(new Set());
       return;
     }

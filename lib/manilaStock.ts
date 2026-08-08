@@ -94,10 +94,3 @@ export function parseManilaStockFromSettings(data: unknown): ManilaStockId {
   }
   return DEFAULT_MANILA_STOCK;
 }
-
-export function withManilaStockInSettings(
-  settings: Record<string, unknown>,
-  stock: ManilaStockId,
-): Record<string, unknown> {
-  return { ...settings, manila_stock: stock };
-}

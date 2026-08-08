@@ -20,6 +20,7 @@ export default function PrintPatternPage() {
   useEffect(() => {
     try {
       const saved = localStorage.getItem("gridwork:yarnUnit");
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reads a browser-only preference; unavailable during render/SSR
       if (saved === "imperial" || saved === "metric") setUnits(saved);
     } catch {}
   }, []);

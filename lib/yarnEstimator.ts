@@ -1,3 +1,5 @@
+import { clamp } from "@/lib/mathUtils";
+
 export const YARN_WEIGHT_CATEGORIES = [
   "lace",
   "fingering",
@@ -55,10 +57,6 @@ const BLOCK_TO_MESH_YARN_RATIO = 3;
 
 const METERS_PER_YARD = 0.9144;
 const GRAMS_PER_OZ = 28.349523125;
-
-function clamp(n: number, lo: number, hi: number): number {
-  return Math.min(hi, Math.max(lo, n));
-}
 
 /** First millimeter dimension found in hook string, e.g. "5.5 mm" → 5.5 */
 export function parseHookMillimeters(hookSize: string): number | null {
@@ -129,8 +127,4 @@ export function estimateYarnUsage(input: YarnEstimateInput): YarnEstimateResult 
 function roundDisplay(n: number, decimals: number): number {
   const p = 10 ** decimals;
   return Math.round(n * p) / p;
-}
-
-export function getYarnTableRow(weight: YarnWeightCategory): YarnRow {
-  return YARN_TABLE[weight];
 }

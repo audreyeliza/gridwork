@@ -13,6 +13,7 @@ import { PatternSidebar } from "@/components/PatternSidebar";
 import { shouldAutoOpenTutorial, TutorialSpotlight } from "@/components/TutorialSpotlight";
 import { useAutoSave } from "@/hooks/useAutoSave";
 import { usePatternHistory } from "@/hooks/usePatternHistory";
+import { useSupabaseInit } from "@/hooks/useSupabaseInit";
 import {
   createUntitledPattern,
   fetchPatternById,
@@ -61,27 +62,10 @@ import {
   saveManilaStock,
   type ManilaStockId,
 } from "@/lib/manilaStock";
-import { getSupabaseBrowserClient, resetSupabaseBrowserClient } from "@/lib/supabase";
 import * as Sentry from "@sentry/nextjs";
 import type { Session, SupabaseClient, User } from "@supabase/supabase-js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-
-type SupabaseInit = {
-  supabase: SupabaseClient | null;
-  configError: string | null;
-};
-
-function initSupabaseClient(): SupabaseInit {
-  try {
-    return { supabase: getSupabaseBrowserClient(), configError: null };
-  } catch (e) {
-    return {
-      supabase: null,
-      configError: e instanceof Error ? e.message : "Supabase is not configured.",
-    };
-  }
-}
 
 const GRID_PRESETS = [
   { value: "10x40", label: "10×40", w: 10, h: 40 },
@@ -129,7 +113,6 @@ function loadLocalImageDocument(key: string): PatternImageDocument | null {
   try {
     const raw = localStorage.getItem(key);
     if (!raw) return null;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
     const parsed = parseImageDocument(JSON.parse(raw));
     return documentHasImage(parsed) ? parsed : null;
   } catch {
@@ -142,8 +125,6 @@ export type EditorWorkspaceProps = {
   embedded?: boolean;
   /** Select this pattern once the user's list loads. */
   initialPatternId?: string | null;
-  /** Collapse reader back to hopper. */
-  onReturn?: () => void;
   /** Hide pattern list sidebar (Profile owns your cards). */
   hideSidebar?: boolean;
   /** Open the console tour once (e.g. from Manual “Go to tutorial”). */
@@ -160,7 +141,6 @@ export type EditorWorkspaceProps = {
 export function EditorWorkspace({
   embedded = false,
   initialPatternId = null,
-  onReturn,
   hideSidebar = false,
   forceTutorial = false,
   onTutorialConsumed,
@@ -169,38 +149,8 @@ export function EditorWorkspace({
   onRequestHopper,
   onRequestAuth,
 }: EditorWorkspaceProps) {
-  const [supabaseInit, setSupabaseInit] = useState<SupabaseInit>(() => ({
-    supabase: null,
-    configError: null,
-  }));
-
-  useEffect(() => {
-    let cancelled = false;
-    let initialTimer: number | undefined;
-    let retryTimer: number | undefined;
-    const run = (attempt: number) => {
-      if (cancelled) return;
-      const next = initSupabaseClient();
-      if (cancelled) return;
-      setSupabaseInit(next);
-      const missing =
-        next.configError?.includes("Missing NEXT_PUBLIC_SUPABASE_URL") ||
-        next.configError?.includes("Missing NEXT_PUBLIC_SUPABASE_ANON_KEY");
-      if (missing && attempt < 1 && !cancelled) {
-        resetSupabaseBrowserClient();
-        retryTimer = window.setTimeout(() => run(attempt + 1), 50) as unknown as number;
-      }
-    };
-    initialTimer = window.setTimeout(() => run(0), 0) as unknown as number;
-    return () => {
-      cancelled = true;
-      if (initialTimer !== undefined) window.clearTimeout(initialTimer);
-      if (retryTimer !== undefined) window.clearTimeout(retryTimer);
-    };
-  }, []);
-
-  const { supabase, configError } = supabaseInit;
-  const [session, setSession] = useState<Session | null>(null);
+  const { supabase, configError } = useSupabaseInit();
+  const [, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [patterns, setPatterns] = useState<Pattern[]>([]);
   const [patternsLoading, setPatternsLoading] = useState(false);
@@ -209,6 +159,7 @@ export function EditorWorkspace({
 
   // URL is source of truth for the open program.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs local selection from the URL-derived prop
     setSelectedPatternId(initialPatternId);
   }, [initialPatternId]);
 
@@ -255,9 +206,12 @@ export function EditorWorkspace({
   const { cells, commit, replace, reset, undo, redo, canUndo, canRedo } = usePatternHistory(gridW, gridH);
 
   // Keep draft inputs in sync when gridW/gridH are changed externally (preset picker, DB load)
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs the editable draft input from the external grid size
   useEffect(() => { setWDraft(String(gridW)); }, [gridW]);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs the editable draft input from the external grid size
   useEffect(() => { setHDraft(String(gridH)); }, [gridH]);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reads a browser-only preference; unavailable during render/SSR
     setManilaStock(loadManilaStock());
   }, []);
 
@@ -271,10 +225,6 @@ export function EditorWorkspace({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [importOpen, yarnOpen]);
-
-  useEffect(() => {
-    if (!importOpen) setImportPanelEl(null);
-  }, [importOpen]);
 
   const paperColor = manilaHex(manilaStock);
   const contrastPaper = contrastManilaHex(manilaStock);
@@ -378,6 +328,7 @@ export function EditorWorkspace({
 
   useEffect(() => {
     if (!supabase || !user) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clears display name on logout; must react to auth changes
       setDisplayName(null);
       skippedDisplayNameRef.current = false;
       return;
@@ -632,11 +583,6 @@ export function EditorWorkspace({
     setLockedRatio(naturalWidth / naturalHeight);
     setAspectLocked(true);
   }, []);
-
-  const handleLogout = useCallback(async () => {
-    if (!supabase) return;
-    await supabase.auth.signOut();
-  }, [supabase]);
 
   const handleRenamePattern = useCallback(
     async (id: string, newName: string) => {
@@ -1253,11 +1199,6 @@ export function EditorWorkspace({
                       onBestFitGrid={handleBestFitGrid}
                       onImageLoad={handleImageLoad}
                       onGridFullscreenChange={setGridFullscreen}
-                      onUndo={undo}
-                      onRedo={redo}
-                      canUndo={canUndo}
-                      canRedo={canRedo}
-                      onStepRow={handleStepCurrentRow}
                       progress={progress}
                       onToggleRowComplete={handleToggleRowComplete}
                       savedImageDocument={imageDocument}

@@ -70,32 +70,8 @@ export function createImageLayer(partial?: Partial<PatternImageLayer>): PatternI
   };
 }
 
-export function layerToSettings(layer: PatternImageLayer): PatternImageSettings {
-  return {
-    mode: layer.mode,
-    imageDataUrl: layer.imageDataUrl,
-    underlayOpacityPct: layer.underlayOpacityPct,
-    threshold: layer.threshold,
-    darkIsFilled: layer.darkIsFilled,
-    cropRect: layer.cropRect,
-    appliedCrop: layer.appliedCrop,
-    panX: layer.panX,
-    panY: layer.panY,
-    imageZoom: layer.imageZoom,
-    positionLocked: layer.positionLocked,
-  };
-}
-
 export function documentHasImage(doc: PatternImageDocument): boolean {
   return doc.images.some((img) => Boolean(img.imageDataUrl));
-}
-
-export function activeImageLayer(doc: PatternImageDocument): PatternImageLayer | null {
-  if (doc.activeImageId) {
-    const hit = doc.images.find((img) => img.id === doc.activeImageId);
-    if (hit) return hit;
-  }
-  return doc.images[0] ?? null;
 }
 
 /** Resize and JPEG-compress an image for storage. Max 1200px on the longest side. */
@@ -226,23 +202,4 @@ export function serializeImageDocument(
     activeImageId: doc.activeImageId,
     ...extra,
   } as Json;
-}
-
-/** Active (or first) layer settings — used by callers that only need one image view. */
-export function parseImageSettings(data: Json | undefined): PatternImageSettings {
-  const doc = parseImageDocument(data);
-  const active = activeImageLayer(doc);
-  return active ? layerToSettings(active) : { ...DEFAULT_PATTERN_IMAGE_SETTINGS };
-}
-
-/** Serialize a single settings object as a one-layer document (backward-compatible write). */
-export function serializeImageSettings(
-  s: PatternImageSettings,
-  extra?: Record<string, unknown>,
-): Json {
-  if (!s.imageDataUrl && s.mode === "none") {
-    return serializeImageDocument({ images: [], activeImageId: null }, extra);
-  }
-  const layer = createImageLayer(s);
-  return serializeImageDocument({ images: [layer], activeImageId: layer.id }, extra);
 }

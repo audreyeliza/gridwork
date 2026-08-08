@@ -72,7 +72,7 @@ export function MachineShell() {
   const [copying, setCopying] = useState(false);
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
   const [syncTick, setSyncTick] = useState<SyncTick | null>(null);
-  const [syncSeq, setSyncSeq] = useState(0);
+  const [, setSyncSeq] = useState(0);
 
   // Legacy bookmarks: /?zone=maker|primer|reader → /profile|/|/program.
   useEffect(() => {
@@ -87,6 +87,7 @@ export function MachineShell() {
 
   useEffect(() => {
     if (!supabase || !user) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clears liked state on logout; must react to auth changes
       setLikedIds(new Set());
       return;
     }
@@ -389,7 +390,6 @@ export function MachineShell() {
                     onPreviewCard={(pattern, makerLabel, isOwn) =>
                       handlePreview({ pattern, makerLabel, isOwn })
                     }
-                    onProgramCard={openProgram}
                     onNewProgram={() => void handleNewProgram()}
                     creating={programming}
                   />
