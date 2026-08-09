@@ -2,14 +2,17 @@
 
 import { MakerHopperCard } from "@/components/machine/MakerHopperCard";
 import { RotaryKnob } from "@/components/machine/RotaryKnob";
+import { OperatorCardHeader } from "@/components/OperatorCardHeader";
 import { useNavAuth } from "@/components/NavAuthProvider";
 import { ProfileEditModal } from "@/components/ProfileEditModal";
 import { fetchUserLikedPatterns, type GalleryPattern } from "@/lib/galleryHelpers";
-import { parseManilaStockFromSettings } from "@/lib/manilaStock";
+import { DEFAULT_MANILA_STOCK, manilaHex, parseManilaStockFromSettings } from "@/lib/manilaStock";
 import { fetchPatternsForUser, type Pattern } from "@/lib/patternHelpers";
 import { fetchProfilesByUserIds } from "@/lib/profileHelpers";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 
 type Props = {
   onNewProgram: () => void;
@@ -77,30 +80,34 @@ export function MakerZone({ onNewProgram, onPreviewCard, previewId = null, creat
     setAvatarUrl,
     signOut,
   } = useNavAuth();
+  const router = useRouter();
   const [tab, setTab] = useState<DeckTab>("all");
   const [mine, setMine] = useState<Pattern[]>([]);
   const [liked, setLiked] = useState<GalleryPattern[]>([]);
   const [likedDisplayNames, setLikedDisplayNames] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(false);
   const [profileEditOpen, setProfileEditOpen] = useState(false);
+  const [deleteAccountOpen, setDeleteAccountOpen] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteAccountError, setDeleteAccountError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!user) return;
-    let supabase;
+    let client;
     try {
-      supabase = getSupabaseBrowserClient();
+      client = getSupabaseBrowserClient();
     } catch {
       return;
     }
     setLoading(true);
     const [{ data: patterns }, { data: likedPatterns }] = await Promise.all([
-      fetchPatternsForUser(supabase, user.id),
-      fetchUserLikedPatterns(supabase, user.id),
+      fetchPatternsForUser(client, user.id),
+      fetchUserLikedPatterns(client, user.id),
     ]);
     setMine(patterns ?? []);
     setLiked(likedPatterns ?? []);
     const uniqueIds = [...new Set((likedPatterns ?? []).map((p) => p.user_id))];
-    const names = await fetchProfilesByUserIds(supabase, uniqueIds);
+    const names = await fetchProfilesByUserIds(client, uniqueIds);
     setLikedDisplayNames(names);
     setLoading(false);
   }, [user]);
@@ -109,6 +116,45 @@ export function MakerZone({ onNewProgram, onPreviewCard, previewId = null, creat
     // eslint-disable-next-line react-hooks/set-state-in-effect -- resets loading state before the fetch inside load() starts
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!deleteAccountOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !deletingAccount) setDeleteAccountOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [deleteAccountOpen, deletingAccount]);
+
+  const handleDeleteAccount = useCallback(async () => {
+    if (!supabase) return;
+    setDeletingAccount(true);
+    setDeleteAccountError(null);
+    try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (sessionError || !token) {
+        setDeleteAccountError("Could not verify your session. Sign in again and retry.");
+        return;
+      }
+      const res = await fetch("/api/account/delete", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setDeleteAccountError(body.error ?? "Could not delete account.");
+        return;
+      }
+      await signOut();
+      setDeleteAccountOpen(false);
+      router.push("/");
+    } catch {
+      setDeleteAccountError("Could not delete account. Try again.");
+    } finally {
+      setDeletingAccount(false);
+    }
+  }, [supabase, signOut, router]);
 
   if (!user) {
     return (
@@ -195,9 +241,9 @@ export function MakerZone({ onNewProgram, onPreviewCard, previewId = null, creat
         </div>
       </div>
 
-      <div className="punch-console-bay min-h-0 flex-1 overflow-y-auto">
+      <div className="punch-console-bay relative z-[2] flex min-h-0 flex-1 flex-col overflow-y-auto">
         {!loading && (
-          <p className="relative z-[2] mb-3 pl-2 font-mono text-[10px] font-medium tracking-[0.08em] uppercase" style={{ color: "#0A0A0A" }}>
+          <p className="mb-3 pl-2 font-mono text-[10px] font-medium tracking-[0.08em] uppercase" style={{ color: "#0A0A0A" }}>
             {deckCount === 0
               ? emptyDeckMessage(tab)
               : `${deckCount} pattern${deckCount === 1 ? "" : "s"}`}
@@ -254,6 +300,22 @@ export function MakerZone({ onNewProgram, onPreviewCard, previewId = null, creat
             </div>
           </div>
         )}
+
+        <div className="mt-auto flex justify-end px-3 pb-3 pt-6">
+          <button
+            type="button"
+            onClick={() => {
+              setDeleteAccountError(null);
+              setDeleteAccountOpen(true);
+            }}
+            className="punch-lamp punch-lamp-red !min-h-[36px] !px-3"
+            title="Delete account"
+          >
+            <span className="font-mono text-[11px] font-bold tracking-[0.06em] uppercase">
+              Delete account
+            </span>
+          </button>
+        </div>
       </div>
 
       {supabase ? (
@@ -271,6 +333,62 @@ export function MakerZone({ onNewProgram, onPreviewCard, previewId = null, creat
           }}
         />
       ) : null}
+
+      {deleteAccountOpen &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+            <button
+              type="button"
+              className="absolute inset-0 bg-recess/70"
+              aria-label="Close panel"
+              disabled={deletingAccount}
+              onClick={() => {
+                if (!deletingAccount) setDeleteAccountOpen(false);
+              }}
+            />
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Delete account"
+              onPointerDown={(e) => e.stopPropagation()}
+              className="punch-card relative z-10 flex w-full max-w-sm flex-col overflow-hidden px-6 py-5"
+              style={{
+                ["--manila-stock" as string]: manilaHex(DEFAULT_MANILA_STOCK),
+              }}
+            >
+              <OperatorCardHeader className="shrink-0" title="Delete account card" colLabel="JOB ACCT" />
+              <p className="mt-4 font-mono text-[13px] font-bold tracking-[0.04em] uppercase punch-print-ink">
+                Delete your account?
+              </p>
+              <p className="mt-2 font-mono text-[11px] leading-relaxed punch-print-faint">
+                All patterns, likes, and profile data will be permanently removed. This cannot be undone.
+              </p>
+              {deleteAccountError ? (
+                <p className="mt-3 font-mono text-[11px] text-red-800">{deleteAccountError}</p>
+              ) : null}
+              <div className="mt-6 flex items-center justify-between gap-3">
+                <button
+                  type="button"
+                  disabled={deletingAccount}
+                  onClick={() => setDeleteAccountOpen(false)}
+                  className="punch-print text-[11px] opacity-70 disabled:opacity-40"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={deletingAccount}
+                  onClick={() => void handleDeleteAccount()}
+                  className="punch-lamp punch-lamp-red !min-h-[32px] !px-3 text-[9px]"
+                >
+                  {deletingAccount ? "Deleting…" : "Delete permanently"}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

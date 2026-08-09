@@ -183,6 +183,7 @@ export function otsuThreshold(img: HTMLImageElement): number {
 /**
  * Rasterize image into a WxH boolean grid using grayscale + threshold.
  * Supports optional crop (image-relative 0–1) and pan offset (grid-relative -0.5–0.5).
+ * Callers map filled cells onto a palette index via `booleanGridToCells`.
  */
 export function imageToThresholdGrid(
   img: CanvasImageSource,

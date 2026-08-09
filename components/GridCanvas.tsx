@@ -1,6 +1,13 @@
 "use client";
 
-import { cloneGrid } from "@/lib/gridFormat";
+import {
+  cloneGrid,
+  DEFAULT_HOLE_INK,
+  DEFAULT_PALETTE,
+  isCellFilled,
+  type CellGrid,
+  type CellValue,
+} from "@/lib/gridFormat";
 import {
   computeGridCanvasLayout,
   LABEL_SIZE,
@@ -22,11 +29,21 @@ export type GridUnderlayLayer = {
   zoom?: number;
 };
 
+/** Active brush: palette index, or `null` for erase. */
+export type InkBrush = number | null;
+
 export type GridCanvasProps = {
   gridWidth: number;
   gridHeight: number;
-  cells: boolean[][];
-  onCommit: (next: boolean[][]) => void;
+  cells: CellGrid;
+  onCommit: (next: CellGrid) => void;
+  /** Palette hex colors for filled cells. */
+  palette?: string[];
+  /**
+   * Active ink well index, or `null` to erase.
+   * When set, paint uses that index (clicking a cell already that color clears it).
+   */
+  brushInk?: InkBrush;
   className?: string;
   /** Multiple reference underlays drawn behind the grid (bottom → top). */
   underlays?: GridUnderlayLayer[];
@@ -42,10 +59,12 @@ export type GridCanvasProps = {
   underlayPanY?: number;
   /** Image scale within the grid (0.5–4). */
   underlayZoom?: number;
-  /** Row completion + current row highlight; length must match `gridHeight` when provided. */
+  /** Row completion + current row highlight; length must match track length when provided. */
   rowComplete?: boolean[];
   currentRow?: number;
   onToggleRowComplete?: (row: number) => void;
+  /** Row = horizontal band; diag = C2C-style r+c diagonal. */
+  trackMode?: "row" | "diag";
   /** Manila card stock fill for empty cells / paper. */
   paperColor?: string;
   /** Called when fullscreen state toggles. */
@@ -86,12 +105,12 @@ function fillMarginsOutsideGrid(
 }
 
 function paintLine(
-  grid: boolean[][],
+  grid: CellGrid,
   r0: number,
   c0: number,
   r1: number,
   c1: number,
-  value: boolean,
+  value: CellValue,
 ): void {
   let x0 = c0;
   let y0 = r0;
@@ -135,6 +154,8 @@ export function GridCanvas({
   gridHeight,
   cells,
   onCommit,
+  palette = DEFAULT_PALETTE,
+  brushInk = 0,
   className,
   underlays,
   underlayImage,
@@ -146,6 +167,7 @@ export function GridCanvas({
   rowComplete,
   currentRow = 0,
   onToggleRowComplete,
+  trackMode = "row",
   onFullscreenChange,
   hideFullscreenEntry = false,
   enterFullscreenRef,
@@ -161,11 +183,13 @@ export function GridCanvas({
   const [containerSize, setContainerSize] = useState({ cssW: 400, cssH: 400 });
   const [layoutState, setLayoutState] = useState<GridCanvasLayout | null>(null);
 
-  const draftRef = useRef<boolean[][] | null>(null);
+  const draftRef = useRef<CellGrid | null>(null);
   const lastCellRef = useRef<{ r: number; c: number } | null>(null);
   const drawingRef = useRef(false);
-  const brushRef = useRef(true);
+  const brushRef = useRef<CellValue>(0);
   const rafRef = useRef(0);
+  const paletteRef = useRef(palette);
+  paletteRef.current = palette;
 
   const resolvedUnderlays = useMemo((): GridUnderlayLayer[] => {
     if (underlays && underlays.length > 0) {
@@ -190,9 +214,17 @@ export function GridCanvas({
   const showUnderlay = resolvedUnderlays.length > 0;
 
   const showRowTracker =
+    trackMode === "row" &&
     Boolean(onToggleRowComplete) &&
     Array.isArray(rowComplete) &&
     rowComplete.length === gridHeight;
+
+  const showTrackHighlight =
+    Boolean(onToggleRowComplete) &&
+    Array.isArray(rowComplete) &&
+    (trackMode === "row"
+      ? rowComplete.length === gridHeight
+      : rowComplete.length === gridWidth + gridHeight - 1);
 
   const layoutOpts = useMemo(
     () => (showRowTracker ? { rowSidebarPx: ROW_TRACKER_SIDEBAR_PX } : undefined),
@@ -255,8 +287,8 @@ export function GridCanvas({
 
       const bg = paperColor;
       const line = `color-mix(in srgb, ${paperColor} 92%, #8B3A2A 8%)`;
-      const fillOn = "#2C2C2C";
       const labelColor = "#0A0A0A";
+      const colors = paletteRef.current.length > 0 ? paletteRef.current : DEFAULT_PALETTE;
 
       if (showUnderlay) {
         ctx.clearRect(0, 0, cssW, cssH);
@@ -313,8 +345,9 @@ export function GridCanvas({
         for (let c = 0; c < gridWidth; c++) {
           const x = offsetX + c * cell;
           const y = offsetY + r * cell;
-          if (data[r]?.[c]) {
-            ctx.fillStyle = fillOn;
+          const value = data[r]?.[c];
+          if (isCellFilled(value)) {
+            ctx.fillStyle = colors[value!] ?? DEFAULT_HOLE_INK;
             ctx.fillRect(x + 0.5, y + 0.5, cell - 1, cell - 1);
           } else if (!showUnderlay) {
             ctx.fillStyle = bg;
@@ -325,18 +358,28 @@ export function GridCanvas({
         }
       }
 
-      const cr = showRowTracker && rowComplete ? currentRow : -1;
-      if (cr >= 0 && cr < gridHeight) {
-        // Flush tint from canvas left edge through the grid (no border)
+      const tint = hexWithAlpha(contrastManilaHexFromPaper(paperColor || "#E8E2D0"), 0.55);
+      const cr = showTrackHighlight ? currentRow : -1;
+      if (trackMode === "row" && cr >= 0 && cr < gridHeight) {
         const hx = 0;
         const hy = offsetY + cr * cell;
         const hw = offsetX + gridWpx;
-        ctx.fillStyle = hexWithAlpha(contrastManilaHexFromPaper(paperColor || "#E8E2D0"), 0.55);
+        ctx.fillStyle = tint;
         ctx.fillRect(hx, hy, hw, cell);
+      } else if (trackMode === "diag" && cr >= 0) {
+        ctx.fillStyle = tint;
+        for (let r = 0; r < gridHeight; r++) {
+          const c = cr - r;
+          if (c < 0 || c >= gridWidth) continue;
+          const x = offsetX + c * cell;
+          const y = offsetY + r * cell;
+          ctx.fillRect(x, y, cell, cell);
+        }
       }
     });
   }, [
     cells,
+    palette,
     gridWidth,
     gridHeight,
     canvasCssW,
@@ -345,8 +388,10 @@ export function GridCanvas({
     showUnderlay,
     resolvedUnderlays,
     showRowTracker,
+    showTrackHighlight,
     rowComplete,
     currentRow,
+    trackMode,
     layoutOpts,
     paperColor,
   ]);
@@ -414,19 +459,41 @@ export function GridCanvas({
     return () => window.removeEventListener("keydown", handler);
   }, [fullscreen]);
 
-  // Auto-scroll the canvas container to keep the current row in view in follow mode
+  // Auto-scroll the canvas container to keep the current track in view in follow mode
   useEffect(() => {
     if (!fullscreen || !wrapRef.current || !layoutState) return;
     const container = wrapRef.current;
-    const rowTop = layoutState.offsetY + currentRow * layoutState.cell;
-    const rowBottom = rowTop + layoutState.cell;
+      const { offsetY, cell } = layoutState;
+    if (trackMode === "diag") {
+      const d = currentRow;
+      let minR = gridHeight;
+      let maxR = -1;
+      for (let r = 0; r < gridHeight; r++) {
+        const c = d - r;
+        if (c < 0 || c >= gridWidth) continue;
+        minR = Math.min(minR, r);
+        maxR = Math.max(maxR, r);
+      }
+      if (maxR < 0) return;
+      const bandTop = offsetY + minR * cell;
+      const bandBottom = offsetY + (maxR + 1) * cell;
+      const { scrollTop, clientHeight } = container;
+      if (bandTop < scrollTop) {
+        container.scrollTo({ top: bandTop - 8, behavior: "smooth" });
+      } else if (bandBottom > scrollTop + clientHeight) {
+        container.scrollTo({ top: bandBottom - clientHeight + 8, behavior: "smooth" });
+      }
+      return;
+    }
+    const rowTop = offsetY + currentRow * cell;
+    const rowBottom = rowTop + cell;
     const { scrollTop, clientHeight } = container;
     if (rowTop < scrollTop) {
       container.scrollTo({ top: rowTop - 8, behavior: "smooth" });
     } else if (rowBottom > scrollTop + clientHeight) {
       container.scrollTo({ top: rowBottom - clientHeight + 8, behavior: "smooth" });
     }
-  }, [fullscreen, currentRow, layoutState]);
+  }, [fullscreen, currentRow, layoutState, trackMode, gridWidth, gridHeight]);
 
   const clientToCell = useCallback(
     (clientX: number, clientY: number): { r: number; c: number } | null => {
@@ -474,15 +541,22 @@ export function GridCanvas({
     if (editLocked) return;
     const hit = clientToCell(e.clientX, e.clientY);
     if (!hit) return;
-    // Toggle: block → mesh, mesh → block. Drag keeps that brush for the stroke.
-    const brush = !(cells[hit.r]?.[hit.c] ?? false);
+    const current = cells[hit.r]?.[hit.c] ?? null;
+    let brush: CellValue;
+    if (brushInk === null) {
+      brush = null;
+    } else if (current === brushInk) {
+      brush = null;
+    } else {
+      brush = brushInk;
+    }
     brushRef.current = brush;
     e.currentTarget.setPointerCapture(e.pointerId);
     drawingRef.current = true;
     draftRef.current = cloneGrid(cells);
     lastCellRef.current = hit;
     if (draftRef.current) {
-      draftRef.current[hit.r][hit.c] = brush;
+      draftRef.current[hit.r]![hit.c] = brush;
     }
     scheduleDraw();
   };

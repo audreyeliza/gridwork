@@ -24,17 +24,26 @@ import {
 } from "@/lib/patternHelpers";
 import {
   createEmptyGrid,
+  DEFAULT_PALETTE,
+  isCellFilled,
+  MAX_INK_WELLS,
+  normalizeHexColor,
   parseGridData,
+  removePaletteColor,
   resizeGridPreserve,
   serializeGridCells,
+  type CellGrid,
 } from "@/lib/gridFormat";
+import type { InkBrush } from "@/components/GridCanvas";
 import {
   clampCurrentRow,
   defaultProgressState,
   parseProgressData,
-  resizeRowComplete,
+  resizeProgressForGrid,
   serializeProgressData,
+  trackLength,
   type PatternProgressState,
+  type TrackMode,
 } from "@/lib/progressData";
 import {
   DEFAULT_PATTERN_YARN_SETTINGS,
@@ -93,8 +102,23 @@ function clampGridSize(n: number): number {
   return Math.floor(n);
 }
 
+const NEW_WELL_DEFAULTS = [
+  "#2C2C2C",
+  "#C62828",
+  "#1565C0",
+  "#2E7D32",
+  "#F9A825",
+  "#6A1B9A",
+  "#EF6C00",
+  "#00838F",
+  "#AD1457",
+  "#5D4037",
+  "#455A64",
+  "#F5F5F5",
+] as const;
+
 /** Demo motif for the console tour when no program is open yet. */
-function createTutorialMockGrid(w: number, h: number): boolean[][] {
+function createTutorialMockGrid(w: number, h: number): CellGrid {
   const g = createEmptyGrid(w, h);
   const cx = Math.floor(w / 2);
   const top = Math.max(4, Math.floor(h * 0.18));
@@ -103,7 +127,7 @@ function createTutorialMockGrid(w: number, h: number): boolean[][] {
     const t = (r - top) / Math.max(1, bottom - top - 1);
     const spread = Math.max(0, Math.round((1 - Math.abs(t * 2 - 1)) * (cx - 1)));
     for (let c = cx - spread; c <= cx + spread; c++) {
-      if (c >= 0 && c < w) g[r]![c] = true;
+      if (c >= 0 && c < w) g[r]![c] = 0;
     }
   }
   return g;
@@ -175,6 +199,13 @@ export function EditorWorkspace({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [yarnOpen, setYarnOpen] = useState(false);
+  const [deletePatternOpen, setDeletePatternOpen] = useState(false);
+  const [deletingPattern, setDeletingPattern] = useState(false);
+  const [inkCardIndex, setInkCardIndex] = useState<number | null>(null);
+  const [inkHexDraft, setInkHexDraft] = useState("#2C2C2C");
+  const [palette, setPalette] = useState<string[]>(() => [...DEFAULT_PALETTE]);
+  const [brushInk, setBrushInk] = useState<InkBrush>(0);
+  const longPressTimerRef = useRef<number | null>(null);
   const [isRenamingTitle, setIsRenamingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const [draftTitle, setDraftTitle] = useState("Untitled");
@@ -196,7 +227,7 @@ export function EditorWorkspace({
   const [gridW, setGridW] = useState(10);
   const [gridH, setGridH] = useState(40);
   const [yarnSettings, setYarnSettings] = useState<PatternYarnSettings>(DEFAULT_PATTERN_YARN_SETTINGS);
-  const [progress, setProgress] = useState<PatternProgressState>(() => defaultProgressState(40));
+  const [progress, setProgress] = useState<PatternProgressState>(() => defaultProgressState(40, 10));
   const [imageDocument, setImageDocument] = useState<PatternImageDocument>({
     images: [],
     activeImageId: null,
@@ -216,15 +247,17 @@ export function EditorWorkspace({
   }, []);
 
   useEffect(() => {
-    if (!importOpen && !yarnOpen) return;
+    if (!importOpen && !yarnOpen && inkCardIndex === null && !deletePatternOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
-      if (yarnOpen) setYarnOpen(false);
+      if (deletePatternOpen) setDeletePatternOpen(false);
+      else if (inkCardIndex !== null) setInkCardIndex(null);
+      else if (yarnOpen) setYarnOpen(false);
       else setImportOpen(false);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [importOpen, yarnOpen]);
+  }, [importOpen, yarnOpen, inkCardIndex, deletePatternOpen]);
 
   const paperColor = manilaHex(manilaStock);
   const contrastPaper = contrastManilaHex(manilaStock);
@@ -238,14 +271,18 @@ export function EditorWorkspace({
     () => progress.rowComplete.filter(Boolean).length,
     [progress.rowComplete],
   );
-  const completedPct = gridH > 0 ? Math.round((completedCount / gridH) * 100) : 0;
+  const trackLen = useMemo(
+    () => trackLength(progress.trackMode, gridW, gridH),
+    [progress.trackMode, gridW, gridH],
+  );
+  const completedPct = trackLen > 0 ? Math.round((completedCount / trackLen) * 100) : 0;
 
   const { filledCellCount, emptyCellCount } = useMemo(() => {
     let filled = 0;
     let empty = 0;
     for (const row of cells) {
       for (const cell of row) {
-        if (cell) filled += 1;
+        if (isCellFilled(cell)) filled += 1;
         else empty += 1;
       }
     }
@@ -367,8 +404,10 @@ export function EditorWorkspace({
       setGridH(40);
       setSizePreset("10x40");
       reset(tutorialOpen ? createTutorialMockGrid(10, 40) : createEmptyGrid(10, 40));
+      setPalette([...DEFAULT_PALETTE]);
+      setBrushInk(0);
       setYarnSettings({ ...DEFAULT_PATTERN_YARN_SETTINGS });
-      setProgress(defaultProgressState(40));
+      setProgress(defaultProgressState(40, 10));
       setImageDocument({ images: [], activeImageId: null });
       setImageSettingsLoadKey((tutorialOpen ? "tutorial-" : "empty-") + Date.now());
       setDraftTitle("Untitled");
@@ -395,9 +434,12 @@ export function EditorWorkspace({
         setGridW(w);
         setGridH(h);
         setSizePreset(matchSizeDial(w, h));
-        reset(parseGridData(row.grid_data, w, h));
+        const parsed = parseGridData(row.grid_data, w, h);
+        reset(parsed.cells);
+        setPalette(parsed.palette);
+        setBrushInk(0);
         setYarnSettings(parsePatternYarnSettings(row.yarn_settings));
-        setProgress(parseProgressData(row.progress_data, h));
+        setProgress(parseProgressData(row.progress_data, h, w));
         const dbImg = parseImageDocument(row.image_settings);
         const resolved =
           documentHasImage(dbImg)
@@ -462,18 +504,68 @@ export function EditorWorkspace({
   }, [supabase, user, loadPatterns, manilaStock, onRequestAuth]);
 
   const handleCommitGrid = useCallback(
-    (next: boolean[][]) => {
+    (next: CellGrid) => {
       commit(next);
     },
     [commit],
   );
 
   const handleApplyConvertedGrid = useCallback(
-    (next: boolean[][]) => {
+    (next: CellGrid) => {
       commit(next);
     },
     [commit],
   );
+
+  const openInkCard = useCallback((index: number) => {
+    const hex = palette[index] ?? DEFAULT_PALETTE[0]!;
+    setInkHexDraft(hex);
+    setInkCardIndex(index);
+    setBrushInk(index);
+  }, [palette]);
+
+  const applyInkColor = useCallback((hex: string) => {
+    if (inkCardIndex === null) return;
+    const next = normalizeHexColor(hex);
+    setPalette((prev) => {
+      const copy = [...prev];
+      copy[inkCardIndex] = next;
+      return copy;
+    });
+    setInkHexDraft(next);
+  }, [inkCardIndex]);
+
+  const handleAddInkWell = useCallback(() => {
+    if (palette.length >= MAX_INK_WELLS) return;
+    const nextColor =
+      NEW_WELL_DEFAULTS[palette.length % NEW_WELL_DEFAULTS.length] ?? "#2C2C2C";
+    const nextIndex = palette.length;
+    setPalette((prev) => [...prev, nextColor]);
+    setBrushInk(nextIndex);
+    setInkHexDraft(nextColor);
+    setInkCardIndex(nextIndex);
+  }, [palette.length]);
+
+  const handleRemoveInkWell = useCallback(() => {
+    if (inkCardIndex === null) return;
+    if (palette.length <= 1) return;
+    const { cells: nextCells, palette: nextPalette } = removePaletteColor(
+      cells,
+      palette,
+      inkCardIndex,
+    );
+    commit(nextCells);
+    setPalette(nextPalette);
+    setBrushInk(0);
+    setInkCardIndex(null);
+  }, [inkCardIndex, palette, cells, commit]);
+
+  const clearLongPress = useCallback(() => {
+    if (longPressTimerRef.current != null) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
 
   const handleWidthChange = useCallback(
     (raw: number) => {
@@ -484,15 +576,12 @@ export function EditorWorkspace({
         setGridH(h);
         setSizePreset(matchSizeDial(w, h));
         replace(resizeGridPreserve(cells, w, h));
-        setProgress((p) => ({
-          ...p,
-          rowComplete: resizeRowComplete(p.rowComplete, h),
-          currentRow: clampCurrentRow(p.currentRow, h),
-        }));
+        setProgress((p) => resizeProgressForGrid(p, w, h));
       } else {
         setGridW(w);
         setSizePreset(matchSizeDial(w, gridH));
         replace(resizeGridPreserve(cells, w, gridH));
+        setProgress((p) => resizeProgressForGrid(p, w, gridH));
       }
     },
     [aspectLocked, lockedRatio, replace, cells, gridH],
@@ -507,20 +596,12 @@ export function EditorWorkspace({
         setGridH(h);
         setSizePreset(matchSizeDial(w, h));
         replace(resizeGridPreserve(cells, w, h));
-        setProgress((p) => ({
-          ...p,
-          rowComplete: resizeRowComplete(p.rowComplete, h),
-          currentRow: clampCurrentRow(p.currentRow, h),
-        }));
+        setProgress((p) => resizeProgressForGrid(p, w, h));
       } else {
         setGridH(h);
         setSizePreset(matchSizeDial(gridW, h));
         replace(resizeGridPreserve(cells, gridW, h));
-        setProgress((p) => ({
-          ...p,
-          rowComplete: resizeRowComplete(p.rowComplete, h),
-          currentRow: clampCurrentRow(p.currentRow, h),
-        }));
+        setProgress((p) => resizeProgressForGrid(p, gridW, h));
       }
     },
     [aspectLocked, lockedRatio, replace, cells, gridW],
@@ -543,11 +624,7 @@ export function EditorWorkspace({
       setGridH(ch);
       setSizePreset(matchSizeDial(cw, ch));
       replace(resizeGridPreserve(cells, cw, ch));
-      setProgress((p) => ({
-        ...p,
-        rowComplete: resizeRowComplete(p.rowComplete, ch),
-        currentRow: clampCurrentRow(p.currentRow, ch),
-      }));
+      setProgress((p) => resizeProgressForGrid(p, cw, ch));
     },
     [replace, cells],
   );
@@ -570,11 +647,7 @@ export function EditorWorkspace({
       setGridW(preset.w);
       setGridH(preset.h);
       replace(resizeGridPreserve(cells, preset.w, preset.h));
-      setProgress((p) => ({
-        ...p,
-        rowComplete: resizeRowComplete(p.rowComplete, preset.h),
-        currentRow: clampCurrentRow(p.currentRow, preset.h),
-      }));
+      setProgress((p) => resizeProgressForGrid(p, preset.w, preset.h));
     },
     [replace, cells],
   );
@@ -628,16 +701,29 @@ export function EditorWorkspace({
     [supabase, user, selectedPatternId, loadPatterns],
   );
 
-  const handleStepCurrentRow = useCallback((delta: number) => {
-    setProgress((p) => ({
-      ...p,
-      currentRow: clampCurrentRow(p.currentRow + delta, gridH),
-    }));
-  }, [gridH]);
+  const handleToggleTrackMode = useCallback(() => {
+    setProgress((p) => {
+      const nextMode: TrackMode = p.trackMode === "row" ? "diag" : "row";
+      return resizeProgressForGrid(p, gridW, gridH, nextMode);
+    });
+  }, [gridW, gridH]);
+
+  const handleStepCurrentRow = useCallback(
+    (delta: number) => {
+      setProgress((p) => {
+        const len = trackLength(p.trackMode, gridW, gridH);
+        return {
+          ...p,
+          currentRow: clampCurrentRow(p.currentRow + delta, len),
+        };
+      });
+    },
+    [gridW, gridH],
+  );
 
   const dirtyKey = useMemo(
     () => JSON.stringify({
-      gridW, gridH, cells, yarnSettings, progress, manilaStock,
+      gridW, gridH, cells, palette, yarnSettings, progress, manilaStock,
       images: imageDocument.images.map((img) => ({
         id: img.id,
         name: img.name,
@@ -656,7 +742,7 @@ export function EditorWorkspace({
       })),
       activeImageId: imageDocument.activeImageId,
     }),
-    [gridW, gridH, cells, yarnSettings, progress, imageDocument, manilaStock],
+    [gridW, gridH, cells, palette, yarnSettings, progress, imageDocument, manilaStock],
   );
 
   const handleSaveDisplayName = useCallback(
@@ -692,14 +778,14 @@ export function EditorWorkspace({
 
   const persistPattern = useCallback(async () => {
     if (!supabase || !user || !selectedPatternId || !activePattern) return;
-    const thumbnail = generateGridThumbnail(cells, { stockId: manilaStock });
+    const thumbnail = generateGridThumbnail(cells, { stockId: manilaStock, palette });
     const { error } = await upsertPattern(supabase, {
       id: selectedPatternId,
       user_id: user.id,
       name: activePattern.name,
       grid_width: gridW,
       grid_height: gridH,
-      grid_data: serializeGridCells(cells),
+      grid_data: serializeGridCells(cells, palette),
       progress_data: serializeProgressData(progress),
       yarn_settings: serializePatternYarnSettings(yarnSettings),
       image_settings: serializeImageDocument(imageDocument, { manila_stock: manilaStock }),
@@ -709,7 +795,7 @@ export function EditorWorkspace({
       console.error(error);
       Sentry.captureException(error);
     }
-  }, [supabase, user, selectedPatternId, activePattern, gridW, gridH, cells, yarnSettings, progress, imageDocument, manilaStock]);
+  }, [supabase, user, selectedPatternId, activePattern, gridW, gridH, cells, palette, yarnSettings, progress, imageDocument, manilaStock]);
 
   const [saveIndicator, setSaveIndicator] = useState<"idle" | "pending" | "saving" | "saved">("idle");
   const savedTimerRef = useRef<number | undefined>(undefined);
@@ -964,7 +1050,7 @@ export function EditorWorkspace({
             <div className="flex items-end gap-3">
               <FlipSwitch
                 topLabel="Free"
-                bottomLabel="Ratio"
+                bottomLabel="Link"
                 on={aspectLocked}
                 orientation="vertical"
                 disabled={!sizeCustom}
@@ -973,8 +1059,8 @@ export function EditorWorkspace({
                   !sizeCustom
                     ? "Switch Size to Custom to edit dimensions"
                     : aspectLocked
-                      ? "Unlock aspect ratio"
-                      : "Lock aspect ratio"
+                      ? "Unlock linked proportions"
+                      : "Link width and height"
                 }
               />
               <div id="tutorial-pencil" className="flex">
@@ -995,7 +1081,7 @@ export function EditorWorkspace({
                   setImportOpen((p) => !p);
                 }}
                 disabled={!showProgramSurface}
-                className={`punch-lamp punch-lamp-amber !min-h-[32px] !px-2.5 text-[9px] self-end mb-0.5 ${
+                className={`punch-lamp punch-lamp-green !min-h-[32px] !px-2.5 text-[9px] self-end mb-0.5 ${
                   importOpen ? "is-lit" : ""
                 }`}
                 title={importOpen ? "Close import" : "Import reference image"}
@@ -1028,7 +1114,7 @@ export function EditorWorkspace({
               <button
                 type="button"
                 onClick={() => setYarnOpen((p) => !p)}
-                className={`punch-lamp punch-lamp-amber !min-h-[32px] !px-2.5 text-[9px] ${
+                className={`punch-lamp punch-lamp-blue !min-h-[32px] !px-2.5 text-[9px] ${
                   yarnOpen ? "is-lit" : ""
                 }`}
                 title="Yarn estimate"
@@ -1101,6 +1187,19 @@ export function EditorWorkspace({
                       : "Make public"
                 }
               />
+              <button
+                type="button"
+                disabled={!user || !selectedPatternId || deletingPattern}
+                onClick={() => setDeletePatternOpen(true)}
+                className="punch-lamp punch-lamp-red !min-h-[32px] !px-2.5 text-[9px] disabled:opacity-40"
+                title={
+                  !user || !selectedPatternId
+                    ? "Open a program to delete"
+                    : "Delete this program"
+                }
+              >
+                Delete
+              </button>
             </div>
           </div>
         </div>
@@ -1161,7 +1260,7 @@ export function EditorWorkspace({
                     New program
                   </h2>
                   <p className="mt-2 font-mono text-[11px] leading-relaxed punch-print-faint">
-                    Filet basics → Manual. Console tour → ?. Or start below.
+                    Techniques → Manual. Console tour → ?. Or start below.
                   </p>
                   <div className="mt-5 flex flex-col gap-3">
                     <button
@@ -1207,6 +1306,79 @@ export function EditorWorkspace({
               </div>
             ) : (
               <div className="flex min-h-0 flex-1 flex-col gap-0">
+                {/* Ink wells — yarn/fill colors for the chart */}
+                {!gridFullscreen ? (
+                <div
+                  className="flex shrink-0 items-center gap-2 border-b border-black/10 px-2 py-1.5"
+                  style={{ background: "color-mix(in srgb, var(--console-desk) 88%, #000 12%)" }}
+                  aria-label="Ink wells"
+                >
+                  <span className="font-mono text-[9px] font-bold tracking-[0.14em] uppercase text-black/55">
+                    Ink
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setBrushInk(null)}
+                    title="Erase (open mesh)"
+                    aria-label="Erase"
+                    aria-pressed={brushInk === null}
+                    className="relative flex h-7 w-7 shrink-0 items-center justify-center border transition-shadow"
+                    style={{
+                      borderColor: brushInk === null ? "rgba(10,10,10,0.55)" : "rgba(10,10,10,0.28)",
+                      background:
+                        "repeating-linear-gradient(135deg, #E8E4DA 0 3px, #C9C4B8 3px 6px)",
+                      boxShadow: brushInk === null ? "0 0 0 1px rgba(10,10,10,0.2)" : "none",
+                    }}
+                  >
+                    <span className="font-mono text-[9px] font-bold text-black/70">∅</span>
+                  </button>
+                  <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
+                    {palette.map((hex, i) => {
+                      const selected = brushInk === i;
+                      return (
+                        <button
+                          key={`ink-${i}`}
+                          type="button"
+                          title={`${hex} — click to paint, hold or double-click to edit`}
+                          aria-label={`Ink well ${i + 1}: ${hex}`}
+                          aria-pressed={selected}
+                          onClick={() => setBrushInk(i)}
+                          onDoubleClick={() => openInkCard(i)}
+                          onPointerDown={() => {
+                            clearLongPress();
+                            longPressTimerRef.current = window.setTimeout(() => {
+                              openInkCard(i);
+                            }, 480);
+                          }}
+                          onPointerUp={clearLongPress}
+                          onPointerLeave={clearLongPress}
+                          onPointerCancel={clearLongPress}
+                          className="relative h-7 w-7 shrink-0 border transition-shadow"
+                          style={{
+                            background: hex,
+                            borderColor: selected ? "rgba(10,10,10,0.55)" : "rgba(10,10,10,0.28)",
+                            boxShadow: selected
+                              ? "inset 0 0 0 1px rgba(255,255,255,0.25), 0 0 0 1px rgba(10,10,10,0.18)"
+                              : "inset 0 0 0 1px rgba(255,255,255,0.15)",
+                          }}
+                        />
+                      );
+                    })}
+                    {palette.length < MAX_INK_WELLS ? (
+                      <button
+                        type="button"
+                        onClick={handleAddInkWell}
+                        title="Add ink well"
+                        aria-label="Add ink well"
+                        className="flex h-7 w-7 shrink-0 items-center justify-center border-2 border-dashed border-black/35 font-mono text-[14px] font-bold text-black/55 hover:border-black/60 hover:text-black/80"
+                      >
+                        +
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+                ) : null}
+
                 <div className="relative flex min-h-0 flex-1 flex-col">
                     <ImageTools
                       gridWidth={gridW}
@@ -1222,6 +1394,7 @@ export function EditorWorkspace({
                       }}
                       progress={progress}
                       onToggleRowComplete={handleToggleRowComplete}
+                      trackMode={progress.trackMode}
                       savedImageDocument={imageDocument}
                       imageSettingsLoadKey={imageSettingsLoadKey}
                       onImageDocumentChange={handleImageDocumentChange}
@@ -1231,6 +1404,8 @@ export function EditorWorkspace({
                       hideFullscreenEntry
                       enterFullscreenRef={enterFullscreenRef}
                       zoomApiRef={zoomApiRef}
+                      palette={palette}
+                      brushInk={brushInk}
                       className="min-h-0 flex-1"
                     />
 
@@ -1246,7 +1421,9 @@ export function EditorWorkspace({
                         <span className="font-mono text-2xl font-bold tabular-nums" style={{ color: "#0A0A0A" }}>
                           {String(progress.currentRow + 1).padStart(2, "0")}
                         </span>
-                        <span className="font-mono text-sm" style={{ color: "rgba(10,10,10,0.55)" }}>/ {String(gridH).padStart(2, "0")}</span>
+                        <span className="font-mono text-sm" style={{ color: "rgba(10,10,10,0.55)" }}>
+                          / {String(trackLen).padStart(2, "0")}
+                        </span>
                       </div>
                       <div className="h-1.5 min-w-[80px] flex-1 overflow-hidden bg-chassis-dark/30">
                         <div
@@ -1257,21 +1434,34 @@ export function EditorWorkspace({
                           }}
                         />
                       </div>
+                      <FlipSwitch
+                        topLabel="Row"
+                        bottomLabel="Diag"
+                        on={progress.trackMode === "diag"}
+                        orientation="vertical"
+                        size="sm"
+                        onClick={handleToggleTrackMode}
+                        title={
+                          progress.trackMode === "diag"
+                            ? "Switch to row tracking"
+                            : "Switch to diagonal tracking (C2C)"
+                        }
+                      />
                       <button
                         type="button"
                         disabled={progress.currentRow <= 0}
                         onClick={() => handleStepCurrentRow(-1)}
                         className="punch-lamp punch-lamp-orange !min-h-[28px] !px-2 text-[9px] disabled:opacity-40"
                       >
-                        ← Row
+                        {progress.trackMode === "diag" ? "← Diag" : "← Row"}
                       </button>
                       <button
                         type="button"
-                        disabled={progress.currentRow >= gridH - 1}
+                        disabled={progress.currentRow >= trackLen - 1}
                         onClick={() => handleStepCurrentRow(1)}
                         className="punch-lamp punch-lamp-orange !min-h-[28px] !px-2 text-[9px] disabled:opacity-40"
                       >
-                        Row →
+                        {progress.trackMode === "diag" ? "Diag →" : "Row →"}
                       </button>
                       <span className="font-mono text-[10px]" style={{ color: "rgba(10,10,10,0.55)" }}>
                         <span className="font-bold" style={{ color: "#0A0A0A" }}>{filledCellCount}</span> filled ·{" "}
@@ -1376,6 +1566,68 @@ export function EditorWorkspace({
 
       <TutorialSpotlight open={tutorialOpen} onOpenChange={setTutorialOpen} />
 
+      {deletePatternOpen &&
+        selectedPatternId &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+            <button
+              type="button"
+              className="absolute inset-0 bg-recess/70"
+              aria-label="Close panel"
+              disabled={deletingPattern}
+              onClick={() => {
+                if (!deletingPattern) setDeletePatternOpen(false);
+              }}
+            />
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Delete pattern"
+              onPointerDown={(e) => e.stopPropagation()}
+              className="punch-card relative z-10 flex w-full max-w-sm flex-col overflow-hidden px-6 py-5"
+              style={{
+                ["--manila-stock" as string]: manilaHex(DEFAULT_MANILA_STOCK),
+              }}
+            >
+              <OperatorCardHeader className="shrink-0" title="Delete card" colLabel="JOB DEL" />
+              <p className="mt-4 font-mono text-[13px] font-bold tracking-[0.04em] uppercase punch-print-ink">
+                Delete this program?
+              </p>
+              <p className="mt-2 font-mono text-[11px] leading-relaxed punch-print-faint">
+                {activePattern?.name ?? "Untitled"} will be permanently removed. This cannot be undone.
+              </p>
+              <div className="mt-6 flex items-center justify-between gap-3">
+                <button
+                  type="button"
+                  disabled={deletingPattern}
+                  onClick={() => setDeletePatternOpen(false)}
+                  className="punch-print text-[11px] opacity-70 disabled:opacity-40"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={deletingPattern}
+                  onClick={() => {
+                    const id = selectedPatternId;
+                    if (!id) return;
+                    setDeletingPattern(true);
+                    void handleDeletePattern(id).finally(() => {
+                      setDeletingPattern(false);
+                      setDeletePatternOpen(false);
+                    });
+                  }}
+                  className="punch-lamp punch-lamp-red !min-h-[32px] !px-3 text-[9px]"
+                >
+                  {deletingPattern ? "Deleting…" : "Delete permanently"}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+
       {yarnOpen &&
         typeof document !== "undefined" &&
         createPortal(
@@ -1412,6 +1664,84 @@ export function EditorWorkspace({
                 <button
                   type="button"
                   onClick={() => setYarnOpen(false)}
+                  className="punch-print text-[11px] opacity-70"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {inkCardIndex !== null &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+            <button
+              type="button"
+              className="absolute inset-0 bg-recess/70"
+              aria-label="Close ink card"
+              onClick={() => setInkCardIndex(null)}
+            />
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Ink well"
+              onPointerDown={(e) => e.stopPropagation()}
+              className="punch-card relative z-10 flex w-full max-w-xs flex-col overflow-hidden px-6 py-5"
+              style={{
+                ["--manila-stock" as string]: manilaHex(DEFAULT_MANILA_STOCK),
+              }}
+            >
+              <OperatorCardHeader className="shrink-0" title="Ink card" colLabel="JOB INK" />
+              <p className="mt-3 font-mono text-[11px] punch-print-faint">
+                Well {String((inkCardIndex ?? 0) + 1).padStart(2, "0")}
+              </p>
+              <div className="mt-4 flex items-center gap-3">
+                <label className="relative h-14 w-14 shrink-0 cursor-pointer overflow-hidden border-2 border-black/40 shadow-inner">
+                  <span className="sr-only">Pick color</span>
+                  <input
+                    type="color"
+                    value={normalizeHexColor(inkHexDraft).toLowerCase()}
+                    onChange={(e) => applyInkColor(e.target.value)}
+                    className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                  />
+                  <span
+                    className="pointer-events-none absolute inset-0"
+                    style={{ background: normalizeHexColor(inkHexDraft) }}
+                    aria-hidden
+                  />
+                </label>
+                <div className="min-w-0 flex-1">
+                  <label className="font-mono text-[9px] font-bold tracking-[0.12em] uppercase punch-print-faint">
+                    Hex
+                  </label>
+                  <input
+                    type="text"
+                    value={inkHexDraft}
+                    onChange={(e) => setInkHexDraft(e.target.value)}
+                    onBlur={() => applyInkColor(inkHexDraft)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") applyInkColor(inkHexDraft);
+                    }}
+                    spellCheck={false}
+                    className="mt-1 w-full border border-black/25 bg-white/70 px-2 py-1.5 font-mono text-[13px] uppercase punch-print-ink outline-none focus:border-black/50"
+                  />
+                </div>
+              </div>
+              <div className="mt-5 flex items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={handleRemoveInkWell}
+                  disabled={palette.length <= 1}
+                  className="punch-print text-[11px] opacity-70 disabled:opacity-30"
+                >
+                  Remove well
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInkCardIndex(null)}
                   className="punch-print text-[11px] opacity-70"
                 >
                   Close
