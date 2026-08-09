@@ -1,6 +1,6 @@
 # Gridwork
 
-A filet crochet pattern maker. Design mesh grids, save patterns, browse a public gallery, and share maker profiles.
+A crochet chart maker for filet, tapestry, C2C, mosaic, and other grid techniques. Design charts, save patterns, browse a public gallery, and share maker profiles.
 
 **Live:** [https://gridwork-seven.vercel.app/](https://gridwork-seven.vercel.app/)  
 **Contact:** [gridworkapp@gmail.com](mailto:gridworkapp@gmail.com)

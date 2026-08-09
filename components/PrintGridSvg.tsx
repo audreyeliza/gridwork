@@ -1,7 +1,11 @@
+import { DEFAULT_HOLE_INK, DEFAULT_PALETTE, isCellFilled, type CellGrid } from "@/lib/gridFormat";
+
 export type PrintGridSvgProps = {
   gridWidth: number;
   gridHeight: number;
-  cells: boolean[][];
+  cells: CellGrid;
+  /** Hex colors for palette indices. */
+  palette?: string[];
   rowComplete: boolean[];
   /** Unused for drawing — kept for call-site compat. */
   currentRow?: number;
@@ -10,13 +14,14 @@ export type PrintGridSvgProps = {
 };
 
 /**
- * Print-oriented SVG grid: dense B&W cells, col/row labels, row checkboxes.
+ * Print-oriented SVG grid: dense cells (palette colors), col/row labels, row checkboxes.
  * Scales to the page via width/height 100% + viewBox.
  */
 export function PrintGridSvg({
   gridWidth,
   gridHeight,
   cells,
+  palette = DEFAULT_PALETTE,
   rowComplete,
   cellPx = 14,
 }: PrintGridSvgProps) {
@@ -29,6 +34,7 @@ export function PrintGridSvg({
   const gridH = gridHeight * cellPx;
   const w = rowPad + gridW + 4;
   const h = colPad + gridH + 4;
+  const colors = palette.length > 0 ? palette : DEFAULT_PALETTE;
 
   return (
     <svg
@@ -39,16 +45,15 @@ export function PrintGridSvg({
       role="img"
       aria-label="Pattern grid"
     >
-      {/* Dense B&W cells — abutting, no gaps */}
       {cells.flatMap((row, r) =>
-        row.map((filled, c) => (
+        row.map((value, c) => (
           <rect
             key={`cell-${r}-${c}`}
             x={rowPad + c * cellPx}
             y={colPad + r * cellPx}
             width={cellPx}
             height={cellPx}
-            fill={filled ? "#000000" : "#FFFFFF"}
+            fill={isCellFilled(value) ? (colors[value!] ?? DEFAULT_HOLE_INK) : "#FFFFFF"}
           />
         )),
       )}

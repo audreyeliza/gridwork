@@ -77,10 +77,10 @@ export default function PrintPatternPage() {
     if (!pattern) return null;
     const w = pattern.grid_width;
     const h = pattern.grid_height;
-    const cells = parseGridData(pattern.grid_data, w, h);
-    const progress = parseProgressData(pattern.progress_data, h);
+    const { cells, palette } = parseGridData(pattern.grid_data, w, h);
+    const progress = parseProgressData(pattern.progress_data, h, w);
     const yarn = parsePatternYarnSettings(pattern.yarn_settings);
-    return { cells, progress, yarn, w, h, name: pattern.name };
+    return { cells, palette, progress, yarn, w, h, name: pattern.name };
   }, [pattern]);
 
   return (
@@ -116,6 +116,7 @@ export default function PrintPatternPage() {
               gridWidth={view.w}
               gridHeight={view.h}
               cells={view.cells}
+              palette={view.palette}
               rowComplete={view.progress.rowComplete}
             />
           </section>

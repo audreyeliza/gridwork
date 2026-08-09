@@ -1,13 +1,13 @@
-import { cloneGrid, createEmptyGrid } from "@/lib/gridFormat";
+import { cloneGrid, createEmptyGrid, type CellGrid } from "@/lib/gridFormat";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const MAX_HISTORY = 30;
 
 export type UsePatternHistoryReturn = {
-  cells: boolean[][];
-  commit: (next: boolean[][]) => void;
-  replace: (next: boolean[][]) => void;
-  reset: (next: boolean[][]) => void;
+  cells: CellGrid;
+  commit: (next: CellGrid) => void;
+  replace: (next: CellGrid) => void;
+  reset: (next: CellGrid) => void;
   undo: () => void;
   redo: () => void;
   canUndo: boolean;
@@ -15,24 +15,24 @@ export type UsePatternHistoryReturn = {
 };
 
 /**
- * Undo/redo (30 steps) over a 2D boolean grid. Use `commit` after discrete edits;
- * use `replace` for resizes; use `reset` when loading a new pattern (clears stacks).
+ * Undo/redo (30 steps) over a 2D cell grid (palette indices or null).
+ * Use `commit` after discrete edits; `replace` for resizes; `reset` when loading a pattern.
  */
 export function usePatternHistory(
   width: number,
   height: number,
-  initialCells?: boolean[][],
+  initialCells?: CellGrid,
 ): UsePatternHistoryReturn {
-  const [cells, setCells] = useState<boolean[][]>(() => initialCells ?? createEmptyGrid(width, height));
-  const [past, setPast] = useState<boolean[][][]>([]);
-  const [future, setFuture] = useState<boolean[][][]>([]);
+  const [cells, setCells] = useState<CellGrid>(() => initialCells ?? createEmptyGrid(width, height));
+  const [past, setPast] = useState<CellGrid[]>([]);
+  const [future, setFuture] = useState<CellGrid[]>([]);
 
   const cellsRef = useRef(cells);
   useEffect(() => {
     cellsRef.current = cells;
   }, [cells]);
 
-  const commit = useCallback((next: boolean[][]) => {
+  const commit = useCallback((next: CellGrid) => {
     setPast((p) => [...p, cloneGrid(cellsRef.current)].slice(-MAX_HISTORY));
     setFuture([]);
     const copy = cloneGrid(next);
@@ -40,13 +40,13 @@ export function usePatternHistory(
     setCells(copy);
   }, []);
 
-  const replace = useCallback((next: boolean[][]) => {
+  const replace = useCallback((next: CellGrid) => {
     const copy = cloneGrid(next);
     cellsRef.current = copy;
     setCells(copy);
   }, []);
 
-  const reset = useCallback((next: boolean[][]) => {
+  const reset = useCallback((next: CellGrid) => {
     setPast([]);
     setFuture([]);
     const copy = cloneGrid(next);
@@ -57,7 +57,7 @@ export function usePatternHistory(
   const undo = useCallback(() => {
     setPast((p) => {
       if (p.length === 0) return p;
-      const prev = p[p.length - 1];
+      const prev = p[p.length - 1]!;
       setFuture((f) => [cloneGrid(cellsRef.current), ...f]);
       const copy = cloneGrid(prev);
       cellsRef.current = copy;
@@ -69,7 +69,7 @@ export function usePatternHistory(
   const redo = useCallback(() => {
     setFuture((f) => {
       if (f.length === 0) return f;
-      const nxt = f[0];
+      const nxt = f[0]!;
       setPast((p) => [...p, cloneGrid(cellsRef.current)].slice(-MAX_HISTORY));
       const copy = cloneGrid(nxt);
       cellsRef.current = copy;

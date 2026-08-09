@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createEmptyGrid, serializeGridCells } from "@/lib/gridFormat";
+import { createEmptyGrid, DEFAULT_PALETTE, serializeGridCells } from "@/lib/gridFormat";
 import { defaultProgressState, serializeProgressData } from "@/lib/progressData";
 import { DEFAULT_PATTERN_YARN_SETTINGS, serializePatternYarnSettings } from "@/lib/yarnSettings";
 import { DEFAULT_PATTERN_IMAGE_DOCUMENT, serializeImageDocument } from "@/lib/imageSettings";
@@ -102,10 +102,10 @@ export async function createUntitledPattern(
   return upsertPattern(supabase, {
     user_id: userId,
     name: extras?.name ?? "Untitled",
-    grid_data: serializeGridCells(createEmptyGrid(10, 40)),
+    grid_data: serializeGridCells(createEmptyGrid(10, 40), DEFAULT_PALETTE),
     grid_width: 10,
     grid_height: 40,
-    progress_data: extras?.progress_data ?? serializeProgressData(defaultProgressState(40)),
+    progress_data: extras?.progress_data ?? serializeProgressData(defaultProgressState(40, 10)),
     yarn_settings: extras?.yarn_settings ?? serializePatternYarnSettings(DEFAULT_PATTERN_YARN_SETTINGS),
     image_settings:
       extras?.image_settings ??

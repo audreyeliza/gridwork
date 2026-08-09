@@ -20,7 +20,7 @@ const jetbrainsMono = JetBrains_Mono({
 
 const SITE_URL = "https://gridwork-seven.vercel.app";
 const TITLE = "Gridwork";
-const DESCRIPTION = "Design filet crochet patterns in your browser";
+const DESCRIPTION = "Design crochet charts—filet, tapestry, C2C, and more";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),

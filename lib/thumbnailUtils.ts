@@ -1,11 +1,17 @@
 /**
  * Generate a PNG thumbnail from grid cells with per-cell sizing and optional grid lines.
- * PNG is lossless so sharp black/white grids render without JPEG artifacts.
+ * Empty cells are transparent so manila card CSS shows through; filled cells use palette colors.
  */
 
+import {
+  DEFAULT_HOLE_INK,
+  DEFAULT_PALETTE,
+  isCellFilled,
+  type CellGrid,
+} from "@/lib/gridFormat";
 import { DEFAULT_MANILA_STOCK, manilaHex, type ManilaStockId } from "@/lib/manilaStock";
 
-export const HOLE_INK = "#2C2C2C";
+export const HOLE_INK = DEFAULT_HOLE_INK;
 
 /** Keep thumbnail edge the same sheet color as the paper fill. */
 function edgeFromPaper(paper: string): string {
@@ -16,10 +22,13 @@ export type ThumbnailOptions = {
   maxDim?: number;
   paper?: string;
   stockId?: ManilaStockId;
+  palette?: string[];
+  /** When true (default), empty cells are transparent for CSS paper underlay. */
+  transparentEmpty?: boolean;
 };
 
 export function generateGridThumbnail(
-  cells: boolean[][],
+  cells: CellGrid,
   maxDimOrOpts: number | ThumbnailOptions = 300,
 ): string {
   if (typeof document === "undefined") return "";
@@ -30,9 +39,11 @@ export function generateGridThumbnail(
     opts.paper ??
     (opts.stockId ? manilaHex(opts.stockId) : manilaHex(DEFAULT_MANILA_STOCK));
   const edge = edgeFromPaper(paper);
+  const colors = opts.palette && opts.palette.length > 0 ? opts.palette : DEFAULT_PALETTE;
+  const transparentEmpty = opts.transparentEmpty !== false;
 
   const rows = cells.length;
-  const cols = rows > 0 ? cells[0].length : 0;
+  const cols = rows > 0 ? (cells[0]?.length ?? 0) : 0;
   if (rows === 0 || cols === 0) return "";
 
   const cellPx = Math.max(1, Math.floor(maxDim / Math.max(rows, cols)));
@@ -47,13 +58,23 @@ export function generateGridThumbnail(
   const ctx = canvas.getContext("2d");
   if (!ctx) return "";
 
-  ctx.fillStyle = gap ? edge : paper;
-  ctx.fillRect(0, 0, cw, ch);
+  if (transparentEmpty) {
+    ctx.clearRect(0, 0, cw, ch);
+  } else {
+    ctx.fillStyle = gap ? edge : paper;
+    ctx.fillRect(0, 0, cw, ch);
+  }
 
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      ctx.fillStyle = cells[r][c] ? HOLE_INK : paper;
-      ctx.fillRect(c * stride, r * stride, cellPx, cellPx);
+      const value = cells[r]?.[c];
+      if (isCellFilled(value)) {
+        ctx.fillStyle = colors[value!] ?? HOLE_INK;
+        ctx.fillRect(c * stride, r * stride, cellPx, cellPx);
+      } else if (!transparentEmpty) {
+        ctx.fillStyle = paper;
+        ctx.fillRect(c * stride, r * stride, cellPx, cellPx);
+      }
     }
   }
 
@@ -63,9 +84,8 @@ export function generateGridThumbnail(
 const remanilaCache = new Map<string, string>();
 
 /**
- * Punch empty cells to transparent so the card’s CSS paper shows through.
- * Keeps dark hole-ink pixels; clears everything else (any stock / legacy cream).
- * This is more reliable than remapping known paper hexes.
+ * Punch paper-like empty cells to transparent so the card’s CSS paper shows through.
+ * Keeps dark and chromatic yarn/ink pixels (for multi-color patterns).
  */
 export function remanilaThumbnail(src: string, _targetHex?: string): Promise<string> {
   if (typeof document === "undefined") return Promise.resolve(src);
@@ -100,19 +120,14 @@ export function remanilaThumbnail(src: string, _targetHex?: string): Promise<str
         for (let i = 0; i < d.length; i += 4) {
           const a = d[i + 3];
           if (a === 0) continue;
-          const r = d[i];
-          const g = d[i + 1];
-          const b = d[i + 2];
-          // Hole ink is near-black; keep those, clear paper / cream / tinted empty cells
+          const r = d[i]!;
+          const g = d[i + 1]!;
+          const b = d[i + 2]!;
           const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
-          if (luminance > 70) {
+          const chroma = Math.max(r, g, b) - Math.min(r, g, b);
+          // Paper-like: light + low chroma → transparent. Keep ink / yarn colors.
+          if (luminance > 70 && chroma < 28) {
             d[i + 3] = 0;
-          } else {
-            // Normalize holes to solid ink for consistency
-            d[i] = 0x2c;
-            d[i + 1] = 0x2c;
-            d[i + 2] = 0x2c;
-            d[i + 3] = 255;
           }
         }
         ctx.putImageData(imageData, 0, 0);

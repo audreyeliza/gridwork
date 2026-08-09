@@ -25,21 +25,24 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, type MutableR
 
 export type ImageReferenceMode = "none" | "underlay" | "convert";
 
-import type { PatternProgressState } from "@/lib/progressData";
-import type { GridUnderlayLayer } from "@/components/GridCanvas";
+import type { PatternProgressState, TrackMode } from "@/lib/progressData";
+import type { GridUnderlayLayer, InkBrush } from "@/components/GridCanvas";
+import type { CellGrid } from "@/lib/gridFormat";
+import { booleanGridToCells } from "@/lib/gridFormat";
 
 export type ImageToolsProps = {
   gridWidth: number;
   gridHeight: number;
-  cells: boolean[][];
-  onCommit: (next: boolean[][]) => void;
-  onApplyConvertedGrid: (next: boolean[][]) => void;
+  cells: CellGrid;
+  onCommit: (next: CellGrid) => void;
+  onApplyConvertedGrid: (next: CellGrid) => void;
   onBestFitGrid?: (w: number, h: number) => void;
   onImageLoad?: (naturalWidth: number, naturalHeight: number) => void;
   onGridFullscreenChange?: (fullscreen: boolean) => void;
   className?: string;
   progress?: PatternProgressState;
   onToggleRowComplete?: (row: number) => void;
+  trackMode?: TrackMode;
   /** Saved multi-image document from the DB — applied when imageSettingsLoadKey changes. */
   savedImageDocument?: PatternImageDocument | null;
   /** Changing this key triggers a full reinit from savedImageDocument. */
@@ -56,6 +59,10 @@ export type ImageToolsProps = {
   enterFullscreenRef?: MutableRefObject<(() => void) | null>;
   /** Parent control bar can call fit / zoom in / zoom out. */
   zoomApiRef?: MutableRefObject<{ fit: () => void; zoomIn: () => void; zoomOut: () => void } | null>;
+  /** Palette hex colors for filled cells. */
+  palette?: string[];
+  /** Active ink well index, or null to erase. */
+  brushInk?: InkBrush;
 };
 
 const MAX_BEST_FIT_CELLS = 80;
@@ -410,6 +417,7 @@ export function ImageTools({
   className,
   progress,
   onToggleRowComplete,
+  trackMode = "row",
   savedImageDocument,
   imageSettingsLoadKey,
   onImageDocumentChange,
@@ -419,6 +427,8 @@ export function ImageTools({
   hideFullscreenEntry = false,
   enterFullscreenRef,
   zoomApiRef,
+  palette,
+  brushInk = 0,
 }: ImageToolsProps) {
   const fileInputId = useId();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -607,16 +617,21 @@ export function ImageTools({
     return { images, activeImageId: activeLayerId };
   }, [layers, activeLayerId, currentSettings]);
 
+  const fillIndexForConvert = brushInk ?? 0;
+
   // Auto-apply conversion when pan changes in convert mode (reconnects pan → convert mapping)
   useEffect(() => {
     if (mode !== "convert" || !workingImage) return;
-    const next = imageToThresholdGrid(
-      workingImage, gridWidth, gridHeight,
-      thresholdRef.current, darkIsFilledRef.current,
-      appliedCropRef.current, panX / 100, panY / 100, imageZoom,
+    const next = booleanGridToCells(
+      imageToThresholdGrid(
+        workingImage, gridWidth, gridHeight,
+        thresholdRef.current, darkIsFilledRef.current,
+        appliedCropRef.current, panX / 100, panY / 100, imageZoom,
+      ),
+      fillIndexForConvert,
     );
     queueMicrotask(() => onApplyConvertedGrid(next));
-  }, [mode, workingImage, gridWidth, gridHeight, panX, panY, imageZoom, onApplyConvertedGrid]);
+  }, [mode, workingImage, gridWidth, gridHeight, panX, panY, imageZoom, onApplyConvertedGrid, fillIndexForConvert]);
 
   // Reinitialize all image state when the load key changes (new pattern loaded from DB).
   useEffect(() => {
@@ -785,28 +800,34 @@ export function ImageTools({
       setStatus("Upload an image first.");
       return;
     }
-    const next = imageToThresholdGrid(
-      workingImage, gridWidth, gridHeight,
-      threshold, darkIsFilled, appliedCrop, panX / 100, panY / 100, imageZoom,
+    const next = booleanGridToCells(
+      imageToThresholdGrid(
+        workingImage, gridWidth, gridHeight,
+        threshold, darkIsFilled, appliedCrop, panX / 100, panY / 100, imageZoom,
+      ),
+      fillIndexForConvert,
     );
     onApplyConvertedGrid(next);
     setStatus("Applied. You can edit or undo.");
-  }, [workingImage, gridWidth, gridHeight, threshold, darkIsFilled, appliedCrop, panX, panY, imageZoom, onApplyConvertedGrid]);
+  }, [workingImage, gridWidth, gridHeight, threshold, darkIsFilled, appliedCrop, panX, panY, imageZoom, onApplyConvertedGrid, fillIndexForConvert]);
 
   const applyCrop = useCallback(() => {
     setAppliedCrop({ ...cropRect });
     if (mode === "convert" && workingImage) {
-      const next = imageToThresholdGrid(
-        workingImage, gridWidth, gridHeight,
-        thresholdRef.current, darkIsFilledRef.current,
-        cropRect, panXRef.current / 100, panYRef.current / 100, imageZoom,
+      const next = booleanGridToCells(
+        imageToThresholdGrid(
+          workingImage, gridWidth, gridHeight,
+          thresholdRef.current, darkIsFilledRef.current,
+          cropRect, panXRef.current / 100, panYRef.current / 100, imageZoom,
+        ),
+        fillIndexForConvert,
       );
       onApplyConvertedGrid(next);
       setStatus("Applied.");
     } else {
       setStatus(null);
     }
-  }, [cropRect, mode, workingImage, gridWidth, gridHeight, imageZoom, onApplyConvertedGrid]);
+  }, [cropRect, mode, workingImage, gridWidth, gridHeight, imageZoom, onApplyConvertedGrid, fillIndexForConvert]);
 
   const closeCropCard = useCallback(() => {
     applyCrop();
@@ -1484,10 +1505,13 @@ export function ImageTools({
           gridHeight={gridHeight}
           cells={cells}
           onCommit={onCommit}
+          palette={palette}
+          brushInk={brushInk}
           underlays={stackedUnderlays}
           rowComplete={progress?.rowComplete}
           currentRow={progress?.currentRow}
           onToggleRowComplete={onToggleRowComplete}
+          trackMode={trackMode}
           onFullscreenChange={handleGridFullscreenChange}
           editLocked={editLocked}
           paperColor={paperColor}

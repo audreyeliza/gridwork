@@ -15,7 +15,7 @@ const BASE_STEPS: StepDef[] = [
   {
     targetId: "tutorial-grid-size",
     title: "Set card size",
-    body: "Use Stock and Size dials. Switch Size to Custom for W·H; Ratio locks proportions.",
+    body: "Use Stock and Size dials. Switch Size to Custom for W·H; Link locks W·H together.",
   },
   {
     targetId: "tutorial-pencil",
@@ -30,7 +30,7 @@ const BASE_STEPS: StepDef[] = [
   {
     targetId: "tutorial-row-progress",
     title: "Track rows",
-    body: "Step with ← Row / Row → and check off rows as you go.",
+    body: "Step with ← Row / Row →. Check off rows on the grid sidebar. Use Row/Diag for C2C diagonals.",
   },
   {
     targetId: "tutorial-print",
