@@ -213,18 +213,15 @@ export function GridCanvas({
 
   const showUnderlay = resolvedUnderlays.length > 0;
 
-  const showRowTracker =
-    trackMode === "row" &&
-    Boolean(onToggleRowComplete) &&
-    Array.isArray(rowComplete) &&
-    rowComplete.length === gridHeight;
-
   const showTrackHighlight =
     Boolean(onToggleRowComplete) &&
     Array.isArray(rowComplete) &&
     (trackMode === "row"
       ? rowComplete.length === gridHeight
       : rowComplete.length === gridWidth + gridHeight - 1);
+
+  // Same eligibility as highlight — row and diag both get the checkbox sidebar.
+  const showRowTracker = showTrackHighlight;
 
   const layoutOpts = useMemo(
     () => (showRowTracker ? { rowSidebarPx: ROW_TRACKER_SIDEBAR_PX } : undefined),
@@ -608,18 +605,27 @@ export function GridCanvas({
                 height: layoutState.gridHpx,
               }}
             >
-              {rowComplete.map((done, r) => (
+              {rowComplete.map((done, r) => {
+                const itemH =
+                  trackMode === "diag"
+                    ? layoutState.gridHpx / rowComplete.length
+                    : layoutState.cell;
+                return (
                 <label
                   key={r}
-                className={`flex shrink-0 cursor-pointer items-center justify-center gap-1`}
-                style={{ height: layoutState.cell }}
-              >
+                  className="flex shrink-0 cursor-pointer items-center justify-center gap-1"
+                  style={{ height: itemH }}
+                >
                   <input
                     type="checkbox"
                     checked={done}
                     onChange={() => onToggleRowComplete(r)}
                     className="sr-only"
-                    aria-label={`Row ${r + 1} complete`}
+                    aria-label={
+                      trackMode === "diag"
+                        ? `Diagonal ${r + 1} complete`
+                        : `Row ${r + 1} complete`
+                    }
                   />
                   <span
                     className="relative inline-flex shrink-0 items-center justify-center"
@@ -645,7 +651,8 @@ export function GridCanvas({
                     {r + 1}
                   </span>
                 </label>
-              ))}
+                );
+              })}
             </div>
           ) : null}
           <canvas

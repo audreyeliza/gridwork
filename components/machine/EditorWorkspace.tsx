@@ -1310,10 +1310,14 @@ export function EditorWorkspace({
                 {!gridFullscreen ? (
                 <div
                   className="flex shrink-0 items-center gap-2 border-b border-black/10 px-2 py-1.5"
-                  style={{ background: "color-mix(in srgb, var(--console-desk) 88%, #000 12%)" }}
+                  style={{
+                    background:
+                      "linear-gradient(180deg, rgba(0,0,0,0.2) 0%, rgba(255,255,255,0.04) 100%), var(--recess)",
+                    boxShadow: "inset 0 2px 4px rgba(0, 0, 0, 0.4)",
+                  }}
                   aria-label="Ink wells"
                 >
-                  <span className="font-mono text-[9px] font-bold tracking-[0.14em] uppercase text-black/55">
+                  <span className="font-mono text-[9px] font-bold tracking-[0.14em] uppercase text-[var(--card,#f2edd3)]/80">
                     Ink
                   </span>
                   <button
@@ -1370,7 +1374,7 @@ export function EditorWorkspace({
                         onClick={handleAddInkWell}
                         title="Add ink well"
                         aria-label="Add ink well"
-                        className="flex h-7 w-7 shrink-0 items-center justify-center border-2 border-dashed border-black/35 font-mono text-[14px] font-bold text-black/55 hover:border-black/60 hover:text-black/80"
+                        className="flex h-7 w-7 shrink-0 items-center justify-center border-2 border-dashed border-[var(--card,#f2edd3)]/40 font-mono text-[14px] font-bold text-[var(--card,#f2edd3)]/70 hover:border-[var(--card,#f2edd3)]/70 hover:text-[var(--card,#f2edd3)]"
                       >
                         +
                       </button>

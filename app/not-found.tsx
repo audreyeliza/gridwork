@@ -1,4 +1,4 @@
-import { HoleRow, OperatorCardHeader } from "@/components/OperatorCardHeader";
+import { OperatorCardHeader } from "@/components/OperatorCardHeader";
 import Link from "next/link";
 
 export default function NotFound() {
@@ -10,8 +10,8 @@ export default function NotFound() {
       >
         <OperatorCardHeader title="Not found card" colLabel="JOB 404" />
 
-        <div className="mt-8 flex flex-1 flex-col items-center justify-center gap-4 text-center">
-          <p className="font-mono text-[13px] leading-relaxed punch-print-ink">
+        <div className="mt-6 flex flex-1 flex-col items-center justify-center gap-3 text-center">
+          <p className="font-mono text-[12px] leading-relaxed punch-print-ink">
             This card isn&apos;t in the deck.
           </p>
           <p className="font-mono text-[11px] leading-relaxed punch-print-faint">
@@ -20,10 +20,6 @@ export default function NotFound() {
           <Link href="/" className="punch-print mt-2 text-[11px]">
             ← Back to Gridwork
           </Link>
-        </div>
-
-        <div className="mt-auto flex justify-center pt-4">
-          <HoleRow />
         </div>
       </div>
     </div>
