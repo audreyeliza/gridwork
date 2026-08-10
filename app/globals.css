@@ -733,13 +733,16 @@ button.punch-lamp:disabled,
   transition: border-color 0.35s ease, box-shadow 0.35s ease;
 }
 .book-stage.is-open .book-spread {
-  pointer-events: auto;
   border-left-color: transparent;
   box-shadow:
     0 4px 8px rgba(40, 44, 50, 0.1),
     0 18px 40px rgba(40, 44, 50, 0.22),
     inset 8px 0 18px rgba(40, 44, 50, 0.08),
     inset -6px 0 14px rgba(40, 44, 50, 0.04);
+}
+/* Mosaic base only receives clicks on page 4 */
+.book-stage.is-p4 .book-spread {
+  pointer-events: auto;
 }
 .book-stage.is-flipping .book-spread {
   pointer-events: none;
@@ -844,19 +847,23 @@ button.punch-lamp:disabled,
 .book-stage.is-open .book-leaf-cover {
   transform: rotateY(-150deg);
   z-index: 1;
+  pointer-events: none;
 }
 /* Turn leaves once we've flipped past their page */
 .book-stage.is-p2 .book-leaf-filet {
   transform: rotateY(-150deg);
   z-index: 1;
+  pointer-events: none;
 }
 .book-stage.is-p3 .book-leaf-tapestry {
   transform: rotateY(-150deg);
   z-index: 1;
+  pointer-events: none;
 }
 .book-stage.is-p4 .book-leaf-c2c {
   transform: rotateY(-150deg);
   z-index: 1;
+  pointer-events: none;
 }
 .book-stage.is-flipping .book-leaf {
   pointer-events: none;
