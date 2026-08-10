@@ -338,6 +338,7 @@ export function HopperZone({
                   options={[
                     { value: "newest" as const, label: "Newest" },
                     { value: "popular" as const, label: "Popular" },
+                    { value: "relevant" as const, label: "Relevant" },
                   ]}
                   onChange={setSortBy}
                   accent="#0A0A0A"

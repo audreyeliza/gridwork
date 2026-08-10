@@ -38,7 +38,7 @@ function mapGalleryRow(row: Record<string, unknown>): GalleryPattern {
   };
 }
 
-export type GallerySortBy = "newest" | "popular";
+export type GallerySortBy = "newest" | "popular" | "relevant";
 
 export type FetchGalleryOptions = {
   sortBy?: GallerySortBy;
@@ -47,19 +47,39 @@ export type FetchGalleryOptions = {
   pageSize?: number;
 };
 
+/** Lower = more relevant. Exact > prefix > contains; ties use updated_at desc. */
+function relevanceRank(name: string, q: string): number {
+  const n = name.toLowerCase();
+  if (n === q) return 0;
+  if (n.startsWith(q)) return 1;
+  return 2;
+}
+
+function sortByRelevance(patterns: GalleryPattern[], search: string): GalleryPattern[] {
+  const q = search.trim().toLowerCase();
+  if (!q) return patterns;
+  return [...patterns].sort((a, b) => {
+    const rankDiff = relevanceRank(a.name, q) - relevanceRank(b.name, q);
+    if (rankDiff !== 0) return rankDiff;
+    return b.updated_at.localeCompare(a.updated_at);
+  });
+}
+
 export async function fetchGalleryPatterns(
   supabase: SupabaseClient,
   opts: FetchGalleryOptions = {},
 ): Promise<{ data: GalleryPattern[]; total: number; error: Error | null }> {
   const { sortBy = "newest", search = "", page = 0, pageSize = 24 } = opts;
+  const trimmedSearch = search.trim();
+  const useRelevant = sortBy === "relevant" && trimmedSearch.length > 0;
 
   let query = supabase
     .from("patterns")
     .select(GALLERY_SELECT, { count: "exact" })
     .eq("is_public", true);
 
-  if (search.trim()) {
-    query = query.ilike("name", `%${search.trim()}%`);
+  if (trimmedSearch) {
+    query = query.ilike("name", `%${trimmedSearch}%`);
   }
 
   if (sortBy === "popular") {
@@ -67,6 +87,7 @@ export async function fetchGalleryPatterns(
       .order("likes_count", { ascending: false })
       .order("updated_at", { ascending: false });
   } else {
+    // newest, or relevant with empty query (falls back to newest)
     query = query.order("updated_at", { ascending: false });
   }
 
@@ -74,8 +95,13 @@ export async function fetchGalleryPatterns(
 
   const { data, error, count } = await query;
 
+  let patterns = ((data as Record<string, unknown>[] | null) ?? []).map(mapGalleryRow);
+  if (useRelevant) {
+    patterns = sortByRelevance(patterns, trimmedSearch);
+  }
+
   return {
-    data: ((data as Record<string, unknown>[] | null) ?? []).map(mapGalleryRow),
+    data: patterns,
     total: count ?? 0,
     error: error as Error | null,
   };
