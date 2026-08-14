@@ -12,64 +12,45 @@ import { YarnEstimator } from "@/components/YarnEstimator";
 import { PatternSidebar } from "@/components/PatternSidebar";
 import { shouldAutoOpenTutorial, TutorialSpotlight } from "@/components/TutorialSpotlight";
 import { useAutoSave } from "@/hooks/useAutoSave";
-import { usePatternHistory } from "@/hooks/usePatternHistory";
+import { usePatternDocument } from "@/hooks/usePatternDocument";
 import { useSupabaseInit } from "@/hooks/useSupabaseInit";
 import {
   createUntitledPattern,
-  fetchPatternById,
   deletePattern,
   fetchPatternsForUser,
   type Pattern,
   upsertPattern,
 } from "@/lib/patternHelpers";
+import { clearPatternSnapshot, OWNER_NOTES_MAX } from "@/lib/patternSnapshot";
 import {
-  createEmptyGrid,
   DEFAULT_PALETTE,
   isCellFilled,
   MAX_INK_WELLS,
   normalizeHexColor,
-  parseGridData,
   removePaletteColor,
-  resizeGridPreserve,
-  serializeGridCells,
   type CellGrid,
 } from "@/lib/gridFormat";
 import type { InkBrush } from "@/components/GridCanvas";
 import {
   clampCurrentRow,
-  defaultProgressState,
-  parseProgressData,
   resizeProgressForGrid,
-  serializeProgressData,
   trackLength,
-  type PatternProgressState,
   type TrackMode,
 } from "@/lib/progressData";
-import {
-  DEFAULT_PATTERN_YARN_SETTINGS,
-  parsePatternYarnSettings,
-  serializePatternYarnSettings,
-  type PatternYarnSettings,
-} from "@/lib/yarnSettings";
+import { type PatternYarnSettings } from "@/lib/yarnSettings";
 import {
   DEFAULT_PATTERN_IMAGE_DOCUMENT,
   documentHasImage,
-  parseImageDocument,
   serializeImageDocument,
-  type PatternImageDocument,
 } from "@/lib/imageSettings";
 import { setPatternPublic } from "@/lib/galleryHelpers";
 import { fetchProfile, upsertProfile } from "@/lib/profileHelpers";
-import { generateGridThumbnail } from "@/lib/thumbnailUtils";
 import {
   contrastManilaHex,
   DEFAULT_MANILA_STOCK,
-  loadManilaStock,
   manilaHex,
   MANILA_STOCKS,
-  parseManilaStockFromSettings,
   saveManilaStock,
-  type ManilaStockId,
 } from "@/lib/manilaStock";
 import * as Sentry from "@sentry/nextjs";
 import type { Session, SupabaseClient, User } from "@supabase/supabase-js";
@@ -117,46 +98,19 @@ const NEW_WELL_DEFAULTS = [
   "#F5F5F5",
 ] as const;
 
-/** Demo motif for the console tour when no program is open yet. */
-function createTutorialMockGrid(w: number, h: number): CellGrid {
-  const g = createEmptyGrid(w, h);
-  const cx = Math.floor(w / 2);
-  const top = Math.max(4, Math.floor(h * 0.18));
-  const bottom = Math.min(h - 4, Math.floor(h * 0.62));
-  for (let r = top; r < bottom; r++) {
-    const t = (r - top) / Math.max(1, bottom - top - 1);
-    const spread = Math.max(0, Math.round((1 - Math.abs(t * 2 - 1)) * (cx - 1)));
-    for (let c = cx - spread; c <= cx + spread; c++) {
-      if (c >= 0 && c < w) g[r]![c] = 0;
-    }
-  }
-  return g;
-}
-
-function loadLocalImageDocument(key: string): PatternImageDocument | null {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    const parsed = parseImageDocument(JSON.parse(raw));
-    return documentHasImage(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
 export type EditorWorkspaceProps = {
   /** When true, omit ChassisNav and fill parent (machine reader bay). */
   embedded?: boolean;
-  /** Select this pattern once the user's list loads. */
-  initialPatternId?: string | null;
+  /** Open program id from the URL. The editor does not keep a competing copy. */
+  openId?: string | null;
   /** Hide pattern list sidebar (Profile owns your cards). */
   hideSidebar?: boolean;
   /** Open the console tour once (e.g. from Manual “Go to tutorial”). */
   forceTutorial?: boolean;
   /** Called after forceTutorial has been applied so the URL flag can clear. */
   onTutorialConsumed?: () => void;
-  /** Keep the URL `pattern` param in sync with the open program. */
-  onPatternIdChange?: (id: string | null) => void;
+  /** User picked a program — parent writes `?pattern=` . */
+  onOpenPattern?: (id: string | null) => void;
   onRequestMaker?: () => void;
   onRequestHopper?: () => void;
   onRequestAuth?: () => void;
@@ -164,11 +118,11 @@ export type EditorWorkspaceProps = {
 
 export function EditorWorkspace({
   embedded = false,
-  initialPatternId = null,
+  openId = null,
   hideSidebar = false,
   forceTutorial = false,
   onTutorialConsumed,
-  onPatternIdChange,
+  onOpenPattern,
   onRequestMaker,
   onRequestHopper,
   onRequestAuth,
@@ -178,38 +132,32 @@ export function EditorWorkspace({
   const [user, setUser] = useState<User | null>(null);
   const [patterns, setPatterns] = useState<Pattern[]>([]);
   const [patternsLoading, setPatternsLoading] = useState(false);
-  const [selectedPatternId, setSelectedPatternId] = useState<string | null>(initialPatternId);
   const [creatingProgram, setCreatingProgram] = useState(false);
 
-  // URL is source of truth for the open program.
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs local selection from the URL-derived prop
-    setSelectedPatternId(initialPatternId);
-  }, [initialPatternId]);
+  const selectPattern = useCallback(
+    (id: string | null) => {
+      onOpenPattern?.(id);
+    },
+    [onOpenPattern],
+  );
 
-  useEffect(() => {
-    onPatternIdChange?.(selectedPatternId);
-  }, [selectedPatternId, onPatternIdChange]);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [aspectLocked, setAspectLocked] = useState(false);
   const [lockedRatio, setLockedRatio] = useState<number | null>(null);
-  const [manilaStock, setManilaStock] = useState<ManilaStockId>("manila");
   const [gridFullscreen, setGridFullscreen] = useState(false);
   const enterFullscreenRef = useRef<(() => void) | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [yarnOpen, setYarnOpen] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(false);
   const [deletePatternOpen, setDeletePatternOpen] = useState(false);
   const [deletingPattern, setDeletingPattern] = useState(false);
   const [inkCardIndex, setInkCardIndex] = useState<number | null>(null);
   const [inkHexDraft, setInkHexDraft] = useState("#2C2C2C");
-  const [palette, setPalette] = useState<string[]>(() => [...DEFAULT_PALETTE]);
   const [brushInk, setBrushInk] = useState<InkBrush>(0);
   const longPressTimerRef = useRef<number | null>(null);
   const [isRenamingTitle, setIsRenamingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
-  const [draftTitle, setDraftTitle] = useState("Untitled");
-  const [editLocked, setEditLocked] = useState(false);
   const [tutorialOpen, setTutorialOpen] = useState(false);
   const [importPanelEl, setImportPanelEl] = useState<HTMLDivElement | null>(null);
   const [wDraft, setWDraft] = useState<string>("10");
@@ -224,17 +172,45 @@ export function EditorWorkspace({
   const skippedDisplayNameRef = useRef(false);
   const { setDisplayName: setNavDisplayName } = useNavAuth();
 
-  const [gridW, setGridW] = useState(10);
-  const [gridH, setGridH] = useState(40);
-  const [yarnSettings, setYarnSettings] = useState<PatternYarnSettings>(DEFAULT_PATTERN_YARN_SETTINGS);
-  const [progress, setProgress] = useState<PatternProgressState>(() => defaultProgressState(40, 10));
-  const [imageDocument, setImageDocument] = useState<PatternImageDocument>({
-    images: [],
-    activeImageId: null,
+  const {
+    status: docStatus,
+    loadKey: imageSettingsLoadKey,
+    saveIndicator,
+    dirtyKey,
+    cells,
+    gridWidth: gridW,
+    gridHeight: gridH,
+    palette,
+    progress,
+    yarn: yarnSettings,
+    image: imageDocument,
+    manilaStock,
+    name: draftTitle,
+    notes,
+    commit,
+    resize,
+    setProgress,
+    setYarn,
+    setImage,
+    setPalette,
+    setManilaStock,
+    setName,
+    setNotes,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    save,
+  } = usePatternDocument({
+    openId,
+    supabase,
+    user,
+    tutorialOpen,
+    onMissingPattern: () => onOpenPattern?.(null),
   });
-  /** Incremented each time a pattern's data is fully loaded from the DB, triggering ImageTools reinit. */
-  const [imageSettingsLoadKey, setImageSettingsLoadKey] = useState("");
-  const { cells, commit, replace, reset, undo, redo, canUndo, canRedo } = usePatternHistory(gridW, gridH);
+
+  const selectedPatternId = openId;
+  const editLocked = progress.editLocked;
 
   // Keep draft inputs in sync when gridW/gridH are changed externally (preset picker, DB load)
   // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs the editable draft input from the external grid size
@@ -242,22 +218,27 @@ export function EditorWorkspace({
   // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs the editable draft input from the external grid size
   useEffect(() => { setHDraft(String(gridH)); }, [gridH]);
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- reads a browser-only preference; unavailable during render/SSR
-    setManilaStock(loadManilaStock());
-  }, []);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- size dial follows the loaded document
+    setSizePreset(matchSizeDial(gridW, gridH));
+  }, [imageSettingsLoadKey, gridW, gridH]);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset ink well when a document loads
+    setBrushInk(0);
+  }, [imageSettingsLoadKey]);
 
   useEffect(() => {
-    if (!importOpen && !yarnOpen && inkCardIndex === null && !deletePatternOpen) return;
+    if (!importOpen && !yarnOpen && !notesOpen && inkCardIndex === null && !deletePatternOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       if (deletePatternOpen) setDeletePatternOpen(false);
       else if (inkCardIndex !== null) setInkCardIndex(null);
       else if (yarnOpen) setYarnOpen(false);
+      else if (notesOpen) setNotesOpen(false);
       else setImportOpen(false);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [importOpen, yarnOpen, inkCardIndex, deletePatternOpen]);
+  }, [importOpen, yarnOpen, notesOpen, inkCardIndex, deletePatternOpen]);
 
   const paperColor = manilaHex(manilaStock);
   const contrastPaper = contrastManilaHex(manilaStock);
@@ -290,26 +271,12 @@ export function EditorWorkspace({
   }, [cells]);
 
   const handleYarnSettingsChange = useCallback((next: PatternYarnSettings) => {
-    setYarnSettings(next);
-  }, []);
+    setYarn(next);
+  }, [setYarn]);
 
-  const handleImageDocumentChange = useCallback((next: PatternImageDocument) => {
-    setImageDocument(next);
-  }, []);
-
-  // Back up image settings to localStorage so they survive refresh / logout.
-  // Debounced 800ms to avoid rapid writes during slider drags.
-  useEffect(() => {
-    const key = selectedPatternId ? `gridwork:imgset:${selectedPatternId}` : "gridwork:imgset:draft";
-    if (!documentHasImage(imageDocument)) {
-      try { localStorage.removeItem(key); } catch {}
-      return;
-    }
-    const timerId = window.setTimeout(() => {
-      try { localStorage.setItem(key, JSON.stringify(imageDocument)); } catch {}
-    }, 800);
-    return () => window.clearTimeout(timerId);
-  }, [imageDocument, selectedPatternId]);
+  const handleImageDocumentChange = useCallback((next: typeof imageDocument) => {
+    setImage(next);
+  }, [setImage]);
 
   const patternsRef = useRef(patterns);
   useEffect(() => {
@@ -338,7 +305,7 @@ export function EditorWorkspace({
       setUser(u);
       if (!u) {
         setPatterns([]);
-        setSelectedPatternId(null);
+        onOpenPattern?.(null);
       }
     };
 
@@ -353,7 +320,7 @@ export function EditorWorkspace({
     });
 
     return () => subscription.unsubscribe();
-  }, [supabase]);
+  }, [supabase, onOpenPattern]);
 
   useEffect(() => {
     if (!supabase || !user) return;
@@ -395,89 +362,14 @@ export function EditorWorkspace({
   }, [gridFullscreen, forceTutorial, onTutorialConsumed]);
 
   useEffect(() => {
-    if (selectedPatternId !== null) return;
-    let cancelled = false;
-    const id = window.setTimeout(() => {
-      if (cancelled) return;
-      isLoadingRef.current = true;
-      setGridW(10);
-      setGridH(40);
-      setSizePreset("10x40");
-      reset(tutorialOpen ? createTutorialMockGrid(10, 40) : createEmptyGrid(10, 40));
-      setPalette([...DEFAULT_PALETTE]);
-      setBrushInk(0);
-      setYarnSettings({ ...DEFAULT_PATTERN_YARN_SETTINGS });
-      setProgress(defaultProgressState(40, 10));
-      setImageDocument({ images: [], activeImageId: null });
-      setImageSettingsLoadKey((tutorialOpen ? "tutorial-" : "empty-") + Date.now());
-      setDraftTitle("Untitled");
-      if (!tutorialOpen) {
-        setImportOpen(false);
-        setYarnOpen(false);
-      }
-      window.setTimeout(() => { isLoadingRef.current = false; }, 0);
-    }, 0);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(id);
-    };
-  }, [selectedPatternId, tutorialOpen, reset]);
-
-  useEffect(() => {
-    if (!selectedPatternId || !supabase || !user) return;
-    let cancelled = false;
-    const id = window.setTimeout(() => {
-      const hydrate = (row: Pattern) => {
-        const w = clampGridSize(row.grid_width);
-        const h = clampGridSize(row.grid_height);
-        isLoadingRef.current = true;
-        setGridW(w);
-        setGridH(h);
-        setSizePreset(matchSizeDial(w, h));
-        const parsed = parseGridData(row.grid_data, w, h);
-        reset(parsed.cells);
-        setPalette(parsed.palette);
-        setBrushInk(0);
-        setYarnSettings(parsePatternYarnSettings(row.yarn_settings));
-        setProgress(parseProgressData(row.progress_data, h, w));
-        const dbImg = parseImageDocument(row.image_settings);
-        const resolved =
-          documentHasImage(dbImg)
-            ? dbImg
-            : (loadLocalImageDocument(`gridwork:imgset:${row.id}`) ?? dbImg);
-        setImageDocument(resolved);
-        setImageSettingsLoadKey(row.id + "-" + row.updated_at);
-        setManilaStock(parseManilaStockFromSettings(row.image_settings));
-        window.setTimeout(() => { isLoadingRef.current = false; }, 0);
-      };
-
-      const fromList = patternsRef.current.find((p) => p.id === selectedPatternId);
-      if (fromList) {
-        hydrate(fromList);
-        return;
-      }
-
-      void fetchPatternById(supabase, selectedPatternId, user.id).then(({ data }) => {
-        if (cancelled || !data) return;
-        hydrate(data);
-        setPatterns((prev) => (prev.some((p) => p.id === data.id) ? prev : [data, ...prev]));
-      });
-    }, 0);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(id);
-    };
-  }, [selectedPatternId, supabase, user, reset]);
-
-  useEffect(() => {
-    if (user || filledCellCount === 0 || selectedPatternId === null) return;
+    if (user || filledCellCount === 0) return;
     const handler = (e: BeforeUnloadEvent) => {
       e.preventDefault();
       e.returnValue = "You have unsaved changes. Log in to save your pattern before leaving.";
     };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
-  }, [user, filledCellCount, selectedPatternId]);
+  }, [user, filledCellCount]);
 
   const handleCreateNew = useCallback(async () => {
     if (!supabase || !user) {
@@ -497,11 +389,11 @@ export function EditorWorkspace({
         return;
       }
       await loadPatterns(supabase, user.id);
-      if (data?.id) setSelectedPatternId(data.id);
+      if (data?.id) selectPattern(data.id);
     } finally {
       setCreatingProgram(false);
     }
-  }, [supabase, user, loadPatterns, manilaStock, onRequestAuth]);
+  }, [supabase, user, loadPatterns, manilaStock, onRequestAuth, selectPattern]);
 
   const handleCommitGrid = useCallback(
     (next: CellGrid) => {
@@ -533,7 +425,7 @@ export function EditorWorkspace({
       return copy;
     });
     setInkHexDraft(next);
-  }, [inkCardIndex]);
+  }, [inkCardIndex, setPalette]);
 
   const handleAddInkWell = useCallback(() => {
     if (palette.length >= MAX_INK_WELLS) return;
@@ -544,7 +436,7 @@ export function EditorWorkspace({
     setBrushInk(nextIndex);
     setInkHexDraft(nextColor);
     setInkCardIndex(nextIndex);
-  }, [palette.length]);
+  }, [palette.length, setPalette]);
 
   const handleRemoveInkWell = useCallback(() => {
     if (inkCardIndex === null) return;
@@ -558,7 +450,7 @@ export function EditorWorkspace({
     setPalette(nextPalette);
     setBrushInk(0);
     setInkCardIndex(null);
-  }, [inkCardIndex, palette, cells, commit]);
+  }, [inkCardIndex, palette, cells, commit, setPalette]);
 
   const clearLongPress = useCallback(() => {
     if (longPressTimerRef.current != null) {
@@ -570,41 +462,27 @@ export function EditorWorkspace({
   const handleWidthChange = useCallback(
     (raw: number) => {
       const w = clampGridSize(raw);
-      if (aspectLocked && lockedRatio !== null) {
-        const h = clampGridSize(Math.round(w / lockedRatio));
-        setGridW(w);
-        setGridH(h);
-        setSizePreset(matchSizeDial(w, h));
-        replace(resizeGridPreserve(cells, w, h));
-        setProgress((p) => resizeProgressForGrid(p, w, h));
-      } else {
-        setGridW(w);
-        setSizePreset(matchSizeDial(w, gridH));
-        replace(resizeGridPreserve(cells, w, gridH));
-        setProgress((p) => resizeProgressForGrid(p, w, gridH));
-      }
+      const h =
+        aspectLocked && lockedRatio !== null
+          ? clampGridSize(Math.round(w / lockedRatio))
+          : gridH;
+      setSizePreset(matchSizeDial(w, h));
+      resize(w, h);
     },
-    [aspectLocked, lockedRatio, replace, cells, gridH],
+    [aspectLocked, lockedRatio, gridH, resize],
   );
 
   const handleHeightChange = useCallback(
     (raw: number) => {
       const h = clampGridSize(raw);
-      if (aspectLocked && lockedRatio !== null) {
-        const w = clampGridSize(Math.round(h * lockedRatio));
-        setGridW(w);
-        setGridH(h);
-        setSizePreset(matchSizeDial(w, h));
-        replace(resizeGridPreserve(cells, w, h));
-        setProgress((p) => resizeProgressForGrid(p, w, h));
-      } else {
-        setGridH(h);
-        setSizePreset(matchSizeDial(gridW, h));
-        replace(resizeGridPreserve(cells, gridW, h));
-        setProgress((p) => resizeProgressForGrid(p, gridW, h));
-      }
+      const w =
+        aspectLocked && lockedRatio !== null
+          ? clampGridSize(Math.round(h * lockedRatio))
+          : gridW;
+      setSizePreset(matchSizeDial(w, h));
+      resize(w, h);
     },
-    [aspectLocked, lockedRatio, replace, cells, gridW],
+    [aspectLocked, lockedRatio, gridW, resize],
   );
 
   const handleToggleRowComplete = useCallback((row: number) => {
@@ -614,19 +492,16 @@ export function EditorWorkspace({
       next[row] = !next[row];
       return { ...p, rowComplete: next };
     });
-  }, []);
+  }, [setProgress]);
 
   const handleBestFitGrid = useCallback(
     (w: number, h: number) => {
       const cw = clampGridSize(w);
       const ch = clampGridSize(h);
-      setGridW(cw);
-      setGridH(ch);
       setSizePreset(matchSizeDial(cw, ch));
-      replace(resizeGridPreserve(cells, cw, ch));
-      setProgress((p) => resizeProgressForGrid(p, cw, ch));
+      resize(cw, ch);
     },
-    [replace, cells],
+    [resize],
   );
 
   const handleToggleAspectLock = useCallback(() => {
@@ -644,12 +519,9 @@ export function EditorWorkspace({
       const preset = GRID_PRESETS.find((p) => p.value === value);
       if (!preset) return;
       setAspectLocked(false);
-      setGridW(preset.w);
-      setGridH(preset.h);
-      replace(resizeGridPreserve(cells, preset.w, preset.h));
-      setProgress((p) => resizeProgressForGrid(p, preset.w, preset.h));
+      resize(preset.w, preset.h);
     },
-    [replace, cells],
+    [resize],
   );
 
   const handleImageLoad = useCallback((naturalWidth: number, naturalHeight: number) => {
@@ -659,8 +531,10 @@ export function EditorWorkspace({
 
   const handleRenamePattern = useCallback(
     async (id: string, newName: string) => {
-      if (!supabase || !user) return;
       setPatterns((prev) => prev.map((p) => (p.id === id ? { ...p, name: newName } : p)));
+      if (id === openId) setName(newName);
+      if (!supabase || !user) return;
+      if (id === openId) return;
       const pattern = patterns.find((p) => p.id === id);
       if (!pattern) return;
       const { error } = await upsertPattern(supabase, {
@@ -681,7 +555,7 @@ export function EditorWorkspace({
         Sentry.captureException(error);
       }
     },
-    [supabase, user, patterns],
+    [supabase, user, patterns, openId, setName],
   );
 
   const handleDeletePattern = useCallback(
@@ -689,7 +563,8 @@ export function EditorWorkspace({
       if (!supabase || !user) return;
       // Optimistic removal
       setPatterns((prev) => prev.filter((p) => p.id !== id));
-      if (selectedPatternId === id) setSelectedPatternId(null);
+      if (selectedPatternId === id) selectPattern(null);
+      clearPatternSnapshot(id);
       const { error } = await deletePattern(supabase, id, user.id);
       if (error) {
         console.error(error);
@@ -698,15 +573,18 @@ export function EditorWorkspace({
         await loadPatterns(supabase, user.id);
       }
     },
-    [supabase, user, selectedPatternId, loadPatterns],
+    [supabase, user, selectedPatternId, loadPatterns, selectPattern],
   );
 
-  const handleToggleTrackMode = useCallback(() => {
-    setProgress((p) => {
-      const nextMode: TrackMode = p.trackMode === "row" ? "diag" : "row";
-      return resizeProgressForGrid(p, gridW, gridH, nextMode);
-    });
-  }, [gridW, gridH]);
+  const handleSetTrackMode = useCallback(
+    (nextMode: TrackMode) => {
+      setProgress((p) => {
+        if (p.trackMode === nextMode) return p;
+        return resizeProgressForGrid(p, gridW, gridH, nextMode);
+      });
+    },
+    [gridW, gridH, setProgress],
+  );
 
   const handleStepCurrentRow = useCallback(
     (delta: number) => {
@@ -718,31 +596,7 @@ export function EditorWorkspace({
         };
       });
     },
-    [gridW, gridH],
-  );
-
-  const dirtyKey = useMemo(
-    () => JSON.stringify({
-      gridW, gridH, cells, palette, yarnSettings, progress, manilaStock,
-      images: imageDocument.images.map((img) => ({
-        id: img.id,
-        name: img.name,
-        visible: img.visible,
-        mode: img.mode,
-        imageUrlSig: img.imageDataUrl?.length ?? 0,
-        underlayOpacityPct: img.underlayOpacityPct,
-        cropRect: img.cropRect,
-        appliedCrop: img.appliedCrop,
-        panX: img.panX,
-        panY: img.panY,
-        imageZoom: img.imageZoom,
-        threshold: img.threshold,
-        darkIsFilled: img.darkIsFilled,
-        positionLocked: img.positionLocked,
-      })),
-      activeImageId: imageDocument.activeImageId,
-    }),
-    [gridW, gridH, cells, palette, yarnSettings, progress, imageDocument, manilaStock],
+    [gridW, gridH, setProgress],
   );
 
   const handleSaveDisplayName = useCallback(
@@ -776,62 +630,11 @@ export function EditorWorkspace({
     [supabase, user, displayName],
   );
 
-  const persistPattern = useCallback(async () => {
-    if (!supabase || !user || !selectedPatternId || !activePattern) return;
-    const thumbnail = generateGridThumbnail(cells, { stockId: manilaStock, palette });
-    const { error } = await upsertPattern(supabase, {
-      id: selectedPatternId,
-      user_id: user.id,
-      name: activePattern.name,
-      grid_width: gridW,
-      grid_height: gridH,
-      grid_data: serializeGridCells(cells, palette),
-      progress_data: serializeProgressData(progress),
-      yarn_settings: serializePatternYarnSettings(yarnSettings),
-      image_settings: serializeImageDocument(imageDocument, { manila_stock: manilaStock }),
-      thumbnail: thumbnail || null,
-    });
-    if (error) {
-      console.error(error);
-      Sentry.captureException(error);
-    }
-  }, [supabase, user, selectedPatternId, activePattern, gridW, gridH, cells, palette, yarnSettings, progress, imageDocument, manilaStock]);
-
-  const [saveIndicator, setSaveIndicator] = useState<"idle" | "pending" | "saving" | "saved">("idle");
-  const savedTimerRef = useRef<number | undefined>(undefined);
-  const dirtyKeyMountRef = useRef(false);
-  const isLoadingRef = useRef(false);
-
-  // Reset the mount guard on pattern switch so the load's dirtyKey change is skipped
-  useEffect(() => {
-    dirtyKeyMountRef.current = false;
-  }, [selectedPatternId]);
-
-  // Mark pending whenever the user changes something (skip initial mount)
-  useEffect(() => {
-    if (!dirtyKeyMountRef.current) { dirtyKeyMountRef.current = true; return; }
-    setSaveIndicator((prev) => (prev === "saving" ? prev : "pending"));
-  }, [dirtyKey]);
-
-  // Shared save handler — used by both autosave and the manual Save button
-  const handleSave = useCallback(async () => {
-    if (!supabase || !user || !selectedPatternId || !activePattern) return;
-    if (isLoadingRef.current) return;
-    setSaveIndicator("saving");
-    await persistPattern();
-    setSaveIndicator("saved");
-    if (savedTimerRef.current) window.clearTimeout(savedTimerRef.current);
-    savedTimerRef.current = window.setTimeout(
-      () => setSaveIndicator("idle"),
-      2500,
-    ) as unknown as number;
-  }, [supabase, user, selectedPatternId, activePattern, persistPattern]);
-
   useAutoSave({
-    enabled: Boolean(supabase && user && selectedPatternId && activePattern),
+    enabled: docStatus === "ready",
     delayMs: 800,
     dirtyKey,
-    onSave: handleSave,
+    onSave: save,
   });
 
   const hasOpenProgram = selectedPatternId !== null;
@@ -890,7 +693,7 @@ export function EditorWorkspace({
                     if (selectedPatternId) {
                       void handleRenamePattern(selectedPatternId, next);
                     } else {
-                      setDraftTitle(next);
+                      setName(next);
                     }
                     setIsRenamingTitle(false);
                   }}
@@ -900,7 +703,7 @@ export function EditorWorkspace({
                       if (selectedPatternId) {
                         void handleRenamePattern(selectedPatternId, next);
                       } else {
-                        setDraftTitle(next);
+                        setName(next);
                       }
                       setIsRenamingTitle(false);
                     } else if (e.key === "Escape") {
@@ -946,7 +749,7 @@ export function EditorWorkspace({
                         ? "#C9A227"
                         : saveIndicator === "saved"
                           ? "#2E7D4F"
-                          : saveIndicator === "pending"
+                          : saveIndicator === "pending" || saveIndicator === "error"
                             ? "#C62828"
                             : "#2E7D4F",
                     boxShadow:
@@ -964,7 +767,9 @@ export function EditorWorkspace({
                     ? "Saved"
                     : saveIndicator === "pending"
                       ? "Unsaved"
-                      : "Autosave on"}
+                      : saveIndicator === "error"
+                        ? "Save failed"
+                        : "Autosave on"}
               </span>
             )}
           </div>
@@ -1069,7 +874,9 @@ export function EditorWorkspace({
                   bottomLabel="Lock"
                   on={editLocked}
                   orientation="vertical"
-                  onClick={() => setEditLocked((v) => !v)}
+                  onClick={() =>
+                    setProgress((p) => ({ ...p, editLocked: !p.editLocked }))
+                  }
                   title={editLocked ? "Unlock editing" : "Lock editing"}
                 />
               </div>
@@ -1122,6 +929,17 @@ export function EditorWorkspace({
               >
                 Yarn
               </button>
+              <button
+                type="button"
+                onClick={() => setNotesOpen((p) => !p)}
+                className={`punch-lamp punch-lamp-blue !min-h-[32px] !px-2.5 text-[9px] ${
+                  notesOpen ? "is-lit" : ""
+                }`}
+                title="Private notes"
+                aria-pressed={notesOpen}
+              >
+                Notes
+              </button>
               {user && (
                 <button
                   id="tutorial-save"
@@ -1131,7 +949,7 @@ export function EditorWorkspace({
                     (Boolean(selectedPatternId) && saveIndicator === "saving")
                   }
                   onClick={() => {
-                    if (selectedPatternId) void handleSave();
+                    if (selectedPatternId) void save();
                     else void handleCreateNew();
                   }}
                   className="punch-lamp punch-lamp-green !min-h-[32px] !px-2.5 text-[9px]"
@@ -1220,7 +1038,7 @@ export function EditorWorkspace({
               patterns={patterns}
               patternsLoading={patternsLoading}
               selectedPatternId={selectedPatternId}
-              onSelectPattern={(id) => { setSelectedPatternId(id); setSidebarOpen(false); }}
+              onSelectPattern={(id) => { selectPattern(id); setSidebarOpen(false); }}
               onCreateNew={handleCreateNew}
               onOpenAuth={() => setAuthModalOpen(true)}
               onRenamePattern={handleRenamePattern}
@@ -1399,6 +1217,7 @@ export function EditorWorkspace({
                       progress={progress}
                       onToggleRowComplete={handleToggleRowComplete}
                       trackMode={progress.trackMode}
+                      mirrorView={progress.mirrorView}
                       savedImageDocument={imageDocument}
                       imageSettingsLoadKey={imageSettingsLoadKey}
                       onImageDocumentChange={handleImageDocumentChange}
@@ -1438,17 +1257,33 @@ export function EditorWorkspace({
                           }}
                         />
                       </div>
+                      <RotaryKnob
+                        label="Track"
+                        value={progress.trackMode}
+                        options={[
+                          { value: "row", label: "Row" },
+                          { value: "col", label: "Col" },
+                          { value: "diag", label: "Diag" },
+                        ]}
+                        onChange={handleSetTrackMode}
+                        accent="#0A0A0A"
+                        pointer="#FFFFFF"
+                        dial="var(--key-blue)"
+                        size={32}
+                      />
                       <FlipSwitch
-                        topLabel="Row"
-                        bottomLabel="Diag"
-                        on={progress.trackMode === "diag"}
+                        topLabel="Face"
+                        bottomLabel="Flip"
+                        on={progress.mirrorView}
                         orientation="vertical"
                         size="sm"
-                        onClick={handleToggleTrackMode}
+                        onClick={() =>
+                          setProgress((p) => ({ ...p, mirrorView: !p.mirrorView }))
+                        }
                         title={
-                          progress.trackMode === "diag"
-                            ? "Switch to row tracking"
-                            : "Switch to diagonal tracking (C2C)"
+                          progress.mirrorView
+                            ? "Show the face of the work"
+                            : "Mirror view — match turned work"
                         }
                       />
                       <button
@@ -1457,7 +1292,7 @@ export function EditorWorkspace({
                         onClick={() => handleStepCurrentRow(-1)}
                         className="punch-lamp punch-lamp-orange !min-h-[28px] !px-2 text-[9px] disabled:opacity-40"
                       >
-                        {progress.trackMode === "diag" ? "← Diag" : "← Row"}
+                        ← {progress.trackMode === "diag" ? "Diag" : progress.trackMode === "col" ? "Col" : "Row"}
                       </button>
                       <button
                         type="button"
@@ -1465,7 +1300,7 @@ export function EditorWorkspace({
                         onClick={() => handleStepCurrentRow(1)}
                         className="punch-lamp punch-lamp-orange !min-h-[28px] !px-2 text-[9px] disabled:opacity-40"
                       >
-                        {progress.trackMode === "diag" ? "Diag →" : "Row →"}
+                        {progress.trackMode === "diag" ? "Diag" : progress.trackMode === "col" ? "Col" : "Row"} →
                       </button>
                       <span className="font-mono text-[10px]" style={{ color: "rgba(10,10,10,0.55)" }}>
                         <span className="font-bold" style={{ color: "#0A0A0A" }}>{filledCellCount}</span> filled ·{" "}
@@ -1668,6 +1503,54 @@ export function EditorWorkspace({
                 <button
                   type="button"
                   onClick={() => setYarnOpen(false)}
+                  className="punch-print text-[11px] opacity-70"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {notesOpen &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+            <button
+              type="button"
+              className="absolute inset-0 bg-recess/70"
+              aria-label="Close panel"
+              onClick={() => setNotesOpen(false)}
+            />
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Private notes"
+              onPointerDown={(e) => e.stopPropagation()}
+              className="punch-card relative z-10 flex min-h-[18rem] max-h-[85vh] w-full max-w-sm flex-col overflow-hidden px-6 py-5"
+              style={{
+                ["--manila-stock" as string]: manilaHex(DEFAULT_MANILA_STOCK),
+              }}
+            >
+              <OperatorCardHeader className="shrink-0" title="Notes card" colLabel="JOB NOTE" />
+              <p className="mt-3 font-mono text-[9px] uppercase tracking-[0.08em] punch-print-faint">
+                Private · not copied
+              </p>
+              <textarea
+                value={notes}
+                maxLength={OWNER_NOTES_MAX}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Hook, yarn, tension, whatever you want to remember."
+                className="mt-3 min-h-[10rem] w-full flex-1 resize-none bg-transparent font-mono text-[12px] leading-relaxed punch-print-ink placeholder:text-[var(--print-ink-faint)] focus:outline-none"
+              />
+              <div className="mt-auto flex shrink-0 items-center justify-between gap-3 pt-4">
+                <span className="font-mono text-[9px] punch-print-faint">
+                  {notes.length}/{OWNER_NOTES_MAX}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setNotesOpen(false)}
                   className="punch-print text-[11px] opacity-70"
                 >
                   Close

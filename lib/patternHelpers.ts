@@ -29,6 +29,7 @@ export type Pattern = {
   likes_count?: number;
   copies_count?: number;
   updated_at: string;
+  owner_notes?: string;
 };
 
 export type PatternInsert = Omit<Pattern, "id" | "updated_at" | "likes_count" | "copies_count"> & {
@@ -37,6 +38,27 @@ export type PatternInsert = Omit<Pattern, "id" | "updated_at" | "likes_count" | 
 };
 
 export type PatternUpsert = PatternInsert;
+
+/** PostgrestError is a plain object — casting it as Error prints `{}`. */
+export function toDbError(error: unknown): Error | null {
+  if (!error) return null;
+  if (error instanceof Error) return error;
+  if (typeof error === "object") {
+    const e = error as { message?: string; code?: string; details?: string; hint?: string };
+    const parts = [
+      e.message,
+      e.code ? `(${e.code})` : "",
+      e.details,
+      e.hint,
+    ].filter((p) => p && String(p).trim().length > 0);
+    const err = new Error(parts.join(" ") || "Database error");
+    if (e.code) (err as Error & { code: string }).code = e.code;
+    if (e.details) (err as Error & { details: string }).details = e.details;
+    if (e.hint) (err as Error & { hint: string }).hint = e.hint;
+    return err;
+  }
+  return new Error(String(error));
+}
 
 export async function fetchPatternsForUser(
   supabase: SupabaseClient,
@@ -48,7 +70,7 @@ export async function fetchPatternsForUser(
     .eq("user_id", userId)
     .order("updated_at", { ascending: false });
 
-  return { data: data as Pattern[] | null, error: error as Error | null };
+  return { data: data as Pattern[] | null, error: toDbError(error) };
 }
 
 export async function fetchPatternById(
@@ -63,7 +85,7 @@ export async function fetchPatternById(
     .eq("user_id", userId)
     .maybeSingle();
 
-  return { data: data as Pattern | null, error: error as Error | null };
+  return { data: data as Pattern | null, error: toDbError(error) };
 }
 
 export async function upsertPattern(
@@ -76,7 +98,7 @@ export async function upsertPattern(
     .select()
     .single();
 
-  return { data: data as Pattern | null, error: error as Error | null };
+  return { data: data as Pattern | null, error: toDbError(error) };
 }
 
 export async function deletePattern(
@@ -90,7 +112,7 @@ export async function deletePattern(
     .eq("id", id)
     .eq("user_id", userId);
 
-  return { error: error as Error | null };
+  return { error: toDbError(error) };
 }
 
 /** Create a blank Untitled 10×40 pattern for the given user. */

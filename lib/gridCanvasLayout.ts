@@ -8,6 +8,12 @@ export const MAX_CELL = 32;
 export type GridCanvasLayoutOptions = {
   /** Extra width (px) reserved left of the grid for row tracker (checkbox + label). */
   rowSidebarPx?: number;
+  /** Extra height (px) under column labels for column-tracker checkboxes. */
+  colSidebarPx?: number;
+  /** Extra height (px) below the grid for trailing diagonal checkboxes. */
+  bottomSidebarPx?: number;
+  /** Extra width (px) right of the grid for trailing diagonal checkboxes. */
+  rightSidebarPx?: number;
   /** Skip fit-to-container calculation and use this exact cell size. */
   forcedCell?: number;
   /** When true with `forcedCell`, center the grid in the usable area instead of flush to gutters. */
@@ -15,12 +21,15 @@ export type GridCanvasLayoutOptions = {
 };
 
 export type GridCanvasLayout = {
-  /** Top gutter for column labels. */
+  /** Top gutter for column labels (+ optional col checkboxes). */
   topGutter: number;
   /** Total left inset before grid (corner + optional row sidebar). */
   leftGutter: number;
   /** Width reserved for checkbox column (0 if disabled). */
   rowSidebarPx: number;
+  colSidebarPx: number;
+  bottomSidebarPx: number;
+  rightSidebarPx: number;
   /** @deprecated use topGutter */
   label: number;
   cell: number;
@@ -39,11 +48,14 @@ export function computeGridCanvasLayout(
   gridHeight: number,
   options?: GridCanvasLayoutOptions,
 ): GridCanvasLayout {
-  const topGutter = LABEL_SIZE;
   const rowSidebarPx = options?.rowSidebarPx ?? 0;
+  const colSidebarPx = options?.colSidebarPx ?? 0;
+  const bottomSidebarPx = options?.bottomSidebarPx ?? 0;
+  const rightSidebarPx = options?.rightSidebarPx ?? 0;
+  const topGutter = LABEL_SIZE + colSidebarPx;
   const leftGutter = LABEL_SIZE + rowSidebarPx;
-  const usableW = cssW - leftGutter;
-  const usableH = cssH - topGutter;
+  const usableW = cssW - leftGutter - rightSidebarPx;
+  const usableH = cssH - topGutter - bottomSidebarPx;
   const forcedCell = options?.forcedCell;
   const cell =
     forcedCell != null
@@ -58,6 +70,9 @@ export function computeGridCanvasLayout(
     topGutter,
     leftGutter,
     rowSidebarPx,
+    colSidebarPx,
+    bottomSidebarPx,
+    rightSidebarPx,
     label: topGutter,
     cell,
     offsetX,

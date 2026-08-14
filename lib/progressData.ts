@@ -1,13 +1,25 @@
+import { DEFAULT_CRAFT_MODE, parseCraftMode, type CraftMode } from "@/lib/craftMode";
 import type { Json } from "@/lib/patternHelpers";
 
-export type TrackMode = "row" | "diag";
+export const TRACK_MODES = ["row", "col", "diag"] as const;
+export type TrackMode = (typeof TRACK_MODES)[number];
 
 export type PatternProgressState = {
   trackMode: TrackMode;
-  /** Length = gridHeight (row) or gridWidth+gridHeight-1 (diag). */
+  /** Length = trackLength(mode, w, h). Index 0 is first row (top) / left col / first diagonal. */
   rowComplete: boolean[];
-  /** Active track index, 0-based (row or diagonal). */
+  /** Active track index, 0-based (row, column, or diagonal). */
   currentRow: number;
+  editLocked: boolean;
+  /** View-only horizontal mirror (turned work). */
+  mirrorView: boolean;
+  craft: CraftMode;
+};
+
+export type DiagAnchor = {
+  edge: "left" | "bottom" | "right";
+  row: number;
+  col: number;
 };
 
 export function diagonalCount(gridWidth: number, gridHeight: number): number {
@@ -20,7 +32,9 @@ export function trackLength(
   gridWidth: number,
   gridHeight: number,
 ): number {
-  return mode === "diag" ? diagonalCount(gridWidth, gridHeight) : Math.max(0, gridHeight);
+  if (mode === "diag") return diagonalCount(gridWidth, gridHeight);
+  if (mode === "col") return Math.max(0, gridWidth);
+  return Math.max(0, gridHeight);
 }
 
 export function defaultProgressState(
@@ -33,6 +47,9 @@ export function defaultProgressState(
     trackMode,
     rowComplete: Array.from({ length: len }, () => false),
     currentRow: 0,
+    editLocked: false,
+    mirrorView: false,
+    craft: DEFAULT_CRAFT_MODE,
   };
 }
 
@@ -54,10 +71,16 @@ export function resizeProgressForGrid(
 ): PatternProgressState {
   const len = trackLength(trackMode, gridWidth, gridHeight);
   return {
+    ...prev,
     trackMode,
     rowComplete: resizeRowComplete(prev.rowComplete, len),
     currentRow: clampCurrentRow(prev.currentRow, len),
   };
+}
+
+function parseTrackMode(v: unknown): TrackMode {
+  if (v === "col" || v === "diag" || v === "row") return v;
+  return "row";
 }
 
 export function parseProgressData(
@@ -70,7 +93,7 @@ export function parseProgressData(
     return base;
   }
   const o = data as Record<string, unknown>;
-  const trackMode: TrackMode = o.trackMode === "diag" ? "diag" : "row";
+  const trackMode = parseTrackMode(o.trackMode);
   const len = trackLength(trackMode, gridWidth, gridHeight);
 
   let rowComplete = Array.from({ length: len }, () => false);
@@ -84,7 +107,14 @@ export function parseProgressData(
     currentRow = clampCurrentRow(o.currentRow, len);
   }
 
-  return { trackMode, rowComplete, currentRow };
+  return {
+    trackMode,
+    rowComplete,
+    currentRow,
+    editLocked: o.editLocked === true,
+    mirrorView: o.mirrorView === true,
+    craft: parseCraftMode(o.craft),
+  };
 }
 
 export function serializeProgressData(p: PatternProgressState): Json {
@@ -92,5 +122,42 @@ export function serializeProgressData(p: PatternProgressState): Json {
     trackMode: p.trackMode,
     rowComplete: p.rowComplete,
     currentRow: p.currentRow,
+    editLocked: p.editLocked,
+    mirrorView: p.mirrorView,
+    craft: p.craft,
   } as Json;
+}
+
+/** Data-row index (0 = top of the cell array) for track index 0 = top. */
+export function dataRowForTrack(trackIndex: number, _gridHeight?: number): number {
+  return trackIndex;
+}
+
+/** Row number (1-based, top is 1) for a data-row index. */
+export function crochetRowLabel(dataRow: number, _gridHeight?: number): number {
+  return dataRow + 1;
+}
+
+/**
+ * Where to park the checkbox for C2C diagonal `d` (cells with r + c === d).
+ * Early diagonals sit on the left; the rest sit on the bottom (or right if needed).
+ */
+export function diagonalAnchor(
+  d: number,
+  gridWidth: number,
+  gridHeight: number,
+): DiagAnchor {
+  if (d < gridHeight) {
+    return { edge: "left", row: d, col: 0 };
+  }
+  const bottomCol = d - (gridHeight - 1);
+  if (bottomCol >= 0 && bottomCol < gridWidth) {
+    return { edge: "bottom", row: gridHeight - 1, col: bottomCol };
+  }
+  const rightRow = d - (gridWidth - 1);
+  return {
+    edge: "right",
+    row: Math.max(0, Math.min(gridHeight - 1, rightRow)),
+    col: Math.max(0, gridWidth - 1),
+  };
 }

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 
 export type UseAutoSaveOptions = {
-  /** When false, no timer is scheduled. */
+  /** When false, no timer is scheduled. A pending write is flushed when enabled drops. */
   enabled: boolean;
   /** Debounce after the last dirty change (default 2000 ms). */
   delayMs?: number;
@@ -12,26 +12,40 @@ export type UseAutoSaveOptions = {
 };
 
 /**
- * Debounced save: schedules `onSave` when `dirtyKey` changes, after `delayMs` of quiet time.
- * Flushes immediately on unmount, page hide, or tab backgrounding so zone switches do not
- * drop pending edits. DirtyKey reschedules only reset the timer (normal debounce).
+ * Debounced save. Dirty-key changes reschedule the timer but keep the pending flag.
+ * Pending work is flushed on tab hide, pagehide, beforeunload, disable, and unmount.
+ * Saves are chained so a flush waits for an in-flight upsert.
  */
 export function useAutoSave({ enabled, delayMs = 2000, dirtyKey, onSave }: UseAutoSaveOptions): void {
   const onSaveRef = useRef(onSave);
   const pendingRef = useRef(false);
   const timerRef = useRef<number | undefined>(undefined);
+  const chainRef = useRef(Promise.resolve());
 
   useEffect(() => {
     onSaveRef.current = onSave;
   }, [onSave]);
 
-  // Debounce: reschedule on dirtyKey; clear timer without flushing.
+  const runSave = () => {
+    chainRef.current = chainRef.current
+      .then(() => onSaveRef.current())
+      .catch(() => undefined);
+    return chainRef.current;
+  };
+
+  const flushPending = () => {
+    if (timerRef.current !== undefined) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = undefined;
+    }
+    if (!pendingRef.current) return;
+    pendingRef.current = false;
+    void runSave();
+  };
+
   useEffect(() => {
     if (!enabled) {
-      if (timerRef.current !== undefined) {
-        window.clearTimeout(timerRef.current);
-        timerRef.current = undefined;
-      }
+      flushPending();
       return;
     }
 
@@ -39,7 +53,7 @@ export function useAutoSave({ enabled, delayMs = 2000, dirtyKey, onSave }: UseAu
     timerRef.current = window.setTimeout(() => {
       timerRef.current = undefined;
       pendingRef.current = false;
-      void onSaveRef.current();
+      void runSave();
     }, delayMs);
 
     return () => {
@@ -47,34 +61,27 @@ export function useAutoSave({ enabled, delayMs = 2000, dirtyKey, onSave }: UseAu
         window.clearTimeout(timerRef.current);
         timerRef.current = undefined;
       }
+      // Keep pending so hide/unmount/disable still flush the latest refs.
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, delayMs, dirtyKey]);
 
-  // Flush on leave: unmount, disable, tab hide, or pagehide.
   useEffect(() => {
-    if (!enabled) return;
-
-    const flushPending = () => {
-      if (timerRef.current !== undefined) {
-        window.clearTimeout(timerRef.current);
-        timerRef.current = undefined;
-      }
-      if (!pendingRef.current) return;
-      pendingRef.current = false;
-      void onSaveRef.current();
-    };
-
     const onVisibility = () => {
       if (document.visibilityState === "hidden") flushPending();
     };
+    const onHide = () => flushPending();
 
     document.addEventListener("visibilitychange", onVisibility);
-    window.addEventListener("pagehide", flushPending);
+    window.addEventListener("pagehide", onHide);
+    window.addEventListener("beforeunload", onHide);
 
     return () => {
       document.removeEventListener("visibilitychange", onVisibility);
-      window.removeEventListener("pagehide", flushPending);
+      window.removeEventListener("pagehide", onHide);
+      window.removeEventListener("beforeunload", onHide);
       flushPending();
     };
-  }, [enabled]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 }

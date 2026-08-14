@@ -14,6 +14,12 @@ import {
   ROW_TRACKER_SIDEBAR_PX,
   type GridCanvasLayout,
 } from "@/lib/gridCanvasLayout";
+import {
+  crochetRowLabel,
+  dataRowForTrack,
+  diagonalAnchor,
+  type TrackMode,
+} from "@/lib/progressData";
 import { drawImageWithTransform, type CropRect } from "@/lib/imageCanvasUtils";
 import { contrastManilaHexFromPaper, hexWithAlpha } from "@/lib/manilaStock";
 import { clamp } from "@/lib/mathUtils";
@@ -63,8 +69,10 @@ export type GridCanvasProps = {
   rowComplete?: boolean[];
   currentRow?: number;
   onToggleRowComplete?: (row: number) => void;
-  /** Row = horizontal band; diag = C2C-style r+c diagonal. */
-  trackMode?: "row" | "diag";
+  /** Row = horizontal band (from top); col = vertical; diag = C2C-style r+c diagonal. */
+  trackMode?: TrackMode;
+  /** View-only horizontal mirror so turned work matches the chart. */
+  mirrorView?: boolean;
   /** Manila card stock fill for empty cells / paper. */
   paperColor?: string;
   /** Called when fullscreen state toggles. */
@@ -102,6 +110,8 @@ function fillMarginsOutsideGrid(
   if (gy1 < y1) ctx.fillRect(x0, gy1, areaW, y1 - gy1);
   if (gx0 > x0) ctx.fillRect(x0, gy0, gx0 - x0, gridHpx);
   if (gx1 < x1) ctx.fillRect(gx1, gy0, x1 - gx1, gridHpx);
+  if (gy1 < cssH) ctx.fillRect(0, gy1, cssW, cssH - gy1);
+  if (gx1 < cssW) ctx.fillRect(gx1, 0, cssW - gx1, cssH);
 }
 
 function paintLine(
@@ -149,6 +159,47 @@ function labelStep(cellPx: number): number {
   return 10;
 }
 
+function TrackCheckMark({
+  done,
+  label,
+  ariaLabel,
+  onToggle,
+}: {
+  done: boolean;
+  label: string;
+  ariaLabel: string;
+  onToggle: () => void;
+}) {
+  return (
+    <label className="flex h-full w-full cursor-pointer items-center justify-center gap-0.5">
+      <input type="checkbox" checked={done} onChange={onToggle} className="sr-only" aria-label={ariaLabel} />
+      <span
+        className="relative inline-flex shrink-0 items-center justify-center"
+        style={{
+          width: 18,
+          height: 18,
+          borderRadius: 2,
+          border: done ? "2px solid #0A0A0A" : "2px solid rgba(10,10,10,0.45)",
+          background: "transparent",
+        }}
+      >
+        {done && (
+          <svg viewBox="0 0 12 10" width="12" height="10" fill="none" stroke="#0A0A0A" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M1.5 5l3 3 6-6" />
+          </svg>
+        )}
+      </span>
+      <span
+        className={`min-w-[1.1rem] text-center font-mono text-[11px] font-bold tabular-nums ${
+          done ? "line-through text-black/55" : "text-black"
+        }`}
+      >
+        {label}
+      </span>
+    </label>
+  );
+}
+
 export function GridCanvas({
   gridWidth,
   gridHeight,
@@ -168,6 +219,7 @@ export function GridCanvas({
   currentRow = 0,
   onToggleRowComplete,
   trackMode = "row",
+  mirrorView = false,
   onFullscreenChange,
   hideFullscreenEntry = false,
   enterFullscreenRef,
@@ -189,7 +241,9 @@ export function GridCanvas({
   const brushRef = useRef<CellValue>(0);
   const rafRef = useRef(0);
   const paletteRef = useRef(palette);
-  paletteRef.current = palette;
+  useEffect(() => {
+    paletteRef.current = palette;
+  }, [palette]);
 
   const resolvedUnderlays = useMemo((): GridUnderlayLayer[] => {
     if (underlays && underlays.length > 0) {
@@ -218,17 +272,30 @@ export function GridCanvas({
     Array.isArray(rowComplete) &&
     (trackMode === "row"
       ? rowComplete.length === gridHeight
-      : rowComplete.length === gridWidth + gridHeight - 1);
+      : trackMode === "col"
+        ? rowComplete.length === gridWidth
+        : rowComplete.length === gridWidth + gridHeight - 1);
 
-  // Same eligibility as highlight — row and diag both get the checkbox sidebar.
   const showRowTracker = showTrackHighlight;
+  const rowSidebarPx = showRowTracker && (trackMode === "row" || trackMode === "diag") ? ROW_TRACKER_SIDEBAR_PX : 0;
+  const colSidebarPx = showRowTracker && trackMode === "col" ? ROW_TRACKER_SIDEBAR_PX : 0;
+  const bottomSidebarPx = showRowTracker && trackMode === "diag" ? ROW_TRACKER_SIDEBAR_PX : 0;
 
   const layoutOpts = useMemo(
-    () => (showRowTracker ? { rowSidebarPx: ROW_TRACKER_SIDEBAR_PX } : undefined),
-    [showRowTracker],
+    () =>
+      showRowTracker
+        ? { rowSidebarPx, colSidebarPx, bottomSidebarPx }
+        : undefined,
+    [showRowTracker, rowSidebarPx, colSidebarPx, bottomSidebarPx],
   );
 
-  const leftGutter = LABEL_SIZE + (showRowTracker ? ROW_TRACKER_SIDEBAR_PX : 0);
+  const leftGutter = LABEL_SIZE + rowSidebarPx;
+  const topGutterFit = LABEL_SIZE + colSidebarPx;
+
+  const visualCol = useCallback(
+    (c: number) => (mirrorView ? gridWidth - 1 - c : c),
+    [mirrorView, gridWidth],
+  );
 
   /**
    * Fit: columns fill container width; canvas may scroll vertically.
@@ -243,16 +310,16 @@ export function GridCanvas({
       return {
         cell: widthFitCell,
         canvasCssW: containerSize.cssW,
-        canvasCssH: LABEL_SIZE + widthFitCell * gridHeight,
+        canvasCssH: topGutterFit + widthFitCell * gridHeight + bottomSidebarPx,
       };
     }
     const cell = Math.max(4, Math.round(widthFitCell * (zoom / 100)));
     return {
       cell,
       canvasCssW: leftGutter + gridWidth * cell,
-      canvasCssH: LABEL_SIZE + gridHeight * cell,
+      canvasCssH: topGutterFit + gridHeight * cell + bottomSidebarPx,
     };
-  }, [containerSize, zoom, gridWidth, gridHeight, leftGutter]);
+  }, [containerSize, zoom, gridWidth, gridHeight, leftGutter, topGutterFit, bottomSidebarPx]);
 
   const { cell: effectiveCell, canvasCssW, canvasCssH } = zoomMetrics;
 
@@ -278,7 +345,7 @@ export function GridCanvas({
       const opts = { ...(layoutOpts ?? {}), forcedCell: effectiveCell };
       const layout = computeGridCanvasLayout(cssW, cssH, gridWidth, gridHeight, opts);
       queueMicrotask(() => setLayoutState(layout));
-      const { topGutter, offsetX, offsetY, gridWpx, gridHpx, cell } = layout;
+      const { offsetX, offsetY, gridWpx, gridHpx, cell } = layout;
 
       const data = draftRef.current ?? cells;
 
@@ -327,20 +394,20 @@ export function GridCanvas({
 
       for (let c = 0; c < gridWidth; c++) {
         if (c % step !== 0 && c !== gridWidth - 1) continue;
-        const x = offsetX + c * cell + cell / 2;
-        ctx.fillText(String(c + 1), x, topGutter / 2);
+        const x = offsetX + visualCol(c) * cell + cell / 2;
+        ctx.fillText(String(c + 1), x, LABEL_SIZE / 2);
       }
-      if (!showRowTracker) {
+      if (trackMode !== "row" && trackMode !== "diag") {
         for (let r = 0; r < gridHeight; r++) {
           if (r % step !== 0 && r !== gridHeight - 1) continue;
           const y = offsetY + r * cell + cell / 2;
-          ctx.fillText(String(r + 1), LABEL_SIZE / 2, y);
+          ctx.fillText(String(crochetRowLabel(r, gridHeight)), LABEL_SIZE / 2, y);
         }
       }
 
       for (let r = 0; r < gridHeight; r++) {
         for (let c = 0; c < gridWidth; c++) {
-          const x = offsetX + c * cell;
+          const x = offsetX + visualCol(c) * cell;
           const y = offsetY + r * cell;
           const value = data[r]?.[c];
           if (isCellFilled(value)) {
@@ -358,17 +425,22 @@ export function GridCanvas({
       const tint = hexWithAlpha(contrastManilaHexFromPaper(paperColor || "#E8E2D0"), 0.55);
       const cr = showTrackHighlight ? currentRow : -1;
       if (trackMode === "row" && cr >= 0 && cr < gridHeight) {
+        const dataRow = dataRowForTrack(cr, gridHeight);
         const hx = 0;
-        const hy = offsetY + cr * cell;
+        const hy = offsetY + dataRow * cell;
         const hw = offsetX + gridWpx;
         ctx.fillStyle = tint;
         ctx.fillRect(hx, hy, hw, cell);
+      } else if (trackMode === "col" && cr >= 0 && cr < gridWidth) {
+        const hx = offsetX + visualCol(cr) * cell;
+        ctx.fillStyle = tint;
+        ctx.fillRect(hx, offsetY, cell, gridHpx);
       } else if (trackMode === "diag" && cr >= 0) {
         ctx.fillStyle = tint;
         for (let r = 0; r < gridHeight; r++) {
           const c = cr - r;
           if (c < 0 || c >= gridWidth) continue;
-          const x = offsetX + c * cell;
+          const x = offsetX + visualCol(c) * cell;
           const y = offsetY + r * cell;
           ctx.fillRect(x, y, cell, cell);
         }
@@ -376,7 +448,6 @@ export function GridCanvas({
     });
   }, [
     cells,
-    palette,
     gridWidth,
     gridHeight,
     canvasCssW,
@@ -384,13 +455,12 @@ export function GridCanvas({
     effectiveCell,
     showUnderlay,
     resolvedUnderlays,
-    showRowTracker,
     showTrackHighlight,
-    rowComplete,
     currentRow,
     trackMode,
     layoutOpts,
     paperColor,
+    visualCol,
   ]);
 
   useEffect(() => {
@@ -482,7 +552,11 @@ export function GridCanvas({
       }
       return;
     }
-    const rowTop = offsetY + currentRow * cell;
+    if (trackMode === "col") {
+      return;
+    }
+    const dataRow = dataRowForTrack(currentRow, gridHeight);
+    const rowTop = offsetY + dataRow * cell;
     const rowBottom = rowTop + cell;
     const { scrollTop, clientHeight } = container;
     if (rowTop < scrollTop) {
@@ -505,13 +579,14 @@ export function GridCanvas({
       const px = x - offsetX;
       const py = y - offsetY;
       if (px < 0 || py < 0) return null;
-      const col = Math.floor(px / cellSize);
+      const colRaw = Math.floor(px / cellSize);
       const row = Math.floor(py / cellSize);
+      const col = mirrorView ? gridWidth - 1 - colRaw : colRaw;
       if (row < 0 || row >= gridHeight || col < 0 || col >= gridWidth) return null;
       if (px >= gridWpx || py >= gridHpx) return null;
       return { r: row, c: col };
     },
-    [gridWidth, gridHeight, canvasCssW, canvasCssH, effectiveCell, layoutOpts],
+    [gridWidth, gridHeight, canvasCssW, canvasCssH, effectiveCell, layoutOpts, mirrorView],
   );
 
   const endStroke = useCallback(() => {
@@ -596,64 +671,82 @@ export function GridCanvas({
       >
         <div ref={wrapRef} className="absolute inset-0 overflow-auto">
           {showRowTracker && layoutState && rowComplete && onToggleRowComplete ? (
-            <div
-              className="pointer-events-auto absolute z-20 flex flex-col"
-              style={{
-                left: LABEL_SIZE,
-                top: layoutState.offsetY,
-                width: ROW_TRACKER_SIDEBAR_PX,
-                height: layoutState.gridHpx,
-              }}
-            >
-              {rowComplete.map((done, r) => {
-                const itemH =
-                  trackMode === "diag"
-                    ? layoutState.gridHpx / rowComplete.length
-                    : layoutState.cell;
-                return (
-                <label
-                  key={r}
-                  className="flex shrink-0 cursor-pointer items-center justify-center gap-1"
-                  style={{ height: itemH }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={done}
-                    onChange={() => onToggleRowComplete(r)}
-                    className="sr-only"
-                    aria-label={
-                      trackMode === "diag"
-                        ? `Diagonal ${r + 1} complete`
-                        : `Row ${r + 1} complete`
-                    }
-                  />
-                  <span
-                    className="relative inline-flex shrink-0 items-center justify-center"
-                    style={{
-                      width: 18,
-                      height: 18,
-                      borderRadius: 2,
-                      border: done ? "2px solid #0A0A0A" : "2px solid rgba(10,10,10,0.45)",
-                      background: "transparent",
-                    }}
-                  >
-                    {done && (
-                      <svg viewBox="0 0 12 10" width="12" height="10" fill="none" stroke="#0A0A0A" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M1.5 5l3 3 6-6" />
-                      </svg>
-                    )}
-                  </span>
-                  <span
-                    className={`min-w-[1.1rem] text-center font-mono text-[11px] font-bold tabular-nums ${
-                      done ? "line-through text-black/55" : "text-black"
-                    }`}
-                  >
-                    {r + 1}
-                  </span>
-                </label>
-                );
-              })}
-            </div>
+            <>
+              {trackMode === "row"
+                ? rowComplete.map((done, i) => {
+                    const dataRow = dataRowForTrack(i, gridHeight);
+                    return (
+                      <div
+                        key={`row-${i}`}
+                        className="pointer-events-auto absolute z-20"
+                        style={{
+                          left: LABEL_SIZE,
+                          top: layoutState.offsetY + dataRow * layoutState.cell,
+                          width: ROW_TRACKER_SIDEBAR_PX,
+                          height: layoutState.cell,
+                        }}
+                      >
+                        <TrackCheckMark
+                          done={done}
+                          label={String(i + 1)}
+                          ariaLabel={`Row ${i + 1} complete`}
+                          onToggle={() => onToggleRowComplete(i)}
+                        />
+                      </div>
+                    );
+                  })
+                : null}
+              {trackMode === "col"
+                ? rowComplete.map((done, i) => (
+                    <div
+                      key={`col-${i}`}
+                      className="pointer-events-auto absolute z-20"
+                      style={{
+                        left: layoutState.offsetX + visualCol(i) * layoutState.cell,
+                        top: LABEL_SIZE,
+                        width: layoutState.cell,
+                        height: ROW_TRACKER_SIDEBAR_PX,
+                      }}
+                    >
+                      <TrackCheckMark
+                        done={done}
+                        label={String(i + 1)}
+                        ariaLabel={`Column ${i + 1} complete`}
+                        onToggle={() => onToggleRowComplete(i)}
+                      />
+                    </div>
+                  ))
+                : null}
+              {trackMode === "diag"
+                ? rowComplete.map((done, i) => {
+                    const anchor = diagonalAnchor(i, gridWidth, gridHeight);
+                    const style =
+                      anchor.edge === "left"
+                        ? {
+                            left: LABEL_SIZE,
+                            top: layoutState.offsetY + anchor.row * layoutState.cell,
+                            width: ROW_TRACKER_SIDEBAR_PX,
+                            height: layoutState.cell,
+                          }
+                        : {
+                            left: layoutState.offsetX + visualCol(anchor.col) * layoutState.cell,
+                            top: layoutState.offsetY + layoutState.gridHpx,
+                            width: layoutState.cell,
+                            height: ROW_TRACKER_SIDEBAR_PX,
+                          };
+                    return (
+                      <div key={`diag-${i}`} className="pointer-events-auto absolute z-20" style={style}>
+                        <TrackCheckMark
+                          done={done}
+                          label={String(i + 1)}
+                          ariaLabel={`Diagonal ${i + 1} complete`}
+                          onToggle={() => onToggleRowComplete(i)}
+                        />
+                      </div>
+                    );
+                  })
+                : null}
+            </>
           ) : null}
           <canvas
             ref={canvasRef}

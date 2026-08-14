@@ -328,9 +328,12 @@ export function PrimerZone({ onStartTutorial }: PrimerZoneProps) {
                     <br />
                     for crochet charts.
                   </h1>
-                  <p className="mt-5 max-w-[40ch] font-sans text-[16px] leading-relaxed text-white/85">
-                    Filet, tapestry, C2C, and mosaic—open this{" "}
-                    <span className="font-semibold text-white">Manual</span> for each technique.
+                  <p className="mt-5 max-w-[42ch] font-sans text-[16px] leading-relaxed text-white/85">
+                    After the IBM 129 card data recorder: manila stock, lamps, knobs—and a deck of punched charts
+                    instead of payroll cards.
+                  </p>
+                  <p className="mt-4 max-w-[42ch] font-sans text-[16px] leading-relaxed text-white/85">
+                    Open this <span className="font-semibold text-white">Manual</span> for filet, tapestry, C2C, and mosaic.
                     New to the console? Go to <span className="font-semibold text-white">Program</span>, then{" "}
                     <span className="font-semibold text-white">?</span>.
                   </p>
