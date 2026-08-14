@@ -5,6 +5,7 @@ import { fetchPatternById, type Pattern } from "@/lib/patternHelpers";
 import { parseGridData } from "@/lib/gridFormat";
 import { parseProgressData } from "@/lib/progressData";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
+import { clampYarnStitch, effectiveGaugeSqPer10cm, METHOD_LABELS, STITCH_LABELS } from "@/lib/yarnEstimator";
 import { parsePatternYarnSettings } from "@/lib/yarnSettings";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -80,7 +81,8 @@ export default function PrintPatternPage() {
     const { cells, palette } = parseGridData(pattern.grid_data, w, h);
     const progress = parseProgressData(pattern.progress_data, h, w);
     const yarn = parsePatternYarnSettings(pattern.yarn_settings);
-    return { cells, palette, progress, yarn, w, h, name: pattern.name };
+    const gaugeSq = effectiveGaugeSqPer10cm(yarn.weight, yarn.hookSize, yarn.customGaugeStitchesPerInch);
+    return { cells, palette, progress, yarn, gaugeSq, w, h, name: pattern.name };
   }, [pattern]);
 
   return (
@@ -101,13 +103,20 @@ export default function PrintPatternPage() {
           <header className="pb-1">
             <h1 className="text-xl font-semibold tracking-tight text-zinc-900 print:text-black">{view.name}</h1>
             <p className="mt-1 text-sm text-zinc-600 print:text-black">
-              Grid {view.w}×{view.h} · Yarn: {view.yarn.weight.replaceAll("_", " ")} · Hook: {view.yarn.hookSize}
+              Grid {view.w}×{view.h}
               {" · "}
-              {(view.yarn.customGaugeStitchesPerInch ?? 0) > 0
-                ? units === "metric"
-                  ? `Gauge: ${view.yarn.customGaugeStitchesPerInch ?? 0} sq / 10 cm`
-                  : `Gauge: ${parseFloat(((view.yarn.customGaugeStitchesPerInch ?? 0) / 3.937).toFixed(1))} sq / in`
-                : "Gauge: not set"}
+              Method: {METHOD_LABELS[view.yarn.method]}
+              {" · "}
+              Stitch: {STITCH_LABELS[clampYarnStitch(view.yarn.method, view.yarn.stitch)]}
+              {" · "}
+              Yarn: {view.yarn.weight.replaceAll("_", " ")}
+              {" · "}
+              Hook: {view.yarn.hookSize}
+              {" · "}
+              Gauge:{" "}
+              {units === "metric"
+                ? `${view.gaugeSq} sq / 10 cm`
+                : `${parseFloat((view.gaugeSq / 3.937).toFixed(1))} sq / in`}
             </p>
           </header>
 
@@ -118,6 +127,7 @@ export default function PrintPatternPage() {
               cells={view.cells}
               palette={view.palette}
               rowComplete={view.progress.rowComplete}
+              trackMode={view.progress.trackMode}
             />
           </section>
         </div>

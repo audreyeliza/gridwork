@@ -7,17 +7,27 @@ export const PRIMER_SECTIONS = [
   {
     id: "slip",
     title: "Slip knot",
-    body: "Loop the yarn, pull the tail through, place it on your hook, and snug both ends. This anchors the piece.",
+    body: "Loop the yarn, pull the tail through, and place the knot on your hook. Snug both ends so it sits against the hook without closing.",
   },
   {
     id: "chain",
-    title: "Foundation chain",
-    body: "Squares × 2 + 4 = starting chain (10 squares → chain 24). First double crochet goes into the 5th chain from the hook.",
+    title: "Starting chain",
+    body: "Two common filet gauges: dc, chain 1 — squares × 2 + 4; first dc in the 6th chain from the hook. Tr, chain 2 — squares × 3 + 6; first treble in the 9th chain from the hook. Yarn’s Chain line shows the count for this chart’s method and stitch.",
+  },
+  {
+    id: "first",
+    title: "First row",
+    body: "Into the chain: skip 1, dc, chain 1, skip 1, and repeat for open mesh. For a filled square, dc in that skipped chain instead of leaving the hole. For tr, chain 2: skip 2 and chain 2 instead of skip 1 and chain 1.",
   },
   {
     id: "dc",
     title: "Double crochet (dc)",
-    body: "Yarn over → insert → yarn over, pull up (3 loops) → pull through 2 → pull through 2. The only stitch filet uses; its height matches a chain-1 space.",
+    body: "Yarn over → insert → yarn over, pull up (3 loops) → pull through 2 → pull through 2.",
+  },
+  {
+    id: "tr",
+    title: "Treble crochet (tr)",
+    body: "Yarn over twice → insert → yarn over, pull up (4 loops) → pull through 2 three times.",
   },
   {
     id: "mesh",
@@ -32,12 +42,12 @@ export const PRIMER_SECTIONS = [
   {
     id: "turn",
     title: "Turning and working rows",
-    body: "Chain 4 and turn at the end of every row (counts as first dc + chain-1). Filled = dc into the space; empty = chain 1, skip 1.",
+    body: "Chain 3 and turn when the next row starts with a dc (filled/block). Chain 4 only when the first stitch of the next row is an open mesh (dc + chain-1). Filled = dc into the space; empty = chain 1, skip 1.",
   },
   {
     id: "read",
     title: "Reading the grid",
-    body: "Start bottom-left, work right. Turns flip travel direction; the chart stays put. Tracker in Row mode highlights the active row.",
+    body: "Start top-left, work right. Turns flip travel direction; the chart stays put. Tracker in Row mode highlights the active row from the top (row 1). Flip view mirrors the chart when you turn the work.",
   },
 ] as const;
 
@@ -105,7 +115,7 @@ export const C2C_PRIMER_SECTIONS = [
   {
     id: "c2c-read",
     title: "Reading with Diag Tracker",
-    body: "Set Tracker to Diag. Index 01 is the top-left cell (row + column = 0). ← Diag / Diag → steps the highlighted diagonal.",
+    body: "Set Tracker to Diag. Index 01 is the top-left cell (row + column = 0). Checkboxes sit on the left for early diagonals and along the bottom for the rest. ← Diag / Diag → steps the highlighted diagonal.",
   },
   {
     id: "c2c-color",

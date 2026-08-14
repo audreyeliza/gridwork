@@ -1,40 +1,40 @@
 "use client";
 
+import { chainReadout } from "@/lib/craftMode";
 import {
+  autoGaugeSqPer10cm,
+  clampYarnStitch,
+  DEFAULT_STITCH_FOR_METHOD,
+  effectiveGaugeSqPer10cm,
   estimateYarnUsage,
-  parseHookMillimeters,
-  type YarnEstimateResult,
-  type YarnWeightCategory,
+  finishedSizeForYarn,
+  HOOK_DEFAULTS,
+  METHOD_LABELS,
+  normalizeHookSize,
+  STITCH_LABELS,
+  STITCHES_FOR_METHOD,
+  YARN_METHODS,
   YARN_WEIGHT_CATEGORIES,
+  type YarnEstimateResult,
+  type YarnMethod,
+  type YarnStitch,
+  type YarnWeightCategory,
 } from "@/lib/yarnEstimator";
 import type { PatternYarnSettings, YarnUnits } from "@/lib/yarnSettings";
 import { useId, useMemo } from "react";
 
 const WEIGHT_LABELS: Record<YarnWeightCategory, string> = {
-  lace: "Lace",
-  fingering: "Fingering",
-  sport: "Sport",
-  dk: "DK",
-  worsted: "Worsted",
-  bulky: "Bulky",
-  super_bulky: "Super bulky",
+  lace: "0 · Lace",
+  fingering: "1 · Fingering",
+  sport: "2 · Sport",
+  dk: "3 · DK",
+  worsted: "4 · Worsted",
+  bulky: "5 · Bulky",
+  super_bulky: "6 · Super bulky",
 };
 
-type GaugeRange = { hookMinMm: number; hookMaxMm: number; minSq: number; maxSq: number; defaultSq: number };
-const FILET_GAUGE: Record<YarnWeightCategory, GaugeRange> = {
-  lace:        { hookMinMm: 1.5,  hookMaxMm: 2.25, minSq: 12, maxSq: 16, defaultSq: 14 },
-  fingering:   { hookMinMm: 2.25, hookMaxMm: 3.5,  minSq: 9,  maxSq: 12, defaultSq: 10 },
-  sport:       { hookMinMm: 3.5,  hookMaxMm: 4.5,  minSq: 7,  maxSq: 9,  defaultSq: 8  },
-  dk:          { hookMinMm: 4.0,  hookMaxMm: 5.0,  minSq: 5,  maxSq: 7,  defaultSq: 6  },
-  worsted:     { hookMinMm: 4.5,  hookMaxMm: 5.5,  minSq: 4,  maxSq: 6,  defaultSq: 5  },
-  bulky:       { hookMinMm: 6.5,  hookMaxMm: 9.0,  minSq: 2,  maxSq: 4,  defaultSq: 3  },
-  super_bulky: { hookMinMm: 9.0,  hookMaxMm: 15.0, minSq: 1,  maxSq: 3,  defaultSq: 2  },
-};
-
-const HOOK_DEFAULTS: Record<YarnWeightCategory, string> = {
-  lace: "1.5 mm", fingering: "2.25 mm", sport: "3 mm", dk: "3.5 mm",
-  worsted: "5 mm", bulky: "6.5 mm", super_bulky: "9 mm",
-};
+const SQ_PER_INCH = 3.937;
+const AUTO_GAUGE_EPS = 0.1;
 
 export type YarnEstimatorProps = {
   gridWidth: number;
@@ -56,6 +56,17 @@ function toFractionalInch(cm: number): string {
   return `${whole}${FRAC[eighths] ?? ""}`;
 }
 
+function displayGauge(sqPer10cm: number, units: YarnUnits): number {
+  if (units === "imperial") return parseFloat((sqPer10cm / SQ_PER_INCH).toFixed(1));
+  return sqPer10cm;
+}
+
+function formatFinishedSize(widthCm: number, heightCm: number, units: YarnUnits): string {
+  return units === "metric"
+    ? `${widthCm} × ${heightCm} cm`
+    : `${toFractionalInch(widthCm)} × ${toFractionalInch(heightCm)} in`;
+}
+
 export function YarnEstimator({
   gridWidth,
   gridHeight,
@@ -67,42 +78,57 @@ export function YarnEstimator({
 }: YarnEstimatorProps) {
   const idPrefix = useId();
   const units: YarnUnits = value.units === "imperial" ? "imperial" : "metric";
+  const method: YarnMethod = value.method ?? "filet";
+  const stitch: YarnStitch = clampYarnStitch(method, value.stitch ?? DEFAULT_STITCH_FOR_METHOD[method]);
+  const stitchOptions = STITCHES_FOR_METHOD[method];
 
-  /** Squares per 10cm — shared basis for Size display and Amount estimate. */
-  const gaugeSqPer10cm = useMemo(() => {
-    const custom = value.customGaugeStitchesPerInch ?? 0;
-    if (custom > 0) return custom;
-    const range = FILET_GAUGE[value.weight];
-    const mm = parseHookMillimeters(value.hookSize);
-    if (mm != null && mm >= range.hookMinMm && mm <= range.hookMaxMm) {
-      const t = (mm - range.hookMinMm) / (range.hookMaxMm - range.hookMinMm);
-      return parseFloat((range.maxSq + t * (range.minSq - range.maxSq)).toFixed(1));
-    }
-    return range.defaultSq;
-  }, [value.customGaugeStitchesPerInch, value.weight, value.hookSize]);
+  const autoGauge = useMemo(
+    () => autoGaugeSqPer10cm(value.weight, value.hookSize),
+    [value.weight, value.hookSize],
+  );
+
+  const gaugeSqPer10cm = useMemo(
+    () => effectiveGaugeSqPer10cm(value.weight, value.hookSize, value.customGaugeStitchesPerInch),
+    [value.weight, value.hookSize, value.customGaugeStitchesPerInch],
+  );
 
   const result: YarnEstimateResult = useMemo(
     () =>
       estimateYarnUsage({
         weight: value.weight,
         hookSize: value.hookSize,
-        // Same gauge as Size (sq/10cm numeric scale used by the estimator).
-        customGaugeStitchesPerInch: gaugeSqPer10cm,
+        customGaugeStitchesPerInch: value.customGaugeStitchesPerInch,
         gridWidth,
         gridHeight,
         filledCellCount,
         emptyCellCount,
       }),
-    [value.weight, value.hookSize, gaugeSqPer10cm, gridWidth, gridHeight, filledCellCount, emptyCellCount],
+    [
+      value.weight,
+      value.hookSize,
+      value.customGaugeStitchesPerInch,
+      gridWidth,
+      gridHeight,
+      filledCellCount,
+      emptyCellCount,
+    ],
   );
 
-  const { widthCm, heightCm } = useMemo(
-    () => ({
-      widthCm: parseFloat(((gridWidth * 10) / gaugeSqPer10cm).toFixed(1)),
-      heightCm: parseFloat(((gridHeight * 10) / gaugeSqPer10cm).toFixed(1)),
-    }),
-    [gaugeSqPer10cm, gridWidth, gridHeight],
+  const size = useMemo(
+    () =>
+      finishedSizeForYarn(
+        method,
+        stitch,
+        value.weight,
+        value.hookSize,
+        gridWidth,
+        gridHeight,
+        value.customGaugeStitchesPerInch,
+      ),
+    [method, stitch, value.weight, value.hookSize, gridWidth, gridHeight, value.customGaugeStitchesPerInch],
   );
+
+  const chain = useMemo(() => chainReadout(method, stitch, gridWidth), [method, stitch, gridWidth]);
 
   return (
     <section className={`flex flex-col gap-4 pointer-events-auto ${className ?? ""}`}>
@@ -147,20 +173,64 @@ export function YarnEstimator({
 
       <div className="border-b pb-3" style={{ borderColor: "var(--print-ink-faint)" }}>
         <div className="font-mono text-[10px] font-bold tracking-[0.12em] uppercase punch-print-ink">Size</div>
-        <div className="mt-1.5 font-mono text-[15px] font-bold punch-print-ink">
-          {units === "metric"
-            ? `${widthCm} × ${heightCm} cm`
-            : `${toFractionalInch(widthCm)} × ${toFractionalInch(heightCm)} in`}
+        <div className="mt-1.5 font-mono text-[15px] font-bold tabular-nums punch-print-ink">
+          {formatFinishedSize(size.widthCm, size.heightCm, units)}
+        </div>
+      </div>
+
+      <div className="border-b pb-3" style={{ borderColor: "var(--print-ink-faint)" }}>
+        <div className="font-mono text-[10px] font-bold tracking-[0.12em] uppercase punch-print-ink">Chain</div>
+        <div className="mt-1.5 flex items-baseline justify-between gap-3 font-mono text-[11px] punch-print-ink">
+          <span className="font-bold tabular-nums">{chain.display}</span>
+          <span className="text-right text-[9px] uppercase tracking-[0.06em] punch-print-faint">
+            {chain.hint}
+          </span>
         </div>
       </div>
 
       <div className="flex flex-col gap-2">
         <label className="flex items-center justify-between gap-2 border-b py-2.5" style={{ borderColor: "var(--print-ink-faint)" }}>
+          <span className="font-mono text-[10px] font-bold tracking-[0.12em] uppercase punch-print-ink">Method</span>
+          <select
+            id={`${idPrefix}-method`}
+            value={method}
+            onChange={(e) => {
+              const nextMethod = e.target.value as YarnMethod;
+              onChange({
+                ...value,
+                method: nextMethod,
+                stitch: clampYarnStitch(nextMethod, stitch),
+              });
+            }}
+            className="bg-transparent font-mono text-[12px] font-bold punch-print-ink focus:outline-none"
+          >
+            {YARN_METHODS.map((m) => (
+              <option key={m} value={m}>{METHOD_LABELS[m]}</option>
+            ))}
+          </select>
+        </label>
+        <label className="flex items-center justify-between gap-2 border-b py-2.5" style={{ borderColor: "var(--print-ink-faint)" }}>
+          <span className="font-mono text-[10px] font-bold tracking-[0.12em] uppercase punch-print-ink">Stitch</span>
+          <select
+            id={`${idPrefix}-stitch`}
+            value={stitch}
+            onChange={(e) => onChange({ ...value, stitch: e.target.value as YarnStitch })}
+            className="bg-transparent font-mono text-[12px] font-bold punch-print-ink focus:outline-none"
+          >
+            {stitchOptions.map((s) => (
+              <option key={s} value={s}>{STITCH_LABELS[s]}</option>
+            ))}
+          </select>
+        </label>
+        <label className="flex items-center justify-between gap-2 border-b py-2.5" style={{ borderColor: "var(--print-ink-faint)" }}>
           <span className="font-mono text-[10px] font-bold tracking-[0.12em] uppercase punch-print-ink">Weight</span>
           <select
             id={`${idPrefix}-weight`}
             value={value.weight}
-            onChange={(e) => onChange({ ...value, weight: e.target.value as YarnWeightCategory })}
+            onChange={(e) => {
+              const weight = e.target.value as YarnWeightCategory;
+              onChange({ ...value, weight, hookSize: HOOK_DEFAULTS[weight] });
+            }}
             className="bg-transparent font-mono text-[12px] font-bold punch-print-ink focus:outline-none"
           >
             {YARN_WEIGHT_CATEGORIES.map((w) => (
@@ -175,6 +245,16 @@ export function YarnEstimator({
             type="text"
             value={value.hookSize}
             onChange={(e) => onChange({ ...value, hookSize: e.target.value })}
+            onBlur={() => {
+              const next = normalizeHookSize(value.hookSize);
+              if (next !== value.hookSize) onChange({ ...value, hookSize: next });
+            }}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter") return;
+              const next = normalizeHookSize(value.hookSize);
+              if (next !== value.hookSize) onChange({ ...value, hookSize: next });
+              (e.target as HTMLInputElement).blur();
+            }}
             placeholder={HOOK_DEFAULTS[value.weight]}
             className="w-24 bg-transparent text-right font-mono text-[12px] font-bold punch-print-ink placeholder:text-[var(--print-ink-faint)] focus:outline-none"
           />
@@ -188,23 +268,18 @@ export function YarnEstimator({
               min={units === "imperial" ? 0.5 : 1}
               max={units === "imperial" ? 4.5 : 16}
               step={units === "imperial" ? 0.1 : 0.5}
-              value={
-                units === "imperial" && (value.customGaugeStitchesPerInch ?? 0) > 0
-                  ? parseFloat(((value.customGaugeStitchesPerInch ?? 0) / 3.937).toFixed(1))
-                  : (value.customGaugeStitchesPerInch || "")
-              }
-              placeholder={
-                units === "imperial"
-                  ? String(parseFloat((FILET_GAUGE[value.weight].defaultSq / 3.937).toFixed(1)))
-                  : String(FILET_GAUGE[value.weight].defaultSq)
-              }
+              value={displayGauge(gaugeSqPer10cm, units)}
               onChange={(e) => {
                 const raw = e.target.value;
-                if (raw === "") { onChange({ ...value, customGaugeStitchesPerInch: 0 }); return; }
+                if (raw === "") {
+                  onChange({ ...value, customGaugeStitchesPerInch: 0 });
+                  return;
+                }
                 const n = Number(raw);
                 if (!Number.isFinite(n) || n <= 0) return;
-                const stored = units === "imperial" ? parseFloat((n * 3.937).toFixed(2)) : n;
-                onChange({ ...value, customGaugeStitchesPerInch: stored });
+                const stored = units === "imperial" ? parseFloat((n * SQ_PER_INCH).toFixed(2)) : n;
+                const custom = Math.abs(stored - autoGauge) < AUTO_GAUGE_EPS ? 0 : stored;
+                onChange({ ...value, customGaugeStitchesPerInch: custom });
               }}
               className="w-12 bg-transparent text-right font-mono text-[12px] font-bold punch-print-ink placeholder:text-[var(--print-ink-faint)] focus:outline-none"
             />

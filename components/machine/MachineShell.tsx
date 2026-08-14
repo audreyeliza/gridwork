@@ -28,7 +28,7 @@ import { getSupabaseBrowserClient } from "@/lib/supabase";
 import * as Sentry from "@sentry/nextjs";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export type { MachineZone };
 
@@ -95,32 +95,20 @@ export function MachineShell() {
   const [lastProgramId, setLastProgramId] = useState<string | null>(() => patternId);
 
   const rememberProgramId = useCallback((id: string | null) => {
-    if (id) {
-      setLastProgramId(id);
-      writeLastPatternId(id);
-    }
+    setLastProgramId(id);
+    writeLastPatternId(id);
   }, []);
 
   // Seed last program from sessionStorage after mount (SSR-safe).
   useEffect(() => {
     if (patternId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- persist last program id from the URL
       rememberProgramId(patternId);
       return;
     }
     const stored = readLastPatternId();
     if (stored) setLastProgramId(stored);
   }, [patternId, rememberProgramId]);
-
-  // Strip stale ?pattern= from non-program zones (old bookmarks / prior preserve behavior).
-  useEffect(() => {
-    if (zone === "program") return;
-    const stale = searchParams.get("pattern");
-    if (!stale) return;
-    rememberProgramId(stale);
-    router.replace(buildZoneHref(zone, { preserve: searchParams, pattern: null }), {
-      scroll: false,
-    });
-  }, [zone, searchParams, router, rememberProgramId]);
 
   // Legacy bookmarks: /?zone=maker|primer|reader → /profile|/|/program.
   useEffect(() => {
@@ -153,10 +141,7 @@ export function MachineShell() {
   const setZone = useCallback(
     (next: MachineZone) => {
       setPreview(null);
-      router.replace(
-        buildZoneHref(next, { preserve: searchParams, pattern: null }),
-        { scroll: false },
-      );
+      router.replace(buildZoneHref(next, { preserve: searchParams }), { scroll: false });
     },
     [router, searchParams],
   );
@@ -178,28 +163,38 @@ export function MachineShell() {
     [router, searchParams, rememberProgramId],
   );
 
-  /** Update ?pattern on Program only (avoids nav races; keeps other zones clean). */
+  /** Keep `?pattern=` on the URL in every machine zone so the open id cannot desync. */
   const syncPatternInUrl = useCallback(
     (id: string | null) => {
-      if (zone !== "program") return;
       rememberProgramId(id);
-      const params = new URLSearchParams(searchParams.toString());
-      params.delete("zone");
-      if (id) params.set("pattern", id);
-      else params.delete("pattern");
-      const qs = params.toString();
-      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+      router.replace(
+        buildZoneHref(zone, {
+          pattern: id,
+          preserve: searchParams,
+        }),
+        { scroll: false },
+      );
     },
-    [router, pathname, searchParams, zone, rememberProgramId],
+    [router, searchParams, zone, rememberProgramId],
   );
 
+  const patternIdRef = useRef(patternId);
+  useEffect(() => {
+    patternIdRef.current = patternId;
+  }, [patternId]);
   const handlePatternIdChange = useCallback(
     (id: string | null) => {
-      if (id === patternId) return;
-      if (!id && !patternId) return;
+      if (id === patternIdRef.current) {
+        if (!id) rememberProgramId(null);
+        return;
+      }
+      if (!id && !patternIdRef.current) {
+        rememberProgramId(null);
+        return;
+      }
       syncPatternInUrl(id);
     },
-    [patternId, syncPatternInUrl],
+    [syncPatternInUrl, rememberProgramId],
   );
 
   const handleNewProgram = useCallback(async () => {
@@ -395,23 +390,30 @@ export function MachineShell() {
             "linear-gradient(165deg, rgba(255,255,255,0.15) 0%, transparent 40%, rgba(0,0,0,0.05) 100%), #EDE8D5",
         }}
       >
-        {expanded ? (
-          <div className="punch-console flex min-h-0 flex-1 flex-col !rounded-none !border-0 !shadow-none">
-            <div className="relative z-[2] min-h-0 flex-1 overflow-hidden">
-              <EditorWorkspace
-                embedded
-                initialPatternId={patternId}
-                hideSidebar
-                forceTutorial={searchParams.get("tutorial") === "1"}
-                onTutorialConsumed={clearTutorialParam}
-                onPatternIdChange={handlePatternIdChange}
-                onRequestMaker={() => setZone("profile")}
-                onRequestHopper={() => setZone("hopper")}
-                onRequestAuth={() => setAuthOpen(true)}
-              />
-            </div>
+        <div
+          hidden={!expanded}
+          inert={!expanded ? true : undefined}
+          className={
+            expanded
+              ? "punch-console flex min-h-0 flex-1 flex-col !rounded-none !border-0 !shadow-none"
+              : "hidden"
+          }
+        >
+          <div className="relative z-[2] min-h-0 flex-1 overflow-hidden">
+            <EditorWorkspace
+              embedded
+              openId={patternId ?? lastProgramId}
+              hideSidebar
+              forceTutorial={searchParams.get("tutorial") === "1"}
+              onTutorialConsumed={clearTutorialParam}
+              onOpenPattern={handlePatternIdChange}
+              onRequestMaker={() => setZone("profile")}
+              onRequestHopper={() => setZone("hopper")}
+              onRequestAuth={() => setAuthOpen(true)}
+            />
           </div>
-        ) : (
+        </div>
+        {!expanded ? (
           <div
             className={`flex min-h-0 flex-1 overflow-hidden ${
               showReaderAside ? "flex-col md:flex-row" : "flex-col"
@@ -581,7 +583,7 @@ export function MachineShell() {
               </aside>
             )}
           </div>
-        )}
+        ) : null}
       </div>
 
       <MachineKeyboardBar

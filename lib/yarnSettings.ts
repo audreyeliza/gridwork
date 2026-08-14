@@ -1,6 +1,14 @@
 import type { Json } from "@/lib/patternHelpers";
-import type { YarnWeightCategory } from "@/lib/yarnEstimator";
-import { YARN_WEIGHT_CATEGORIES } from "@/lib/yarnEstimator";
+import {
+  clampYarnStitch,
+  DEFAULT_STITCH_FOR_METHOD,
+  parseYarnMethod,
+  parseYarnStitch,
+  YARN_WEIGHT_CATEGORIES,
+  type YarnMethod,
+  type YarnStitch,
+  type YarnWeightCategory,
+} from "@/lib/yarnEstimator";
 
 export type YarnUnits = "metric" | "imperial";
 
@@ -10,6 +18,8 @@ export type PatternYarnSettings = {
   /** Squares per 10 cm; 0 or null = derive from hook / category default. */
   customGaugeStitchesPerInch: number | null;
   units: YarnUnits;
+  method: YarnMethod;
+  stitch: YarnStitch;
 };
 
 export const DEFAULT_PATTERN_YARN_SETTINGS: PatternYarnSettings = {
@@ -17,6 +27,8 @@ export const DEFAULT_PATTERN_YARN_SETTINGS: PatternYarnSettings = {
   hookSize: "5.5 mm",
   customGaugeStitchesPerInch: 0,
   units: "metric",
+  method: "filet",
+  stitch: "dc",
 };
 
 function isYarnWeight(v: unknown): v is YarnWeightCategory {
@@ -42,7 +54,12 @@ export function parsePatternYarnSettings(data: Json | undefined): PatternYarnSet
     custom = o.customGaugeStitchesPerInch;
   }
   const units = isYarnUnits(o.units) ? o.units : DEFAULT_PATTERN_YARN_SETTINGS.units;
-  return { weight, hookSize, customGaugeStitchesPerInch: custom, units };
+  const method = parseYarnMethod(o.method);
+  const stitch =
+    o.stitch == null
+      ? DEFAULT_STITCH_FOR_METHOD[method]
+      : clampYarnStitch(method, parseYarnStitch(o.stitch));
+  return { weight, hookSize, customGaugeStitchesPerInch: custom, units, method, stitch };
 }
 
 export function serializePatternYarnSettings(s: PatternYarnSettings): Json {
@@ -51,5 +68,7 @@ export function serializePatternYarnSettings(s: PatternYarnSettings): Json {
     hookSize: s.hookSize,
     customGaugeStitchesPerInch: s.customGaugeStitchesPerInch,
     units: s.units,
+    method: s.method,
+    stitch: s.stitch,
   } as Json;
 }

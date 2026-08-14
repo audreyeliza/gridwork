@@ -30,7 +30,7 @@ const BASE_STEPS: StepDef[] = [
   {
     targetId: "tutorial-row-progress",
     title: "Track rows",
-    body: "Step with ← Row / Row →. Check off rows on the grid sidebar. Use Row/Diag for C2C diagonals.",
+    body: "Step with ← Row / Row → (or Col / Diag). Check off rows on the grid — row 1 is the top. Use Row / Col / Diag. Flip mirrors the chart when you turn the work.",
   },
   {
     targetId: "tutorial-print",

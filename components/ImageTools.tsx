@@ -21,7 +21,7 @@ import {
   type PatternImageSettings,
 } from "@/lib/imageSettings";
 import { DEFAULT_MANILA_STOCK, manilaHex } from "@/lib/manilaStock";
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type MutableRefObject } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 
 export type ImageReferenceMode = "none" | "underlay" | "convert";
 
@@ -43,6 +43,8 @@ export type ImageToolsProps = {
   progress?: PatternProgressState;
   onToggleRowComplete?: (row: number) => void;
   trackMode?: TrackMode;
+  /** View-only horizontal mirror so turned work matches the chart. */
+  mirrorView?: boolean;
   /** Saved multi-image document from the DB — applied when imageSettingsLoadKey changes. */
   savedImageDocument?: PatternImageDocument | null;
   /** Changing this key triggers a full reinit from savedImageDocument. */
@@ -418,6 +420,7 @@ export function ImageTools({
   progress,
   onToggleRowComplete,
   trackMode = "row",
+  mirrorView = false,
   savedImageDocument,
   imageSettingsLoadKey,
   onImageDocumentChange,
@@ -512,7 +515,7 @@ export function ImageTools({
   }, [cropExpanded]);
 
   useEffect(() => {
-    if (!cropCanvasRef.current || !workingImage || cropExpanded) return;
+    if (!sidePanelTarget || !cropCanvasRef.current || !workingImage || cropExpanded) return;
     drawCropCanvas(
       cropCanvasRef.current,
       PREVIEW_W,
@@ -526,7 +529,7 @@ export function ImageTools({
       gridWidth,
       gridHeight,
     );
-  }, [workingImage, cropRect, isDragging, cropViewZoom, cropExpanded, gridWidth, gridHeight]);
+  }, [sidePanelTarget, workingImage, cropRect, isDragging, cropViewZoom, cropExpanded, gridWidth, gridHeight]);
 
   useEffect(() => {
     if (!expandedCropCanvasRef.current || !workingImage || !cropExpanded) return;
@@ -674,6 +677,27 @@ export function ImageTools({
     setActiveLayerId(id);
     applyLayerToEditor(flushed.find((l) => l.id === id) ?? null);
   }, [activeLayerId, layers, currentSettings, applyLayerToEditor]);
+
+  const layersRef = useRef(layers);
+  const activeLayerIdRef = useRef(activeLayerId);
+  const selectLayerRef = useRef(selectLayer);
+  const applyLayerToEditorRef = useRef(applyLayerToEditor);
+  layersRef.current = layers;
+  activeLayerIdRef.current = activeLayerId;
+  selectLayerRef.current = selectLayer;
+  applyLayerToEditorRef.current = applyLayerToEditor;
+
+  // Import panel remounts the crop canvas. Select the top image and restore its settings.
+  useLayoutEffect(() => {
+    if (!sidePanelTarget) return;
+    const top = layersRef.current[0];
+    if (!top) return;
+    if (top.id !== activeLayerIdRef.current) {
+      selectLayerRef.current(top.id);
+    } else {
+      applyLayerToEditorRef.current(top);
+    }
+  }, [sidePanelTarget]);
 
   const removeActiveLayer = useCallback(() => {
     if (!activeLayerId) return;
@@ -1055,7 +1079,7 @@ export function ImageTools({
     props: {
       min: number;
       max: number;
-      step: number;
+      step?: number;
       disabled?: boolean;
       onChange: (n: number) => void;
       onReset?: () => void;
@@ -1070,7 +1094,7 @@ export function ImageTools({
         type="range"
         min={props.min}
         max={props.max}
-        step={props.step}
+        step={props.step ?? 1}
         value={value}
         disabled={props.disabled}
         onChange={(e) => props.onChange(Number(e.target.value))}
@@ -1275,7 +1299,7 @@ export function ImageTools({
             {sliderRow("Zoom", Math.round(imageZoom * 100), `${Math.round(imageZoom * 100)}%`, {
               min: 50,
               max: 400,
-              step: 10,
+              step: 1,
               disabled: positionLocked,
               onChange: (n) => setImageZoom(n / 100),
               onReset: () => setImageZoom(1),
@@ -1512,6 +1536,7 @@ export function ImageTools({
           currentRow={progress?.currentRow}
           onToggleRowComplete={onToggleRowComplete}
           trackMode={trackMode}
+          mirrorView={mirrorView}
           onFullscreenChange={handleGridFullscreenChange}
           editLocked={editLocked}
           paperColor={paperColor}
