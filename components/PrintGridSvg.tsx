@@ -37,7 +37,7 @@ export function PrintGridSvg({
   const checkCol = 18;
   const numCol = 28;
   const rowPad = trackMode === "diagUp" ? 22 : checkCol + numCol;
-  const rightPad = trackMode === "diagUp" ? 36 : 4;
+  const rightPad = trackMode === "diagUp" ? checkCol + numCol : 4;
   const colPad = trackMode === "col" ? 40 : 22;
   const bottomPad = isDiagTrack(trackMode) ? 40 : 4;
   const gridW = gridWidth * cellPx;
@@ -201,12 +201,13 @@ export function PrintGridSvg({
             const half = checkSize / 2;
             if (anchor.edge === "left" || anchor.edge === "right") {
               const cy = colPad + anchor.row * cellPx + cellPx / 2;
-              const cx = anchor.edge === "left" ? checkCol / 2 : rowPad + gridW + rightPad / 2;
+              const cx = anchor.edge === "left" ? checkCol / 2 : rowPad + gridW + checkCol / 2;
+              const tx = anchor.edge === "left" ? checkCol + numCol / 2 : rowPad + gridW + checkCol + numCol / 2;
               return (
                 <g key={`dg-${i}`}>
                   <rect
                     x={cx - half}
-                    y={cy - half - 6}
+                    y={cy - half}
                     width={checkSize}
                     height={checkSize}
                     fill="#FFFFFF"
@@ -216,7 +217,7 @@ export function PrintGridSvg({
                   />
                   {done ? (
                     <path
-                      d={`M ${cx - half + 2.2} ${cy - 6} L ${cx - 0.5} ${cy - 6 + half - 2.5} L ${cx + half - 2} ${cy - 6 - half + 2.5}`}
+                      d={`M ${cx - half + 2.2} ${cy} L ${cx - 0.5} ${cy + half - 2.5} L ${cx + half - 2} ${cy - half + 2.5}`}
                       fill="none"
                       stroke="#000000"
                       strokeWidth={1.5}
@@ -225,9 +226,9 @@ export function PrintGridSvg({
                     />
                   ) : null}
                   <text
-                    x={cx}
-                    y={cy + half + 6}
-                    fontSize={8}
+                    x={tx}
+                    y={cy + 3.5}
+                    fontSize={9}
                     fontFamily="ui-monospace, monospace"
                     textAnchor="middle"
                     fill="#000000"

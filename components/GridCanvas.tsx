@@ -169,14 +169,21 @@ function TrackCheckMark({
   ariaLabel,
   onToggle,
   stack = false,
+  showLabel = true,
+  boxSize = 18,
 }: {
   done: boolean;
   label: string;
   ariaLabel: string;
   onToggle: () => void;
-  /** Checkbox on top, number below — used for diagonal marks. */
+  /** Checkbox on top, number below — used for bottom diagonal marks. */
   stack?: boolean;
+  /** False for col trackers: canvas already draws the column number above. */
+  showLabel?: boolean;
+  boxSize?: number;
 }) {
+  const markW = Math.max(6, Math.round(boxSize * 0.67));
+  const markH = Math.max(5, Math.round(boxSize * 0.56));
   return (
     <label
       className={`flex h-full w-full cursor-pointer items-center justify-center gap-0.5 ${
@@ -187,26 +194,28 @@ function TrackCheckMark({
       <span
         className="relative inline-flex shrink-0 items-center justify-center"
         style={{
-          width: 18,
-          height: 18,
+          width: boxSize,
+          height: boxSize,
           borderRadius: 2,
           border: done ? "2px solid #0A0A0A" : "2px solid rgba(10,10,10,0.45)",
           background: "transparent",
         }}
       >
         {done && (
-          <svg viewBox="0 0 12 10" width="12" height="10" fill="none" stroke="#0A0A0A" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round">
+          <svg viewBox="0 0 12 10" width={markW} height={markH} fill="none" stroke="#0A0A0A" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round">
             <path d="M1.5 5l3 3 6-6" />
           </svg>
         )}
       </span>
-      <span
-        className={`min-w-[1.1rem] text-center font-mono text-[10px] font-bold leading-none tabular-nums ${
-          done ? "line-through text-black/55" : "text-black"
-        }`}
-      >
-        {label}
-      </span>
+      {showLabel ? (
+        <span
+          className={`min-w-[1.1rem] text-center font-mono text-[10px] font-bold leading-none tabular-nums ${
+            done ? "line-through text-black/55" : "text-black"
+          }`}
+        >
+          {label}
+        </span>
+      ) : null}
     </label>
   );
 }
@@ -709,45 +718,50 @@ export function GridCanvas({
                   })
                 : null}
               {trackMode === "col"
-                ? rowComplete.map((done, i) => (
-                    <div
-                      key={`col-${i}`}
-                      className="pointer-events-auto absolute z-20"
-                      style={{
-                        left: layoutState.offsetX + visualCol(i) * layoutState.cell,
-                        top: LABEL_SIZE,
-                        width: layoutState.cell,
-                        height: ROW_TRACKER_SIDEBAR_PX,
-                      }}
-                    >
-                      <TrackCheckMark
-                        done={done}
-                        label={String(i + 1)}
-                        ariaLabel={`Column ${i + 1} complete`}
-                        onToggle={() => onToggleRowComplete(i)}
-                      />
-                    </div>
-                  ))
+                ? rowComplete.map((done, i) => {
+                    const cell = layoutState.cell;
+                    return (
+                      <div
+                        key={`col-${i}`}
+                        className="pointer-events-auto absolute z-20"
+                        style={{
+                          left: layoutState.offsetX + visualCol(i) * cell,
+                          top: LABEL_SIZE,
+                          width: cell,
+                          height: ROW_TRACKER_SIDEBAR_PX,
+                        }}
+                      >
+                        <TrackCheckMark
+                          done={done}
+                          label={String(i + 1)}
+                          ariaLabel={`Column ${i + 1} complete`}
+                          onToggle={() => onToggleRowComplete(i)}
+                          showLabel={false}
+                          boxSize={Math.min(18, Math.max(10, cell - 2))}
+                        />
+                      </div>
+                    );
+                  })
                 : null}
               {isDiagTrack(trackMode)
                 ? rowComplete.map((done, i) => {
                     const anchor = diagonalAnchor(i, gridWidth, gridHeight, trackMode);
                     const cell = layoutState.cell;
-                    const stackH = Math.max(cell, 36);
+                    const onEdge = anchor.edge === "left" || anchor.edge === "right";
                     const style =
                       anchor.edge === "left"
                         ? {
                             left: LABEL_SIZE,
-                            top: layoutState.offsetY + anchor.row * cell + (cell - stackH) / 2,
+                            top: layoutState.offsetY + anchor.row * cell,
                             width: DIAG_EDGE_SIDEBAR_PX,
-                            height: stackH,
+                            height: cell,
                           }
                         : anchor.edge === "right"
                           ? {
                               left: layoutState.offsetX + layoutState.gridWpx,
-                              top: layoutState.offsetY + anchor.row * cell + (cell - stackH) / 2,
+                              top: layoutState.offsetY + anchor.row * cell,
                               width: DIAG_EDGE_SIDEBAR_PX,
-                              height: stackH,
+                              height: cell,
                             }
                           : {
                               left: layoutState.offsetX + visualCol(anchor.col) * cell,
@@ -762,7 +776,7 @@ export function GridCanvas({
                           label={String(i + 1)}
                           ariaLabel={`Diagonal ${i + 1} complete`}
                           onToggle={() => onToggleRowComplete(i)}
-                          stack
+                          stack={!onEdge}
                         />
                       </div>
                     );
