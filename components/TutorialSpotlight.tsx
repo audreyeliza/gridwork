@@ -28,9 +28,14 @@ const BASE_STEPS: StepDef[] = [
     body: "Upload an image to trace or auto-convert onto the grid.",
   },
   {
+    targetId: "tutorial-yarn",
+    title: "Yarn card",
+    body: "Method, stitch, and Chain count for this chart. Filet Chain changes if the first square is open or filled.",
+  },
+  {
     targetId: "tutorial-row-progress",
-    title: "Track rows",
-    body: "Step with ← Row / Row → (or Col / Diag). Check off rows on the grid — row 1 is the top. Use Row / Col / Diag. Flip mirrors the chart when you turn the work.",
+    title: "Tracker",
+    body: "Row, Col, Diag↘, or Diag↗. Check off tracks on the grid — row 1 is the top. Flip mirrors the chart when you turn the work.",
   },
   {
     targetId: "tutorial-print",

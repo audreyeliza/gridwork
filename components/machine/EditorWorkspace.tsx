@@ -35,6 +35,7 @@ import {
   clampCurrentRow,
   resizeProgressForGrid,
   trackLength,
+  trackStepLabel,
   type TrackMode,
 } from "@/lib/progressData";
 import { type PatternYarnSettings } from "@/lib/yarnSettings";
@@ -667,7 +668,7 @@ export function EditorWorkspace({
         }`}
       >
         {!gridFullscreen && (
-        <div id="tutorial-grid-size" className="punch-console-face !flex-col !items-stretch !justify-between !gap-2">
+        <div id="tutorial-grid-size" className="punch-console-face !flex-col !items-stretch !justify-between !gap-3">
           <div className="flex min-w-0 flex-wrap items-center gap-4">
             {embedded && !hideSidebar && (
               <button
@@ -774,8 +775,8 @@ export function EditorWorkspace({
             )}
           </div>
 
-          <div className="flex min-w-0 flex-wrap items-end justify-between gap-4">
-            <div className="flex min-w-0 flex-wrap items-end gap-4">
+          <div className="program-bar-row flex min-w-0 flex-wrap items-end justify-between gap-x-4 gap-y-5 pb-2">
+            <div className="flex min-w-0 flex-wrap items-end gap-x-4 gap-y-5">
             <RotaryKnob
               label="Stock"
               value={manilaStock}
@@ -800,9 +801,9 @@ export function EditorWorkspace({
             />
 
             <div
-              className={`flex items-end gap-3 pb-0.5 ${sizeCustom ? "" : "pointer-events-none opacity-40"}`}
+              className={`flex items-end gap-3 ${sizeCustom ? "" : "pointer-events-none opacity-40"}`}
             >
-              <div className="flex flex-col items-center gap-0.5">
+              <div className="program-bar-readout">
                 <input
                   type="text"
                   inputMode="numeric"
@@ -826,7 +827,7 @@ export function EditorWorkspace({
                 />
                 <span className="font-mono text-[6px] font-bold tracking-[0.12em] uppercase" style={{ color: "#0A0A0A" }}>W</span>
               </div>
-              <div className="flex flex-col items-center gap-0.5">
+              <div className="program-bar-readout">
                 <input
                   type="text"
                   inputMode="numeric"
@@ -853,22 +854,24 @@ export function EditorWorkspace({
             </div>
 
             <div className="flex items-end gap-3">
-              <FlipSwitch
-                topLabel="Free"
-                bottomLabel="Link"
-                on={aspectLocked}
-                orientation="vertical"
-                disabled={!sizeCustom}
-                onClick={handleToggleAspectLock}
-                title={
-                  !sizeCustom
-                    ? "Switch Size to Custom to edit dimensions"
-                    : aspectLocked
-                      ? "Unlock linked proportions"
-                      : "Link width and height"
-                }
-              />
-              <div id="tutorial-pencil" className="flex">
+              <div className="program-bar-slot">
+                <FlipSwitch
+                  topLabel="Free"
+                  bottomLabel="Link"
+                  on={aspectLocked}
+                  orientation="vertical"
+                  disabled={!sizeCustom}
+                  onClick={handleToggleAspectLock}
+                  title={
+                    !sizeCustom
+                      ? "Switch Size to Custom to edit dimensions"
+                      : aspectLocked
+                        ? "Unlock linked proportions"
+                        : "Link width and height"
+                  }
+                />
+              </div>
+              <div id="tutorial-pencil" className="program-bar-slot">
                 <FlipSwitch
                   topLabel="Edit"
                   bottomLabel="Lock"
@@ -888,7 +891,7 @@ export function EditorWorkspace({
                   setImportOpen((p) => !p);
                 }}
                 disabled={!showProgramSurface}
-                className={`punch-lamp punch-lamp-green !min-h-[32px] !px-2.5 text-[9px] self-end mb-0.5 ${
+                className={`punch-lamp punch-lamp-green ${
                   importOpen ? "is-lit" : ""
                 }`}
                 title={importOpen ? "Close import" : "Import reference image"}
@@ -899,13 +902,13 @@ export function EditorWorkspace({
             </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 pb-0.5 self-end">
+            <div className="flex flex-nowrap items-end gap-2">
               <button
                 type="button"
                 disabled={!canUndo || editLocked}
                 onClick={() => undo()}
                 title="Undo"
-                className="punch-lamp punch-lamp-orange !min-h-[32px] !px-2.5 text-[9px] disabled:opacity-40"
+                className="punch-lamp punch-lamp-orange disabled:opacity-40"
               >
                 Undo
               </button>
@@ -914,14 +917,15 @@ export function EditorWorkspace({
                 disabled={!canRedo || editLocked}
                 onClick={() => redo()}
                 title="Redo"
-                className="punch-lamp punch-lamp-orange !min-h-[32px] !px-2.5 text-[9px] disabled:opacity-40"
+                className="punch-lamp punch-lamp-orange disabled:opacity-40"
               >
                 Redo
               </button>
               <button
+                id="tutorial-yarn"
                 type="button"
                 onClick={() => setYarnOpen((p) => !p)}
-                className={`punch-lamp punch-lamp-blue !min-h-[32px] !px-2.5 text-[9px] ${
+                className={`punch-lamp punch-lamp-blue ${
                   yarnOpen ? "is-lit" : ""
                 }`}
                 title="Yarn estimate"
@@ -932,7 +936,7 @@ export function EditorWorkspace({
               <button
                 type="button"
                 onClick={() => setNotesOpen((p) => !p)}
-                className={`punch-lamp punch-lamp-blue !min-h-[32px] !px-2.5 text-[9px] ${
+                className={`punch-lamp punch-lamp-blue ${
                   notesOpen ? "is-lit" : ""
                 }`}
                 title="Private notes"
@@ -952,7 +956,7 @@ export function EditorWorkspace({
                     if (selectedPatternId) void save();
                     else void handleCreateNew();
                   }}
-                  className="punch-lamp punch-lamp-green !min-h-[32px] !px-2.5 text-[9px]"
+                  className="punch-lamp punch-lamp-green"
                 >
                   {creatingProgram
                     ? "…"
@@ -971,7 +975,7 @@ export function EditorWorkspace({
                   if (!selectedPatternId) return;
                   window.open(`/print/${selectedPatternId}`, "_blank", "noopener,noreferrer");
                 }}
-                className="punch-lamp punch-lamp-violet !min-h-[32px] !px-2.5 text-[9px]"
+                className="punch-lamp punch-lamp-violet"
               >
                 Print
               </button>
@@ -981,35 +985,37 @@ export function EditorWorkspace({
                 title="Tutorial"
                 aria-label="Open tutorial"
                 aria-pressed={tutorialOpen}
-                className={`punch-lamp punch-lamp-blue !min-h-[32px] !min-w-[32px] !px-2.5 text-[11px] font-bold ${
+                className={`punch-lamp punch-lamp-blue !min-w-[32px] ${
                   tutorialOpen ? "is-lit" : ""
                 }`}
               >
                 ?
               </button>
-              <FlipSwitch
-                topLabel="Private"
-                bottomLabel="Public"
-                on={activePattern?.is_public ?? false}
-                orientation="vertical"
-                disabled={!user || !selectedPatternId || !activePattern}
-                onClick={() => {
-                  if (!selectedPatternId || !activePattern) return;
-                  void handleTogglePublic(selectedPatternId, !activePattern.is_public);
-                }}
-                title={
-                  !user || !selectedPatternId || !activePattern
-                    ? "Open a program to set visibility"
-                    : activePattern.is_public
-                      ? "Make private"
-                      : "Make public"
-                }
-              />
+              <div className="program-bar-slot">
+                <FlipSwitch
+                  topLabel="Private"
+                  bottomLabel="Public"
+                  on={activePattern?.is_public ?? false}
+                  orientation="vertical"
+                  disabled={!user || !selectedPatternId || !activePattern}
+                  onClick={() => {
+                    if (!selectedPatternId || !activePattern) return;
+                    void handleTogglePublic(selectedPatternId, !activePattern.is_public);
+                  }}
+                  title={
+                    !user || !selectedPatternId || !activePattern
+                      ? "Open a program to set visibility"
+                      : activePattern.is_public
+                        ? "Make private"
+                        : "Make public"
+                  }
+                />
+              </div>
               <button
                 type="button"
                 disabled={!user || !selectedPatternId || deletingPattern}
                 onClick={() => setDeletePatternOpen(true)}
-                className="punch-lamp punch-lamp-red !min-h-[32px] !px-2.5 text-[9px] disabled:opacity-40"
+                className="punch-lamp punch-lamp-red disabled:opacity-40"
                 title={
                   !user || !selectedPatternId
                     ? "Open a program to delete"
@@ -1263,7 +1269,8 @@ export function EditorWorkspace({
                         options={[
                           { value: "row", label: "Row" },
                           { value: "col", label: "Col" },
-                          { value: "diag", label: "Diag" },
+                          { value: "diag", label: "Diag↘" },
+                          { value: "diagUp", label: "Diag↗" },
                         ]}
                         onChange={handleSetTrackMode}
                         accent="#0A0A0A"
@@ -1292,7 +1299,7 @@ export function EditorWorkspace({
                         onClick={() => handleStepCurrentRow(-1)}
                         className="punch-lamp punch-lamp-orange !min-h-[28px] !px-2 text-[9px] disabled:opacity-40"
                       >
-                        ← {progress.trackMode === "diag" ? "Diag" : progress.trackMode === "col" ? "Col" : "Row"}
+                        ← {trackStepLabel(progress.trackMode)}
                       </button>
                       <button
                         type="button"
@@ -1300,7 +1307,7 @@ export function EditorWorkspace({
                         onClick={() => handleStepCurrentRow(1)}
                         className="punch-lamp punch-lamp-orange !min-h-[28px] !px-2 text-[9px] disabled:opacity-40"
                       >
-                        {progress.trackMode === "diag" ? "Diag" : progress.trackMode === "col" ? "Col" : "Row"} →
+                        {trackStepLabel(progress.trackMode)} →
                       </button>
                       <span className="font-mono text-[10px]" style={{ color: "rgba(10,10,10,0.55)" }}>
                         <span className="font-bold" style={{ color: "#0A0A0A" }}>{filledCellCount}</span> filled ·{" "}
@@ -1494,6 +1501,7 @@ export function EditorWorkspace({
                   gridHeight={gridH}
                   filledCellCount={filledCellCount}
                   emptyCellCount={emptyCellCount}
+                  startFilled={isCellFilled(cells[gridH - 1]?.[gridW - 1])}
                   value={yarnSettings}
                   onChange={handleYarnSettingsChange}
                   className="w-full"

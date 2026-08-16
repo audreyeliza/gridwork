@@ -2,6 +2,10 @@ import { clamp } from "@/lib/mathUtils";
 
 export const LABEL_SIZE = 28;
 export const ROW_TRACKER_SIDEBAR_PX = 44;
+/** Extra height below the grid for stacked diag checkbox + number. */
+export const DIAG_STACK_SIDEBAR_PX = 52;
+/** Extra width on the left/right for stacked diag marks. */
+export const DIAG_EDGE_SIDEBAR_PX = 36;
 export const MIN_CELL = 10;
 export const MAX_CELL = 32;
 

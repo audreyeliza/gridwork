@@ -2,6 +2,7 @@ import { DEFAULT_HOLE_INK, DEFAULT_PALETTE, isCellFilled, type CellGrid } from "
 import {
   crochetRowLabel,
   diagonalAnchor,
+  isDiagTrack,
   type TrackMode,
 } from "@/lib/progressData";
 
@@ -35,12 +36,13 @@ export function PrintGridSvg({
   const checkSize = Math.max(8, Math.min(12, cellPx - 2));
   const checkCol = 18;
   const numCol = 28;
-  const rowPad = checkCol + numCol;
+  const rowPad = trackMode === "diagUp" ? 22 : checkCol + numCol;
+  const rightPad = trackMode === "diagUp" ? 36 : 4;
   const colPad = trackMode === "col" ? 40 : 22;
-  const bottomPad = trackMode === "diag" ? 36 : 4;
+  const bottomPad = isDiagTrack(trackMode) ? 40 : 4;
   const gridW = gridWidth * cellPx;
   const gridH = gridHeight * cellPx;
-  const w = rowPad + gridW + 4;
+  const w = rowPad + gridW + rightPad;
   const h = colPad + gridH + bottomPad;
   const colors = palette.length > 0 ? palette : DEFAULT_PALETTE;
 
@@ -193,18 +195,18 @@ export function PrintGridSvg({
           ))
         : null}
 
-      {trackMode === "diag"
+      {isDiagTrack(trackMode)
         ? rowComplete.map((done, i) => {
-            const anchor = diagonalAnchor(i, gridWidth, gridHeight);
-            if (anchor.edge === "left") {
+            const anchor = diagonalAnchor(i, gridWidth, gridHeight, trackMode);
+            const half = checkSize / 2;
+            if (anchor.edge === "left" || anchor.edge === "right") {
               const cy = colPad + anchor.row * cellPx + cellPx / 2;
-              const cx = checkCol / 2;
-              const half = checkSize / 2;
+              const cx = anchor.edge === "left" ? checkCol / 2 : rowPad + gridW + rightPad / 2;
               return (
                 <g key={`dg-${i}`}>
                   <rect
                     x={cx - half}
-                    y={cy - half}
+                    y={cy - half - 6}
                     width={checkSize}
                     height={checkSize}
                     fill="#FFFFFF"
@@ -214,7 +216,7 @@ export function PrintGridSvg({
                   />
                   {done ? (
                     <path
-                      d={`M ${cx - half + 2.2} ${cy} L ${cx - 0.5} ${cy + half - 2.5} L ${cx + half - 2} ${cy - half + 2.5}`}
+                      d={`M ${cx - half + 2.2} ${cy - 6} L ${cx - 0.5} ${cy - 6 + half - 2.5} L ${cx + half - 2} ${cy - 6 - half + 2.5}`}
                       fill="none"
                       stroke="#000000"
                       strokeWidth={1.5}
@@ -223,9 +225,9 @@ export function PrintGridSvg({
                     />
                   ) : null}
                   <text
-                    x={checkCol + numCol / 2}
-                    y={cy + 3.5}
-                    fontSize={9}
+                    x={cx}
+                    y={cy + half + 6}
+                    fontSize={8}
                     fontFamily="ui-monospace, monospace"
                     textAnchor="middle"
                     fill="#000000"
@@ -236,8 +238,7 @@ export function PrintGridSvg({
               );
             }
             const cx = rowPad + anchor.col * cellPx + cellPx / 2;
-            const cy = colPad + gridH + 14;
-            const half = checkSize / 2;
+            const cy = colPad + gridH + 12;
             return (
               <g key={`dg-${i}`}>
                 <rect

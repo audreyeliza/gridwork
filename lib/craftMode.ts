@@ -17,13 +17,14 @@ export function parseCraftMode(v: unknown): CraftMode {
   return DEFAULT_CRAFT_MODE;
 }
 
-export function filetDcChain(gridW: number): number {
-  return Math.max(0, gridW) * 2 + 4;
+/** Open start: first dc in 6th. Filled start: first dc in 4th (chain is 2 shorter). */
+export function filetDcChain(gridW: number, startFilled = false): number {
+  return Math.max(0, gridW) * 2 + (startFilled ? 2 : 4);
 }
 
-/** US tr, ch-2 mesh: turning 4 + space 2 + skip 2 + stitch chain. First tr in 9th. */
-export function filetTrChain(gridW: number): number {
-  return Math.max(0, gridW) * 3 + 6;
+/** Open start: first tr in 9th. Filled start: first tr in 5th (chain is 2 shorter). */
+export function filetTrChain(gridW: number, startFilled = false): number {
+  return Math.max(0, gridW) * 3 + (startFilled ? 4 : 6);
 }
 
 /** Foundation chain that yields `gridW` stitches (work into 2nd/3rd/4th/5th from hook). */
@@ -49,17 +50,23 @@ export function chainReadout(
   method: "filet" | "tapestry" | "c2c",
   stitch: "sc" | "hdc" | "dc" | "tr",
   gridW: number,
+  startFilled = false,
 ): ChainReadout {
   if (method === "filet") {
+    const start = startFilled ? "filled start" : "open start";
     if (stitch === "tr") {
       return {
-        display: String(filetTrChain(gridW)),
-        hint: "tr, ch-2 · 9th from hook",
+        display: String(filetTrChain(gridW, startFilled)),
+        hint: startFilled
+          ? `tr, ch-2 · ${start} · 5th from hook`
+          : `tr, ch-2 · ${start} · 9th from hook`,
       };
     }
     return {
-      display: String(filetDcChain(gridW)),
-      hint: "dc, ch-1 · 6th from hook",
+      display: String(filetDcChain(gridW, startFilled)),
+      hint: startFilled
+        ? `dc, ch-1 · ${start} · 4th from hook`
+        : `dc, ch-1 · ${start} · 6th from hook`,
     };
   }
   if (method === "c2c") {

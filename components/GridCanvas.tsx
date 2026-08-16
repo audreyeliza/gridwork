@@ -10,6 +10,8 @@ import {
 } from "@/lib/gridFormat";
 import {
   computeGridCanvasLayout,
+  DIAG_EDGE_SIDEBAR_PX,
+  DIAG_STACK_SIDEBAR_PX,
   LABEL_SIZE,
   ROW_TRACKER_SIDEBAR_PX,
   type GridCanvasLayout,
@@ -17,7 +19,9 @@ import {
 import {
   crochetRowLabel,
   dataRowForTrack,
+  diagColAtRow,
   diagonalAnchor,
+  isDiagTrack,
   type TrackMode,
 } from "@/lib/progressData";
 import { drawImageWithTransform, type CropRect } from "@/lib/imageCanvasUtils";
@@ -69,7 +73,7 @@ export type GridCanvasProps = {
   rowComplete?: boolean[];
   currentRow?: number;
   onToggleRowComplete?: (row: number) => void;
-  /** Row = horizontal band (from top); col = vertical; diag = C2C-style r+c diagonal. */
+  /** Row = horizontal band (from top); col = vertical; diag = ↘ r+c; diagUp = ↗ from top-right. */
   trackMode?: TrackMode;
   /** View-only horizontal mirror so turned work matches the chart. */
   mirrorView?: boolean;
@@ -164,14 +168,21 @@ function TrackCheckMark({
   label,
   ariaLabel,
   onToggle,
+  stack = false,
 }: {
   done: boolean;
   label: string;
   ariaLabel: string;
   onToggle: () => void;
+  /** Checkbox on top, number below — used for diagonal marks. */
+  stack?: boolean;
 }) {
   return (
-    <label className="flex h-full w-full cursor-pointer items-center justify-center gap-0.5">
+    <label
+      className={`flex h-full w-full cursor-pointer items-center justify-center gap-0.5 ${
+        stack ? "flex-col" : ""
+      }`}
+    >
       <input type="checkbox" checked={done} onChange={onToggle} className="sr-only" aria-label={ariaLabel} />
       <span
         className="relative inline-flex shrink-0 items-center justify-center"
@@ -190,7 +201,7 @@ function TrackCheckMark({
         )}
       </span>
       <span
-        className={`min-w-[1.1rem] text-center font-mono text-[11px] font-bold tabular-nums ${
+        className={`min-w-[1.1rem] text-center font-mono text-[10px] font-bold leading-none tabular-nums ${
           done ? "line-through text-black/55" : "text-black"
         }`}
       >
@@ -274,19 +285,20 @@ export function GridCanvas({
       ? rowComplete.length === gridHeight
       : trackMode === "col"
         ? rowComplete.length === gridWidth
-        : rowComplete.length === gridWidth + gridHeight - 1);
+        : isDiagTrack(trackMode) && rowComplete.length === gridWidth + gridHeight - 1);
 
   const showRowTracker = showTrackHighlight;
-  const rowSidebarPx = showRowTracker && (trackMode === "row" || trackMode === "diag") ? ROW_TRACKER_SIDEBAR_PX : 0;
+  const rowSidebarPx = showRowTracker && (trackMode === "row" || trackMode === "diag") ? (trackMode === "diag" ? DIAG_EDGE_SIDEBAR_PX : ROW_TRACKER_SIDEBAR_PX) : 0;
   const colSidebarPx = showRowTracker && trackMode === "col" ? ROW_TRACKER_SIDEBAR_PX : 0;
-  const bottomSidebarPx = showRowTracker && trackMode === "diag" ? ROW_TRACKER_SIDEBAR_PX : 0;
+  const bottomSidebarPx = showRowTracker && isDiagTrack(trackMode) ? DIAG_STACK_SIDEBAR_PX : 0;
+  const rightSidebarPx = showRowTracker && trackMode === "diagUp" ? DIAG_EDGE_SIDEBAR_PX : 0;
 
   const layoutOpts = useMemo(
     () =>
       showRowTracker
-        ? { rowSidebarPx, colSidebarPx, bottomSidebarPx }
+        ? { rowSidebarPx, colSidebarPx, bottomSidebarPx, rightSidebarPx }
         : undefined,
-    [showRowTracker, rowSidebarPx, colSidebarPx, bottomSidebarPx],
+    [showRowTracker, rowSidebarPx, colSidebarPx, bottomSidebarPx, rightSidebarPx],
   );
 
   const leftGutter = LABEL_SIZE + rowSidebarPx;
@@ -304,7 +316,7 @@ export function GridCanvas({
   const zoomMetrics = useMemo(() => {
     const widthFitCell = Math.max(
       4,
-      Math.floor((containerSize.cssW - leftGutter) / Math.max(1, gridWidth)),
+      Math.floor((containerSize.cssW - leftGutter - rightSidebarPx) / Math.max(1, gridWidth)),
     );
     if (zoom === "fit") {
       return {
@@ -316,10 +328,10 @@ export function GridCanvas({
     const cell = Math.max(4, Math.round(widthFitCell * (zoom / 100)));
     return {
       cell,
-      canvasCssW: leftGutter + gridWidth * cell,
+      canvasCssW: leftGutter + gridWidth * cell + rightSidebarPx,
       canvasCssH: topGutterFit + gridHeight * cell + bottomSidebarPx,
     };
-  }, [containerSize, zoom, gridWidth, gridHeight, leftGutter, topGutterFit, bottomSidebarPx]);
+  }, [containerSize, zoom, gridWidth, gridHeight, leftGutter, topGutterFit, bottomSidebarPx, rightSidebarPx]);
 
   const { cell: effectiveCell, canvasCssW, canvasCssH } = zoomMetrics;
 
@@ -397,7 +409,7 @@ export function GridCanvas({
         const x = offsetX + visualCol(c) * cell + cell / 2;
         ctx.fillText(String(c + 1), x, LABEL_SIZE / 2);
       }
-      if (trackMode !== "row" && trackMode !== "diag") {
+      if (trackMode !== "row" && !isDiagTrack(trackMode)) {
         for (let r = 0; r < gridHeight; r++) {
           if (r % step !== 0 && r !== gridHeight - 1) continue;
           const y = offsetY + r * cell + cell / 2;
@@ -435,11 +447,11 @@ export function GridCanvas({
         const hx = offsetX + visualCol(cr) * cell;
         ctx.fillStyle = tint;
         ctx.fillRect(hx, offsetY, cell, gridHpx);
-      } else if (trackMode === "diag" && cr >= 0) {
+      } else if (isDiagTrack(trackMode) && cr >= 0) {
         ctx.fillStyle = tint;
         for (let r = 0; r < gridHeight; r++) {
-          const c = cr - r;
-          if (c < 0 || c >= gridWidth) continue;
+          const c = diagColAtRow(cr, r, gridWidth, trackMode);
+          if (c == null) continue;
           const x = offsetX + visualCol(c) * cell;
           const y = offsetY + r * cell;
           ctx.fillRect(x, y, cell, cell);
@@ -531,13 +543,13 @@ export function GridCanvas({
     if (!fullscreen || !wrapRef.current || !layoutState) return;
     const container = wrapRef.current;
       const { offsetY, cell } = layoutState;
-    if (trackMode === "diag") {
+    if (isDiagTrack(trackMode)) {
       const d = currentRow;
       let minR = gridHeight;
       let maxR = -1;
       for (let r = 0; r < gridHeight; r++) {
-        const c = d - r;
-        if (c < 0 || c >= gridWidth) continue;
+        const c = diagColAtRow(d, r, gridWidth, trackMode);
+        if (c == null) continue;
         minR = Math.min(minR, r);
         maxR = Math.max(maxR, r);
       }
@@ -717,30 +729,40 @@ export function GridCanvas({
                     </div>
                   ))
                 : null}
-              {trackMode === "diag"
+              {isDiagTrack(trackMode)
                 ? rowComplete.map((done, i) => {
-                    const anchor = diagonalAnchor(i, gridWidth, gridHeight);
+                    const anchor = diagonalAnchor(i, gridWidth, gridHeight, trackMode);
+                    const cell = layoutState.cell;
+                    const stackH = Math.max(cell, 36);
                     const style =
                       anchor.edge === "left"
                         ? {
                             left: LABEL_SIZE,
-                            top: layoutState.offsetY + anchor.row * layoutState.cell,
-                            width: ROW_TRACKER_SIDEBAR_PX,
-                            height: layoutState.cell,
+                            top: layoutState.offsetY + anchor.row * cell + (cell - stackH) / 2,
+                            width: DIAG_EDGE_SIDEBAR_PX,
+                            height: stackH,
                           }
-                        : {
-                            left: layoutState.offsetX + visualCol(anchor.col) * layoutState.cell,
-                            top: layoutState.offsetY + layoutState.gridHpx,
-                            width: layoutState.cell,
-                            height: ROW_TRACKER_SIDEBAR_PX,
-                          };
+                        : anchor.edge === "right"
+                          ? {
+                              left: layoutState.offsetX + layoutState.gridWpx,
+                              top: layoutState.offsetY + anchor.row * cell + (cell - stackH) / 2,
+                              width: DIAG_EDGE_SIDEBAR_PX,
+                              height: stackH,
+                            }
+                          : {
+                              left: layoutState.offsetX + visualCol(anchor.col) * cell,
+                              top: layoutState.offsetY + layoutState.gridHpx,
+                              width: cell,
+                              height: DIAG_STACK_SIDEBAR_PX,
+                            };
                     return (
-                      <div key={`diag-${i}`} className="pointer-events-auto absolute z-20" style={style}>
+                      <div key={`diag-${i}`} className="pointer-events-auto absolute z-20 overflow-visible" style={style}>
                         <TrackCheckMark
                           done={done}
                           label={String(i + 1)}
                           ariaLabel={`Diagonal ${i + 1} complete`}
                           onToggle={() => onToggleRowComplete(i)}
+                          stack
                         />
                       </div>
                     );

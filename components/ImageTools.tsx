@@ -21,7 +21,7 @@ import {
   type PatternImageSettings,
 } from "@/lib/imageSettings";
 import { DEFAULT_MANILA_STOCK, manilaHex } from "@/lib/manilaStock";
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
+import { Children, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from "react";
 
 export type ImageReferenceMode = "none" | "underlay" | "convert";
 
@@ -89,6 +89,25 @@ type CropDragState = {
   fitW: number;
   fitH: number;
 };
+
+/** Join clickable Import actions with · — not used between a section title and its buttons. */
+function ActionDots({ children }: { children: ReactNode }) {
+  const items = Children.toArray(children).filter(Boolean);
+  return (
+    <div className="flex flex-wrap items-center gap-2.5">
+      {items.map((child, i) => (
+        <span key={i} className="flex items-center gap-2.5">
+          {i > 0 ? (
+            <span className="font-mono text-[10px] punch-print-faint" aria-hidden>
+              ·
+            </span>
+          ) : null}
+          {child}
+        </span>
+      ))}
+    </div>
+  );
+}
 
 function bestFitDimensions(img: HTMLImageElement, scale: number): { w: number; h: number } {
   const ar = img.naturalWidth / img.naturalHeight;
@@ -1247,7 +1266,7 @@ export function ImageTools({
             <div className="font-mono text-[10px] font-bold tracking-[0.12em] uppercase punch-print-ink">
               Crop
             </div>
-            <div className="flex flex-wrap items-center gap-2.5">
+            <ActionDots>
               <button
                 type="button"
                 onClick={() => setCropExpanded(true)}
@@ -1281,7 +1300,7 @@ export function ImageTools({
               >
                 {positionLocked ? "Locked" : "Lock"}
               </button>
-            </div>
+            </ActionDots>
           </div>
           {!cropExpanded && (
             <CropCanvas
@@ -1328,6 +1347,7 @@ export function ImageTools({
             <span className="font-mono text-[10px] font-bold tracking-[0.12em] uppercase punch-print-ink">
               Transform
             </span>
+            <ActionDots>
             {(["flipH", "flipV", "rotateLeft", "rotateRight"] as TransformType[]).map((type) => (
               <button
                 key={type}
@@ -1339,6 +1359,7 @@ export function ImageTools({
                 {type === "flipH" ? "Flip H" : type === "flipV" ? "Flip V" : type === "rotateLeft" ? "↺ 90°" : "↻ 90°"}
               </button>
             ))}
+            </ActionDots>
           </div>
         </div>
       ) : null}
@@ -1390,12 +1411,12 @@ export function ImageTools({
           ) : null}
 
           {mode === "convert" ? (
-            <div className="flex flex-col gap-2 pt-1">
+            <div className="flex flex-col gap-3 border-t pt-4" style={{ borderColor: "var(--print-ink-faint)" }}>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="font-mono text-[10px] font-bold tracking-[0.12em] uppercase punch-print-ink">
-                  Threshold
+                  Auto-convert
                 </span>
-                <div className="flex flex-wrap items-center gap-2">
+                <ActionDots>
                   <button
                     type="button"
                     aria-pressed={darkIsFilled}
@@ -1406,9 +1427,6 @@ export function ImageTools({
                   >
                     Dark fills
                   </button>
-                  <span className="font-mono text-[10px] punch-print-faint" aria-hidden>
-                    ·
-                  </span>
                   <button
                     type="button"
                     aria-pressed={!darkIsFilled}
@@ -1426,7 +1444,14 @@ export function ImageTools({
                   >
                     Suggest
                   </button>
-                </div>
+                  <button
+                    type="button"
+                    onClick={applyConversion}
+                    className="font-mono text-[10px] font-bold tracking-[0.08em] uppercase punch-print-ink hover:underline hover:underline-offset-2 hover:opacity-70"
+                  >
+                    Apply
+                  </button>
+                </ActionDots>
               </div>
               {sliderRow("Level", threshold, String(threshold), {
                 min: 0,
@@ -1434,13 +1459,6 @@ export function ImageTools({
                 step: 1,
                 onChange: setThreshold,
               })}
-              <button
-                type="button"
-                onClick={applyConversion}
-                className="mt-1 font-mono text-[10px] font-bold tracking-[0.08em] uppercase punch-print-ink hover:underline hover:underline-offset-2 hover:opacity-70"
-              >
-                Apply
-              </button>
             </div>
           ) : null}
         </div>
@@ -1479,7 +1497,8 @@ export function ImageTools({
               }}
             >
               <OperatorCardHeader className="shrink-0" title="Crop card" colLabel="JOB CROP" />
-              <div className="mt-4 flex shrink-0 flex-wrap items-center gap-3">
+              <div className="mt-4 flex shrink-0 flex-wrap items-center">
+                <ActionDots>
                 <button
                   type="button"
                   onClick={applyCrop}
@@ -1496,6 +1515,7 @@ export function ImageTools({
                 >
                   Reset
                 </button>
+                </ActionDots>
               </div>
               <div className="mt-4 flex min-h-0 flex-1 items-center justify-center overflow-hidden">
                 <CropCanvas

@@ -1,8 +1,19 @@
 import { DEFAULT_CRAFT_MODE, parseCraftMode, type CraftMode } from "@/lib/craftMode";
 import type { Json } from "@/lib/patternHelpers";
 
-export const TRACK_MODES = ["row", "col", "diag"] as const;
+export const TRACK_MODES = ["row", "col", "diag", "diagUp"] as const;
 export type TrackMode = (typeof TRACK_MODES)[number];
+
+export function isDiagTrack(mode: TrackMode): boolean {
+  return mode === "diag" || mode === "diagUp";
+}
+
+export function trackStepLabel(mode: TrackMode): string {
+  if (mode === "diag") return "Diag↘";
+  if (mode === "diagUp") return "Diag↗";
+  if (mode === "col") return "Col";
+  return "Row";
+}
 
 export type PatternProgressState = {
   trackMode: TrackMode;
@@ -32,7 +43,7 @@ export function trackLength(
   gridWidth: number,
   gridHeight: number,
 ): number {
-  if (mode === "diag") return diagonalCount(gridWidth, gridHeight);
+  if (isDiagTrack(mode)) return diagonalCount(gridWidth, gridHeight);
   if (mode === "col") return Math.max(0, gridWidth);
   return Math.max(0, gridHeight);
 }
@@ -79,7 +90,7 @@ export function resizeProgressForGrid(
 }
 
 function parseTrackMode(v: unknown): TrackMode {
-  if (v === "col" || v === "diag" || v === "row") return v;
+  if (v === "col" || v === "diag" || v === "diagUp" || v === "row") return v;
   return "row";
 }
 
@@ -139,14 +150,47 @@ export function crochetRowLabel(dataRow: number, _gridHeight?: number): number {
 }
 
 /**
- * Where to park the checkbox for C2C diagonal `d` (cells with r + c === d).
- * Early diagonals sit on the left; the rest sit on the bottom (or right if needed).
+ * Column on diagonal `d` at row `r`, or null if that cell is off the grid.
+ * diag (↘): r + c === d. diagUp (↗): r + (W-1-c) === d.
+ */
+export function diagColAtRow(
+  d: number,
+  r: number,
+  gridWidth: number,
+  mode: TrackMode,
+): number | null {
+  if (mode === "diag") {
+    const c = d - r;
+    return c >= 0 && c < gridWidth ? c : null;
+  }
+  if (mode === "diagUp") {
+    const c = r + (gridWidth - 1) - d;
+    return c >= 0 && c < gridWidth ? c : null;
+  }
+  return null;
+}
+
+/**
+ * Where to park the checkbox for diagonal `d`.
+ * ↘: early marks on the left, rest along the bottom.
+ * ↗: early marks on the right, rest along the bottom.
  */
 export function diagonalAnchor(
   d: number,
   gridWidth: number,
   gridHeight: number,
+  mode: TrackMode = "diag",
 ): DiagAnchor {
+  if (mode === "diagUp") {
+    if (d < gridHeight) {
+      return { edge: "right", row: d, col: Math.max(0, gridWidth - 1) };
+    }
+    const bottomCol = gridWidth + gridHeight - 2 - d;
+    if (bottomCol >= 0 && bottomCol < gridWidth) {
+      return { edge: "bottom", row: gridHeight - 1, col: bottomCol };
+    }
+    return { edge: "left", row: Math.max(0, Math.min(gridHeight - 1, d)), col: 0 };
+  }
   if (d < gridHeight) {
     return { edge: "left", row: d, col: 0 };
   }

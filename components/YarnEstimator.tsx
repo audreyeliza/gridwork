@@ -41,6 +41,8 @@ export type YarnEstimatorProps = {
   gridHeight: number;
   filledCellCount: number;
   emptyCellCount: number;
+  /** Bottom-right cell filled — filet chain count / from-hook hint. */
+  startFilled?: boolean;
   value: PatternYarnSettings;
   onChange: (next: PatternYarnSettings) => void;
   className?: string;
@@ -72,6 +74,7 @@ export function YarnEstimator({
   gridHeight,
   filledCellCount,
   emptyCellCount,
+  startFilled = false,
   value,
   onChange,
   className,
@@ -128,7 +131,10 @@ export function YarnEstimator({
     [method, stitch, value.weight, value.hookSize, gridWidth, gridHeight, value.customGaugeStitchesPerInch],
   );
 
-  const chain = useMemo(() => chainReadout(method, stitch, gridWidth), [method, stitch, gridWidth]);
+  const chain = useMemo(
+    () => chainReadout(method, stitch, gridWidth, startFilled),
+    [method, stitch, gridWidth, startFilled],
+  );
 
   return (
     <section className={`flex flex-col gap-4 pointer-events-auto ${className ?? ""}`}>

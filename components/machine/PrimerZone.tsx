@@ -3,6 +3,7 @@
 import { CrochetMark } from "@/components/CrochetMark";
 import {
   C2C_PRIMER_SECTIONS,
+  CONSOLE_PRIMER_SECTIONS,
   MOSAIC_PRIMER_SECTIONS,
   PRIMER_SECTIONS,
   TAPESTRY_PRIMER_SECTIONS,
@@ -13,8 +14,8 @@ type PrimerZoneProps = {
   onStartTutorial?: () => void;
 };
 
-/** 0 = cover closed; 1 filet; 2 tapestry; 3 c2c; 4 mosaic */
-const PAGE_MAX = 4;
+/** 0 = cover closed; 1 filet; 2 tapestry; 3 c2c; 4 mosaic; 5 console */
+const PAGE_MAX = 5;
 
 type TechniqueLeaf = {
   id: string;
@@ -67,6 +68,18 @@ const TECHNIQUE_LEAVES: TechniqueLeaf[] = [
     prevLabel: "← Tapestry",
     nextLabel: "Mosaic →",
     betweenBlurb: "Turning to mosaic.",
+  },
+  {
+    id: "mosaic",
+    leafClass: "book-leaf-mosaic",
+    pageLabel: "Mosaic crochet",
+    pageNum: "04",
+    sections: MOSAIC_PRIMER_SECTIONS,
+    visibleAt: 4,
+    turnAt: 5,
+    prevLabel: "← C2C",
+    nextLabel: "Console →",
+    betweenBlurb: "Turning to the console.",
   },
 ];
 
@@ -256,48 +269,49 @@ export function PrimerZone({ onStartTutorial }: PrimerZoneProps) {
     pageIndex >= 2 ? " is-p2" : "",
     pageIndex >= 3 ? " is-p3" : "",
     pageIndex >= 4 ? " is-p4" : "",
+    pageIndex >= 5 ? " is-p5" : "",
     flipping ? " is-flipping" : "",
   ].join("");
 
   return (
     <div className="flex h-full min-h-0 items-center justify-center bg-paper px-3 py-4 md:px-8 md:py-6">
       <div className={stageClass}>
-        {/* Base — mosaic (page 4) */}
+        {/* Base — console (page 5) */}
         <div
           className="book-spread absolute inset-0 flex flex-col border border-[#3A3E44] bg-white"
           style={{ background: "#ffffff", minHeight: "min(78vh, 680px)" }}
-          aria-hidden={pageIndex !== 4}
+          aria-hidden={pageIndex !== 5}
         >
           <div className="book-spread-shade" aria-hidden />
           <ManualPageChrome
-            pageLabel="Mosaic crochet"
-            pageNum="04"
+            pageLabel="The console"
+            pageNum="05"
             footerLeft={
               <button
                 type="button"
-                onClick={() => goTo(3)}
-                disabled={flipping || pageIndex !== 4}
+                onClick={() => goTo(4)}
+                disabled={flipping || pageIndex !== 5}
                 className={navBtnClass}
               >
-                ← C2C
+                ← Mosaic
               </button>
             }
             footerRight={
               <button
                 type="button"
                 onClick={() => onStartTutorial?.()}
-                disabled={flipping || pageIndex !== 4 || !onStartTutorial}
+                disabled={flipping || pageIndex !== 5 || !onStartTutorial}
                 className={navBtnClass}
               >
                 Go to tutorial →
               </button>
             }
           >
-            <PrimerSpread sections={MOSAIC_PRIMER_SECTIONS} startIndex={1} />
+            <PrimerSpread sections={CONSOLE_PRIMER_SECTIONS} startIndex={1} />
           </ManualPageChrome>
         </div>
 
-        {/* Technique leaves: C2C (inner-most), tapestry, filet — reverse DOM so outer stacks on top */}
+        {/* Technique leaves: mosaic (inner-most), C2C, tapestry, filet — reverse DOM so outer stacks on top */}
         {[...TECHNIQUE_LEAVES].reverse().map((leaf) => (
           <TechniqueLeafFace
             key={leaf.id}
@@ -329,12 +343,11 @@ export function PrimerZone({ onStartTutorial }: PrimerZoneProps) {
                     for crochet charts.
                   </h1>
                   <p className="mt-5 max-w-[42ch] font-sans text-[16px] leading-relaxed text-white/85">
-                    After the IBM 129 card data recorder: manila stock, lamps, knobs—and a deck of punched charts
-                    instead of payroll cards.
+                    After the IBM 129: manila stock, lamps, knobs, and punched charts instead of payroll cards.
                   </p>
                   <p className="mt-4 max-w-[42ch] font-sans text-[16px] leading-relaxed text-white/85">
-                    Open this <span className="font-semibold text-white">Manual</span> for filet, tapestry, C2C, and mosaic.
-                    New to the console? Go to <span className="font-semibold text-white">Program</span>, then{" "}
+                    Open this <span className="font-semibold text-white">Manual</span> for filet, tapestry, C2C, mosaic, and the Program console.
+                    New to the console? Flip to the last page, or go to <span className="font-semibold text-white">Program</span>, then{" "}
                     <span className="font-semibold text-white">?</span>.
                   </p>
                 </div>
@@ -362,7 +375,7 @@ export function PrimerZone({ onStartTutorial }: PrimerZoneProps) {
               </p>
               <div className="mt-6 h-px w-16 bg-[#2F5F9E]/35" />
               <p className="mt-6 max-w-[36ch] font-sans text-[15px] leading-relaxed text-[#4A4E55]">
-                Pages: filet · tapestry · C2C · mosaic. Flip through for stitch guides and how to use Tracker.
+                Pages: filet · tapestry · C2C · mosaic · console. Flip through for stitch guides, then the Program tools.
               </p>
             </div>
             <div className="book-footer flex items-center border-t border-[#D6DCE4]/80 px-8 md:px-12">

@@ -2,22 +2,22 @@ export const PRIMER_SECTIONS = [
   {
     id: "needs",
     title: "What you'll need",
-    body: "Smooth cotton yarn, a matching hook, and scissors. Filet is a great first project.",
+    body: "Smooth cotton yarn, a matching hook, scissors, and a tapestry needle for ends. Filet is a great first project.",
   },
   {
     id: "slip",
     title: "Slip knot",
-    body: "Loop the yarn, pull the tail through, and place the knot on your hook. Snug both ends so it sits against the hook without closing.",
+    body: "Loop the yarn, pull the tail through, and place the knot on your hook. Pull both ends until it sits on the hook, still loose enough to slide.",
   },
   {
-    id: "chain",
-    title: "Starting chain",
-    body: "Two common filet gauges: dc, chain 1 — squares × 2 + 4; first dc in the 6th chain from the hook. Tr, chain 2 — squares × 3 + 6; first treble in the 9th chain from the hook. Yarn’s Chain line shows the count for this chart’s method and stitch.",
+    id: "how-chain",
+    title: "How to chain",
+    body: "Yarn over and pull through the loop on the hook. That is one chain. Repeat until you have the count from Yarn’s Chain line.",
   },
   {
-    id: "first",
-    title: "First row",
-    body: "Into the chain: skip 1, dc, chain 1, skip 1, and repeat for open mesh. For a filled square, dc in that skipped chain instead of leaving the hole. For tr, chain 2: skip 2 and chain 2 instead of skip 1 and chain 1.",
+    id: "how-many",
+    title: "How many to chain",
+    body: "Dc, chain 1: squares × 2 + 4 if the first square is open (first dc in the 6th from the hook); × 2 + 2 if filled (4th from the hook). Tr, chain 2: squares × 3 + 6 open (9th from the hook); × 3 + 4 filled (5th from the hook). Yarn’s Chain line follows the bottom-right square. Tr, chain 2 is the author’s favorite.",
   },
   {
     id: "dc",
@@ -32,22 +32,32 @@ export const PRIMER_SECTIONS = [
   {
     id: "mesh",
     title: "Open mesh square (empty cell)",
-    body: "Dc, chain 1, skip 1, dc. That gap is one open square.",
+    body: "Dc, chain 1, skip 1, dc. That gap is one open square. For tr, chain 2: skip 2 and chain 2.",
   },
   {
     id: "block",
     title: "Filled block square (filled cell)",
-    body: "Three dc in a row (into the post, the chain space, then the next post) fill the square solid.",
+    body: "Three dc in a row (into the post, the chain space, then the next post) fill the square solid. For tr, chain 2: four trebles in the same span. Adjacent filled squares share a post, so one filled block is four trebles and two in a row are seven, not eight.",
   },
   {
     id: "turn",
-    title: "Turning and working rows",
-    body: "Chain 3 and turn when the next row starts with a dc (filled/block). Chain 4 only when the first stitch of the next row is an open mesh (dc + chain-1). Filled = dc into the space; empty = chain 1, skip 1.",
+    title: "How to turn",
+    body: "Chain 3 and turn when the next row starts with a filled square. Chain 4 only when the first stitch of the next row is an open mesh. Filled = dc into the space; empty = chain 1, skip 1.",
   },
   {
-    id: "read",
-    title: "Reading the grid",
-    body: "Start top-left, work right. Turns flip travel direction; the chart stays put. Tracker in Row mode highlights the active row from the top (row 1). Flip view mirrors the chart when you turn the work.",
+    id: "tools",
+    title: "Yarn card and Flip",
+    body: "Yarn holds method, stitch, chain count, and a yarn estimate. Flip mirrors the chart when you turn the work so it still matches the grid.",
+  },
+  {
+    id: "finish",
+    title: "Finishing",
+    body: "After the last row, cut the yarn, pull the tail through the last loop, and weave ends on the wrong side with a tapestry needle.",
+  },
+  {
+    id: "borders",
+    title: "Borders",
+    body: "A lot of people add a filet border around the motif. Look up a border you like online and work it after the chart.",
   },
 ] as const;
 
@@ -61,7 +71,7 @@ export const TAPESTRY_PRIMER_SECTIONS = [
   {
     id: "tap-sc",
     title: "Single crochet foundation",
-    body: "Work in single crochet (sc). Chain the chart width; each cell is one stitch. Intarsia uses the same charts with separate bobbins instead of carrying yarn.",
+    body: "Work in single crochet (sc). Chain the chart width; each cell is one stitch. Carry unused yarn or drop it until you need it again.",
   },
   {
     id: "tap-change",
@@ -115,7 +125,7 @@ export const C2C_PRIMER_SECTIONS = [
   {
     id: "c2c-read",
     title: "Reading with Diag Tracker",
-    body: "Set Tracker to Diag. Index 01 is the top-left cell (row + column = 0). Checkboxes sit on the left for early diagonals and along the bottom for the rest. ← Diag / Diag → steps the highlighted diagonal.",
+    body: "Set Tracker to Diag↘ (top-left origin) or Diag↗ (top-right). Index 01 is the first diagonal in that family. Checkboxes sit on the starting edge for early diagonals and along the bottom for the rest.",
   },
   {
     id: "c2c-color",
@@ -160,5 +170,49 @@ export const MOSAIC_PRIMER_SECTIONS = [
     id: "mos-tips",
     title: "Tips",
     body: "Keep overlays loose enough to lie flat. Count every few rows against the chart.",
+  },
+] as const;
+
+/** Program console primer — Manual page 5. */
+export const CONSOLE_PRIMER_SECTIONS = [
+  {
+    id: "con-bar",
+    title: "Program bar",
+    body: "Stock tints the card. Size sets W·H; Custom plus Link keeps proportions. Edit to draw; Lock while you stitch. Import opens the image card.",
+  },
+  {
+    id: "con-import",
+    title: "Import",
+    body: "Crop, then choose Reference (trace behind the grid) or Auto-convert (threshold to cells). Apply lives with that tool. Layers stack if you add more than one image.",
+  },
+  {
+    id: "con-yarn",
+    title: "Yarn",
+    body: "Method and stitch drive size and Chain. For filet, Chain follows whether the bottom-right square is open or filled. Amount is an estimate from weight, hook, and gauge.",
+  },
+  {
+    id: "con-tracker",
+    title: "Tracker",
+    body: "Row, Col, Diag↘, or Diag↗. Check off tracks on the grid; the highlight follows. Steppers move one track at a time.",
+  },
+  {
+    id: "con-flip",
+    title: "Flip",
+    body: "Face is the chart as drawn. Flip mirrors it horizontally so turned work still matches what you see.",
+  },
+  {
+    id: "con-notes",
+    title: "Notes",
+    body: "Private to you. Hopper copies do not include notes.",
+  },
+  {
+    id: "con-copy",
+    title: "Copy from Hopper",
+    body: "A copy brings the drawing, import settings, and yarn card. Checkboxes, highlight, Flip, and notes start fresh.",
+  },
+  {
+    id: "con-save",
+    title: "Save, print, public",
+    body: "Sign in for autosave. Print opens a print-ready chart. Public lists the card in Hopper; Private keeps it on your Deck. Delete removes it.",
   },
 ] as const;

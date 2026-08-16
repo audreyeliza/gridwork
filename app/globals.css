@@ -317,6 +317,63 @@ button.punch-key-blue:hover:not(:disabled),
     inset 0 -1px 0 rgba(0, 0, 0, 0.14);
 }
 
+/* Program bar: lamps, switch housings, and readouts share a 32px keycap line */
+.program-bar-row .punch-lamp {
+  box-sizing: border-box;
+  min-height: 32px !important;
+  height: 32px;
+  padding-left: 0.65rem !important;
+  padding-right: 0.65rem !important;
+  font-size: 9px !important;
+  font-weight: 700;
+}
+.program-bar-slot {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  height: 32px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+}
+.program-bar-slot .flip-switch {
+  height: 32px;
+  justify-content: center;
+  overflow: visible;
+}
+.program-bar-slot .flip-switch-vertical .flip-switch-housing {
+  width: 18px;
+  height: 32px;
+}
+.program-bar-slot .flip-switch-vertical .flip-switch-knob.is-on {
+  transform: translateY(14px);
+}
+.program-bar-slot .flip-switch-dual .flip-switch-label:first-of-type {
+  position: absolute;
+  top: -9px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.program-bar-slot .flip-switch-dual .flip-switch-label:last-of-type {
+  position: absolute;
+  bottom: -9px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.program-bar-readout {
+  display: flex;
+  height: 32px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+.program-bar-readout > span {
+  position: absolute;
+  top: calc(100% + 1px);
+}
+
 /* Card tracker strip — same metal face as console, bottom of program bay */
 .punch-tracker-face {
   position: relative;
@@ -740,8 +797,8 @@ button.punch-lamp:disabled,
     inset 8px 0 18px rgba(40, 44, 50, 0.08),
     inset -6px 0 14px rgba(40, 44, 50, 0.04);
 }
-/* Mosaic base only receives clicks on page 4 */
-.book-stage.is-p4 .book-spread {
+/* Mosaic base only receives clicks on page 5 */
+.book-stage.is-p5 .book-spread {
   pointer-events: auto;
 }
 .book-stage.is-flipping .book-spread {
@@ -832,17 +889,20 @@ button.punch-lamp:disabled,
   transition: transform 1.15s cubic-bezier(0.33, 0.02, 0.18, 1);
   will-change: transform;
 }
-.book-leaf-c2c {
+.book-leaf-mosaic {
   z-index: 2;
 }
-.book-leaf-tapestry {
+.book-leaf-c2c {
   z-index: 3;
 }
-.book-leaf-filet {
+.book-leaf-tapestry {
   z-index: 4;
 }
-.book-leaf-cover {
+.book-leaf-filet {
   z-index: 5;
+}
+.book-leaf-cover {
+  z-index: 6;
 }
 .book-stage.is-open .book-leaf-cover {
   transform: rotateY(-150deg);
@@ -861,6 +921,11 @@ button.punch-lamp:disabled,
   pointer-events: none;
 }
 .book-stage.is-p4 .book-leaf-c2c {
+  transform: rotateY(-150deg);
+  z-index: 1;
+  pointer-events: none;
+}
+.book-stage.is-p5 .book-leaf-mosaic {
   transform: rotateY(-150deg);
   z-index: 1;
   pointer-events: none;
@@ -901,7 +966,8 @@ button.punch-lamp:disabled,
 }
 .book-stage.is-p2 .book-leaf-filet .book-leaf-inner-front,
 .book-stage.is-p3 .book-leaf-tapestry .book-leaf-inner-front,
-.book-stage.is-p4 .book-leaf-c2c .book-leaf-inner-front {
+.book-stage.is-p4 .book-leaf-c2c .book-leaf-inner-front,
+.book-stage.is-p5 .book-leaf-mosaic .book-leaf-inner-front {
   filter: brightness(0.68);
 }
 .book-leaf-back {
@@ -921,7 +987,8 @@ button.punch-lamp:disabled,
 .book-stage.is-open .book-leaf-cover .book-leaf-back,
 .book-stage.is-p2 .book-leaf-filet .book-leaf-back,
 .book-stage.is-p3 .book-leaf-tapestry .book-leaf-back,
-.book-stage.is-p4 .book-leaf-c2c .book-leaf-back {
+.book-stage.is-p4 .book-leaf-c2c .book-leaf-back,
+.book-stage.is-p5 .book-leaf-mosaic .book-leaf-back {
   border-right-color: rgba(58, 62, 68, 0.35);
 }
 .book-leaf-spine {
@@ -985,7 +1052,8 @@ button.punch-lamp:disabled,
 .book-stage.is-open .book-leaf-cover .book-leaf-thickness,
 .book-stage.is-p2 .book-leaf-filet .book-leaf-thickness,
 .book-stage.is-p3 .book-leaf-tapestry .book-leaf-thickness,
-.book-stage.is-p4 .book-leaf-c2c .book-leaf-thickness {
+.book-stage.is-p4 .book-leaf-c2c .book-leaf-thickness,
+.book-stage.is-p5 .book-leaf-mosaic .book-leaf-thickness {
   opacity: 1;
 }
 
